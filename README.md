@@ -1,9 +1,9 @@
-# mlgidGUI
+# _mlgidGUI_
 ## Project summary
 
-mlgidGUI is a graphical tool for the analysis and annotation of GIWAXS data.
+_mlgidGUI_ is a graphical tool for the analysis and annotation of Grazing-Incidence Wide-Angle X-ray Scattering (GIWAXS) data.
 The resulting datasets can be used for training and testing ML models or further manual analysis. 
-mlgidGUI is well suited for the annotation of 2D diffraction images with radial symmetry.
+_mlgidGUI_ is well suited for the annotation of 2D diffraction images with radial symmetry.
 In particular, it focuses on grazing-incidence wide-angle scattering data analysis and its specific needs.
 
 ## Installation
@@ -12,7 +12,7 @@ In particular, it focuses on grazing-incidence wide-angle scattering data analys
 Readily compiled packages for the x64 architecture with Windows and Unix are available at the releases page:
 [https://github.com/mlgid-project/mlgidGUI/releases](https://github.com/mlgid-project/mlgidGUI/releases)
 
-To run the program on windows simply double click on the file and ignore the security warnings.
+To run the program on Windows simply double click on the file and ignore the security warnings.
 
 
 Follow these instructions to run the AppImage: [https://docs.appimage.org/introduction/quickstart.html](https://docs.appimage.org/introduction/quickstart.html)
@@ -38,10 +38,10 @@ Clone with git:
 
 ## Usage
 
-Import images or H5 files to the program, select the image in the Project Manager and start labeling:
-Annotations can be added with the key combination `Ctrl + Alt` and a mouseclick- and hold on the image.
+Import images or H5 files into the program, select an image in the Project Manager and begin labeling.
+To add annotations, hold `Ctrl + Alt`, then click, hold, and drag the mouse over the image, similar to using a shape-drawing tool.
 The key combination `Ctrl + H` can be used to hide the annotations. The annotated data  can be exported as PASCAL-VOC 
-dataset and H5.
+dataset and H5. 
 
 
 - For a short demonstration of the program usage, please refer to the [Workflow section](./docs/WORKFLOW.md).
