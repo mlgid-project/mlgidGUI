@@ -1,0 +1,73 @@
+
+#######################################################################
+#
+#                 Cambridge Crystallographic Data Centre
+#                                CCDC 
+#
+#######################################################################
+#
+# If this CIF has been generated from an entry in the Cambridge 
+# Structural Database, then it will include bibliographic, chemical, 
+# crystal, experimental, refinement or atomic coordinate data resulting 
+# from the CCDC's data processing and validation procedures.
+#
+#######################################################################
+
+data_Cmc21
+_symmetry_cell_setting           orthorhombic
+_symmetry_space_group_name_H-M   'C m c 21'
+_symmetry_Int_Tables_number      36
+_space_group_name_Hall           'C 2n -2'
+loop_
+_symmetry_equiv_pos_site_id
+_symmetry_equiv_pos_as_xyz
+1 x,y,z
+2 -x,-y,1/2+z
+3 x,-y,1/2+z
+4 -x,y,z
+5 1/2+x,1/2+y,z
+6 1/2-x,1/2-y,1/2+z
+7 1/2+x,1/2-y,1/2+z
+8 1/2-x,1/2+y,z
+_cell_length_a                   33.280(4)
+_cell_length_b                   8.1367(9)
+_cell_length_c                   8.0665(8)
+_cell_angle_alpha                90
+_cell_angle_beta                 90
+_cell_angle_gamma                90
+_cell_volume                     2184.32
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Pb1 Pb 0.000000 0.24008(4) 0.58008(4)
+Br1 Br 0.09004(3) 0.26674(10) 0.56418(17)
+Br2 Br 0.000000 0.55911(11) 0.39037(19)
+Br3 Br 0.000000 0.07984(12) 0.2503(2)
+Br1 Br -0.09004(3) 0.26674(10) 0.56418(17)
+Pb1 Pb 0.000000 -0.24008(4) 0.08008(4)
+Pb1 Pb 0.000000 0.75992(4) 0.08008(4)
+Br2 Br 0.000000 0.44089(11) 0.89037(19)
+Br3 Br 0.000000 -0.07984(12) 0.7503(2)
+N1 N 0.0775(2) 0.3308(9) 0.1527(9)
+HN1 H 0.085976 0.434561 0.135589
+HN2 H 0.081466 0.303512 0.259588
+HN3 H 0.051212 0.323395 0.128384
+C1 C 0.1005(3) 0.2175(13) 0.0450(13)
+HC11 H 0.095353 0.244085 -0.071523
+HC12 H 0.091666 0.104316 0.064809
+C2 C 0.1445(3) 0.2313(12) 0.080(2)
+C3 C 0.1613(4) 0.1256(18) 0.1951(19)
+HC3 H 0.145352 0.045841 0.247711
+C4 C 0.2020(6) 0.138(3) 0.233(3)
+HC4 H 0.213998 0.064381 0.307521
+C5 C 0.2246(5) 0.262(3) 0.157(4)
+HC5 H 0.251997 0.272804 0.183626
+C6 C 0.2074(5) 0.368(2) 0.045(4)
+HC6 H 0.222847 0.452171 -0.004390
+C7 C 0.1678(4) 0.3510(18) 0.006(2)
+HC7 H 0.156218 0.421470 -0.073324
+
+#END

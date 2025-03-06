@@ -1,0 +1,147 @@
+name: BuildReleases
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:  
+  create_release:
+  
+    runs-on: ubuntu-22.04
+    
+    outputs:
+      upload_url: ${{steps.create_release.outputs.upload_url}}
+      version: ${{ steps.set_variables.outputs.VERSION }}
+      
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set variables
+        id: 'set_variables'
+        run: echo "VERSION=$(cat ./mlgidGUI/__version.py | sed -e "s/__version__ = '//g" | sed -e "s/'//g")" >> $GITHUB_OUTPUT
+
+      - name: Delete old release                
+        uses: dev-drprasad/delete-older-releases@v0.2.1
+        with:
+          keep_latest: 0
+          delete_tag_pattern: ${{ steps.set_variables.outputs.VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.set_variables.outputs.VERSION }}
+          release_name: Release ${{ steps.set_variables.outputs.VERSION }}
+          body: |
+            ${{ steps.Changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+
+  create_documentation:
+    needs: create_release
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v3
+      - run: sed -i 's+./docs/WORKFLOW.md+#workflow+g' README.md
+      - run: sed -i 's+./docs/DOCUMENTATION.md+#documentation+g' README.md
+      - run: cp -r docs/images ./
+
+      - uses: docker://pandoc/extra
+        with:
+          args: >-
+            -o documentation.pdf
+            --toc
+            -V geometry:margin=1in
+            --metadata-file ./docs/HEADER.yaml
+            README.md
+            ./docs/WORKFLOW.md
+            ./docs/DOCUMENTATION.md
+
+      - name: Upload executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./documentation.pdf
+          asset_name: documentation.pdf
+          asset_content_type: application/pdf
+          
+  test_and_win_exe:
+    needs: create_release
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    - name: Install dependencies
+      run: |
+        pip install PyQt5-sip==12.15.0
+        pip install https://files.pythonhosted.org/packages/46/83/7c27aec708a1eb12812a0b985eb42eebfe3bb87e294cdca1c4af308d2fa9/PyQt5-5.14.1-5.14.1-cp35.cp36.cp37.cp38-none-win_amd64.whl
+        pip install ./ pyinstaller
+        pip install pytest pytest-cov
+
+    - name: Test with pytest
+      run: |
+        pytest ./tests
+
+    - name: Create win exe
+      run: |
+        pyinstaller --specpath "giwaxs_gui/static/pyinstallerreq"
+        pyinstaller --onefile -w -n mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64 --add-data "mlgidGUI/static/icons;mlgidGUI/static/icons" --add-data "mlgidGUI/static/pyinstaller;xrayutilities" --add-data "mlgidGUI/static/pyinstaller/elements.db;xrayutilities/materials/data" main.py
+        echo ("EXE_PATH=" + $(gci ./dist *.exe -file -name)) >> $env:GITHUB_ENV
+
+    - name: Upload executable
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./dist/${{ env.EXE_PATH }}
+        asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64.exe
+        asset_content_type: application/zip
+
+  build_appimage :
+    needs: create_release
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
+        sudo apt-get update
+        sudo apt-get install -y python3.8 python3.8-dev python3.8-distutils python3-pip python3-testresources python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev libfuse2
+        # Install appimagetool AppImage
+        sudo wget https://github.com/AppImage/AppImageKit/releases/download/12/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
+        sudo chmod +x /usr/local/bin/appimagetool
+        sudo python3.8 -m pip install appimage-builder==0.8.1
+        mkdir -p appimage-builder-cache
+        wget https://github.com/AppImage/AppImageKit/releases/download/12/runtime-x86_64 -O appimage-builder-cache/runtime-x86_64
+
+    - name: Build AppImage
+      run: |
+        appimage-builder --recipe AppImageBuilder.yml --skip-test
+        echo "APPIMAGE_PATH=$(echo *.AppImage)" >> $GITHUB_ENV
+
+    - name: Upload appimage
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ${{ env.APPIMAGE_PATH }}
+        asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64.AppImage
+        asset_content_type: application/zip
+
