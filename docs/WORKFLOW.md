@@ -25,10 +25,12 @@ icons on the top left toolbar. The widgets are:
 ![Project Manager and Image Viewer](./images/file-manager.png)
 
 The project widget shows all files and folders which are part of the project. There are three more tabs:
-One shows the current annotations ('Labeled ROIs'), the CIF files used for the simulated bragg peaks are shown in  ('CIF-Files')
+One shows the current annotations ('Labeled ROIs'), the CIF files used for the simulated Bragg peaks are shown in  ('CIF-Files')
 , whereas the result of the simulation is shown in ('CIF ROIs').
 
 ### Available input formats
+
+We added a CIF file, a GIWAXS image, and an HDF5 file in the `docs\example_files` folder to provide the user with examples.
 
 GIWAXS data can be imported from the following file types:
 
@@ -81,11 +83,11 @@ CIF files can be added through the toolbar:
 ![image-viewer](./images/addcif.png)
 
 After the import, the simulation automatically calculates rings for powder diffraction. The file now
-appears in the CIF-Files tab of the project view. The user can change the angle of incidence and can set a custom contact plane. 
+appears in the CIF-Files tab of the project manager. The user can change the angle of incidence and set a custom contact plane. 
 
 ![CIF-Files tab in the Project Manager](./images/ciffiles.png)
 
 ## Data Export
 
-The current progress is saved in a project-folder at the users home directory. Additionally, the data can be exported as an H5 file.
+The current progress is saved in a project folder at the user's home directory. Additionally, the data can be exported as an H5 file.
 An export in the Pascal-VOC format allows the user to use the dataset for ML-based object detection.

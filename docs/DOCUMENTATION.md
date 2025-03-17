@@ -2,18 +2,21 @@
 ## General
 ### Project Startup
 During the program startup, the user chooses
-between importing an H5 file, creating a new - or loading an existing project. All necessary information is stored in a project folder, the default location is `USERHOME\GIWAXSProjects\`
+between importing an H5 file, creating a new or loading an existing project. All necessary information is stored in a project folder, the default location is `USERHOME\GIWAXSProjects\`
 
 ![Program startup window](./images/startup.png)
 
 
 ### Project Folder
 
-mlgidGUI uses project folders to store the current progress. The project files are stored as pickle binaries to facilitate faster serialization and deserialization, reducing disk I/O overhead. However, they are not intended for sharing or copying to other machines due to potential incompatibilities arising from the use of pickle. Projects can be shared via h5 files (see below).
+mlgidGUI uses project folders to store the current progress. The project files are stored as pickle binaries to facilitate
+faster serialization and deserialization, reducing disk I/O overhead. However, they are not intended for sharing or 
+copying to other machines due to potential incompatibilities arising from the use of pickle. Projects can be shared via 
+HDF5 files (see below).
 
 A project folder contains the following data:
 
-  The `project_structure` file contains the pickled `ProjectStructure` Python-object which holds the project-folder path and the configuration.
+  The `project_structure` file contains the pickled `ProjectStructure` Python-object which holds the project folder path and the configuration.
 
 Subfolders:
 
@@ -25,9 +28,9 @@ Subfolders:
 - `rois_meta_data` : Contains information about locations of the images.
 
 
-### H5 file structure
+### HDF5 file structure
 
-mlgidGUI supports the import and export of H5-files with the following structure:
+mlgidGUI supports the import and export of HDF5-files with the following structure:
 
 ````
 export.H5
@@ -42,12 +45,13 @@ export.H5
                 |--- confidence_level
                 |--- key
                 |--- radius
+                |--- width
                 |--- type
 ````
-The ``image`` array in the H5-file contains the image in the original format, meaning it is stored the way it was imported 
+The ``image`` array in the HDF5-file contains the image in the original format, meaning it is stored the way it was imported 
 to the GUI, without geometry- or contrast corrections. The ``polar_image`` array contains the image in polar coordinates
 without contrast corrections. The ``roi_data`` folder contains the data of the labeled peaks and rings. The ``angle`` array 
-gives the angle in degrees, the ``angle_std`` contains half of the azimuthal length in degrees. The ``radius`` and ``width`` array are 
+gives the angle in degrees, the ``angle_std`` contains half of the azimuthal length in degrees. The ``radius`` and ``width`` arrays are 
 given in pixels. The following graphic illustrates the variables:
 
 ![Variables used to describe a fitted ring or segment](./images/explanation_dataset.png)
@@ -59,17 +63,19 @@ ring = 1
 segment = 2
 background = 3
 ````
- for each labeled peak or ring. The ``confidence_level`` array contains the following values 
+ for each labeled peak (segment) or ring. Background artifacts get the value 3. The ``confidence_level`` array contains
+ the following values: 
 ````
 High = 1
 Medium = 0.5
 Low = 0.1
 Not set = -1
 ````
-for each labeled peak or ring. 
+for each labeled peak or ring. These three different confidence values allow to evaluate a ML model separately on different
+confidence levels.
 
 ### Data Export
-The current progress is saved in a project-folder at the users home directory when closing the window.
+The current progress is saved in a project folder at the user's home directory when closing the window.
 Additionally, the project can be exported to an H5 file or the VOC dataset format for ML-based object detection. The 
 export is available by clicking `File` -> `Save Project`. The standard setting is the export to H5. The user can select 
 if only one image or the whole project is exported.
@@ -81,14 +87,16 @@ main window by a double click on the blue bar of each widget. Additionally, movi
 possible by a drag and drop of the blue bar.
 
 ## Project Manager
-The project manager is the central widget to display the files, the labeled peaks and to control the CIF-file simulation.
+The project manager is the central widget to display the files, the labeled peaks and to control the CIF file simulation.
 
-The `CIF-Files` tab shows all files and folders added to the project. Clicking on an image file in the `Files` tab selects it also for the
+The `Files` tab shows all files and folders added to the project. Clicking on an image file in the `Files` tab selects it also for the
 other widgets.
 
 ### Labeled ROIs
 
-Annotations to the image can be added by the shortcut `Add ROI` by holding `Ctrl + Alt` and a click and hold with the 
+![Labeled ROIs tab in the Project Manager](./images/labeled_rois.png)
+
+Annotations can be added to the image using the shortcut `Add ROI` by holding `Ctrl + Alt` and a click and hold with the 
 mouse on the image. The key combination `Ctrl + H` can be used to hide the annotations.
 
 The `Labeled ROIs` tab shows the annotations added to the currently selected image:
@@ -97,14 +105,14 @@ The `Labeled ROIs` tab shows the annotations added to the currently selected ima
 - `Radius`: The center of the ring or segment in radial direction. [pixels]
 - `Width`: The area in the radial direction covered by a segment or ring. [pixels]
 - `Angle`: The center of the ring or segment in azimuthal direction. [degrees]
-- `Angle Width`: The area in azimuthal direction covered by a segment or ring. [degrees]
-- `Confidence level`: The center of the ring or segment in the radial direction. [high, medium, low]
+- `Angle Width`: The area in azimuthal direction covered by a segment or ring. (2*angle_std) [degrees]
+- `Confidence level`: The probability of a human to detect this Bragg peak. [high, medium, low]
 - `CIF File`: The CIF file of the structure, to which the peak belongs to.
 
 ### CIF Files & CIF ROIs
 
 mlgidGUI has an integrated simulation of GIWAXS patterns from [CIF files](https://en.wikipedia.org/wiki/Crystallographic_Information_File)
-based on the package [xrayutilities](https://github.com/dkriegner/xrayutilities). It can simulate either patterns from 
+based on the package [xrayutilities](https://github.com/dkriegner/xrayutilities). It can simulate scattering patterns from 
 powder diffraction or single crystals.
 
 CIF files can be added through the toolbar by clicking `Data` -> `Add CIF File` 
@@ -117,16 +125,18 @@ The relevant settings for simulated GIWAXS patterns are:
 - The described structure in the imported CIF file
 - Powder diffraction [activated/deactivated]
 - Contact plane [hkl] (used in case of deactivated powder diffraction)
-- % of peaks to show (from highest to lowest intensity)
+- % of peaks to show (from highest to lowest intensity). Moving the slider to the right hides less intense peaks.
 - The Q-range (can be set in the Image Viewer widget)
 - The beam center (can be set in the Image Viewer widget)
+
+![CIF ROIs tab in the Project Manager](./images/cif_rois.png)
 
 The tab `CIF ROIs` shows the properties `CIF File`, `Qz`, `Qxy`, `Miller indices`
 and `intensity` of each simulated peak and ring. The table allows the sorting by each property.
 
 ## Angular Profile
 The Angular Profile widget shows the mean azimuthal profile along the radius of a labeled peak. The extent of a labeled ring or peak can be 
-changed by clicking and holding the edge of the purple area. Simultaneously, the labeled peak in the other widgets gets changed.
+changed by clicking and holding the edge of the purple area. Simultaneously, the labeled peak in the other widgets is changed.
 
 ![Angular Profile widget](./images/angular_profile.png)
 
@@ -153,7 +163,7 @@ The colors have the following meaning:
 
 ### Contrast correction
 Some Bragg peaks on diffraction images can have a low signal to noise ratio, therefore contrast corrections are crucial.
-mlgidGUI uses a CLAHE-based contrast correction by default. Nevertheless, custom contrast settings may be 
+mlgidGUI uses a [CLAHE](https://docs.opencv.org/4.x/d5/daf/tutorial_py_histogram_equalization.html)-based contrast correction by default. Nevertheless, custom contrast settings may be 
 needed and can be activated by a right click on the histogram bar ('Disable CLAHE'). After disabling CLAHE, the contrast
 limits can be adjusted by dragging the yellow arrow on the top and bottom. To identify peaks with a low brightness, it 
 can be helpful to use a custom colourmap. This feature can be activated by a right click on the colourband beside the 
@@ -177,7 +187,7 @@ The underlying fitting uses a Gaussian function on top of a linear background:
 
 ${\displaystyle f(x)=ax + b+ A\exp \left(-{\frac {(x-\mu)^{2}}{2\sigma^{2}}}\right)}$
 
-The fitting uses the ``curve_fit`` function of scypi, which performs a non-linear least squares fit. The user selects 
+The fitting uses the ``curve_fit`` function of scipy, which performs a non-linear least squares fit. The user selects 
 the bounds in the radial direction for the fitting, they are displayed as yellow lines to the left and right of the 
 selected ROI.
 
@@ -193,10 +203,10 @@ The buttons have the following meaning:
 - ``Update params by range``: Adjusts the graph and the fitting parameters to the currently selected bounds. The selected
 peak is placed in the center of the graph.
 - ``CIF file name``: Name of the structure the peak belongs to.
-- ``Confidence level radio buttons``: [High, Medium, Low] Set the confidence of a peak.
+- ``Confidence level radio buttons``: [High, Medium, Low] Sets the confidence of a peak.
 
-The sliders expose all variables used for the fitting and are needed for complex shapes or in case the fitting failed.
-While the slider in the middle are used as inital parameters for the fitting, the sliders on the side allow to control 
+The sliders expose all variables used for the fitting and are needed for complex shapes or when the fit has failed.
+While the sliders in the middle are used as inital parameters for the fitting, the sliders on the side allow to control 
 the boundaries of the fitting function. These sliders are only needed for complex cases, we discovered that most ROIs can
 be fitted without manually changing the sliders.
 

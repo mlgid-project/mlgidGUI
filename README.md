@@ -38,12 +38,12 @@ Clone with git:
 
 ## Usage
 
-Import images or H5 files into the program, select an image in the Project Manager and begin labeling.
+Import images or HDF5 files into the program, select an image in the Project Manager and begin labeling.
 To add annotations, hold `Ctrl + Alt`, then click, hold, and drag the mouse over the image, similar to using a shape-drawing tool.
 The key combination `Ctrl + H` can be used to hide the annotations. The annotated data  can be exported as PASCAL-VOC 
-dataset and H5. 
+dataset or as an HDF5 file.
 
-
+- We added a CIF file, a GIWAXS image, and an HDF5 file in the `docs\example_files` folder to provide the user with examples.
 - For a short demonstration of the program usage, please refer to the [Workflow section](./docs/WORKFLOW.md).
 - For a detailed guidance, please refer to the [Documentation section](./docs/DOCUMENTATION.md)
 
