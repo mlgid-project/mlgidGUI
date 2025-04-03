@@ -1,5 +1,5 @@
 ---
-title: 'mlgidGUI - an annotation program for 2D scattering data with powder geometry'
+title: 'mlgidGUI - an annotation program for 2D scattering data'
 tags:
   - GIWAXS
   - machine learning
@@ -39,7 +39,7 @@ bibliography: paper.bib
 
 ---
 # Summary
-We introduce mlgidGUI, a graphical user interface for the analysis and labeling of 2D scattering data with powder geometry. It is designed to create grazing-incidence wide-angle X-ray scattering (GIWAXS; or GID, grazing-incidence diffraction)  datasets for machine learning (ML) training and testing purposes [@starostin2022tracking; @volter2025benchmarking]. Moreover, it enables the visualization and modification of the outputs produced by such ML models. mlgidGUI is designed for 2D scattering images with radial symmetry and provides tools to streamline the manual annotation of Bragg peaks.
+We introduce mlgidGUI, a graphical user interface for the analysis and labeling of 2D scattering data with radial symmetry. It is designed to create grazing-incidence wide-angle X-ray scattering (GIWAXS; or GID, grazing-incidence diffraction)  datasets for machine learning (ML) training and testing purposes [@starostin2022tracking; @volter2025benchmarking]. Moreover, it enables the visualization and modification of the outputs produced by such ML models. mlgidGUI is designed for 2D scattering images with radial symmetry and provides tools to streamline the manual annotation of Bragg peaks.
 It supports the conversion to polar coordinates based on experimental settings, such as beam center position and Q-scale adjustments. mlgidGUI enables direct annotation with rings instead of conventional rectangular boxes. Given the low signal-to-noise ratio of some peaks, the software provides customized contrast settings to enhance the visibility. Additionally, an integrated crystallographic toolkit enables peak position simulations, aiding in the identification of even the weakest Bragg peaks.
 The export as PASCAL VOC dataset enables the integration to ML pipelines. A ML-based peak detection [@starostin2022endtoend] can provide preliminary peaks to accelerate the annotation.
 
