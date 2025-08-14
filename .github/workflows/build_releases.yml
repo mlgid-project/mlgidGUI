@@ -17,10 +17,12 @@ jobs:
       
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Set variables
         id: 'set_variables'
-        run: echo "VERSION=$(cat ./mlgidGUI/__version.py | sed -e "s/__version__ = '//g" | sed -e "s/'//g")" >> $GITHUB_OUTPUT
+        run: |
+          VERSION=$(grep '^version =' pyproject.toml | sed -E "s/version = \"(.*)\"/\1/")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Delete old release                
         uses: dev-drprasad/delete-older-releases@v0.2.1
@@ -94,39 +96,37 @@ jobs:
   test_and_win_exe:
     needs: create_release
     runs-on: windows-latest
-    
+
     steps:
-    - uses: actions/checkout@v3
-    
-    - uses: actions/setup-python@v2
-      with:
-        python-version: 3.8
-    - name: Install dependencies
-      run: |
-        pip install PyQt5-sip==12.15.0
-        pip install https://files.pythonhosted.org/packages/46/83/7c27aec708a1eb12812a0b985eb42eebfe3bb87e294cdca1c4af308d2fa9/PyQt5-5.14.1-5.14.1-cp35.cp36.cp37.cp38-none-win_amd64.whl
-        pip install ./ pyinstaller
-        pip install pytest pytest-cov
+      - uses: actions/checkout@v3
 
-    - name: Test with pytest
-      run: |
-        pytest ./tests
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.12
+      - name: Install dependencies
+        run: |
+          pip install ./ pyinstaller
+          pip install pytest pytest-cov
 
-    - name: Create win exe
-      run: |
-        pyinstaller --specpath "giwaxs_gui/static/pyinstallerreq"
-        pyinstaller --onefile -w -n mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64 --add-data "mlgidGUI/static/icons;mlgidGUI/static/icons" --add-data "mlgidGUI/static/pyinstaller;xrayutilities" --add-data "mlgidGUI/static/pyinstaller/elements.db;xrayutilities/materials/data" main.py
-        echo ("EXE_PATH=" + $(gci ./dist *.exe -file -name)) >> $env:GITHUB_ENV
+      - name: Test with pytest
+        run: |
+          pytest ./tests
 
-    - name: Upload executable
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./dist/${{ env.EXE_PATH }}
-        asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64.exe
-        asset_content_type: application/zip
+      - name: Create win exe
+        run: |
+          pyinstaller --specpath "giwaxs_gui/static/pyinstallerreq"
+          pyinstaller --onefile -w -n mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64 --add-data "mlgidGUI/static/icons;mlgidGUI/static/icons" --add-data "mlgidGUI/static/pyinstaller;xrayutilities" --add-data "mlgidGUI/static/pyinstaller/elements.db;xrayutilities/materials/data" main.py
+          echo ("EXE_PATH=" + $(gci ./dist *.exe -file -name)) >> $env:GITHUB_ENV
+
+      - name: Upload executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./dist/${{ env.EXE_PATH }}
+          asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64.exe
+          asset_content_type: application/x-executable
 
   build_appimage :
     needs: create_release
@@ -139,13 +139,18 @@ jobs:
       run: |
         sudo add-apt-repository -y ppa:deadsnakes/ppa
         sudo apt-get update
-        sudo apt-get install -y python3.8 python3.8-dev python3.8-distutils python3-pip python3-testresources python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev libfuse2
+        sudo apt-get install -y python3.12 python3.12-dev python3-testresources python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev libfuse2
+        curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        python3.12 get-pip.py
+        python3.12 -m pip --version
+        python3.12 -m pip install setuptools
+        python3.12 -m pip install setuptools
+        python3.12 -m pip --version
+        
         # Install appimagetool AppImage
-        sudo wget https://github.com/AppImage/AppImageKit/releases/download/12/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
-        sudo chmod +x /usr/local/bin/appimagetool
-        sudo python3.8 -m pip install appimage-builder==0.8.1
-        mkdir -p appimage-builder-cache
-        wget https://github.com/AppImage/AppImageKit/releases/download/12/runtime-x86_64 -O appimage-builder-cache/runtime-x86_64
+        wget -O appimage-builder-x86_64.AppImage https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
+        chmod +x appimage-builder-x86_64.AppImage
+        sudo mv appimage-builder-x86_64.AppImage /usr/local/bin/appimage-builder
 
     - name: Build AppImage
       run: |
@@ -160,5 +165,4 @@ jobs:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
         asset_path: ${{ env.APPIMAGE_PATH }}
         asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64.AppImage
-        asset_content_type: application/zip
-
+        asset_content_type: application/octet-stream

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlgidGUI"
+version = "0.4.0.0"
+description = "A GUI program for GIWAXS images analysis and annotation"
+readme = "README.md"
+requires-python = ">=3.12.0"
+license = {text = "GPLv3"}
+
+authors = [
+  {name = "Constantin Völter", email = "constantin.voelter@gmail.com"},
+  {name = "Vladimir Starostin", email = "v.starostin.m@gmail.com"}
+]
+
+keywords = ["xray", "python", "giwaxs", "scientific-analysis"]
+urls = {Homepage = "https://github.com/mlgid-project/mlgidGUIi"}
+
+dependencies = [
+  "appdirs==1.4.4",
+  "h5py==3.14.0",
+  "networkx==3.5",
+  "numpy==2.2.6",
+  "opencv-python-headless==4.12.0.88",
+  "packaging==25.0",
+  "pathvalidate==3.3.1",
+  "periodictable==2.0.2",
+  "pillow==11.3.0",
+  "PyQt5==5.15.11",
+  "pyqtgraph @ git+https://github.com/pyqtgraph/pyqtgraph.git@6eb0bf1a928c3e8fef332bbebe8a9da3be0ab19a",
+  "qdarkgraystyle==2.0.0",
+  "QDarkStyle==3.2.3",
+  "requests==2.32.4",
+  "scipy==1.16.1",
+  "tifffile==2025.6.11",
+  "typing_extensions==4.14.1",
+  "transliterate==1.10.2",
+  "xmlobj==1.2.2",
+  "xrayutilities==1.7.10"
+]
+
+[project.scripts]
+giwaxs_gui_update = "mlgidGUI.app.update:giwaxs_gui_update"
+
+[project.gui-scripts]
+mlgidGUI = "mlgidGUI:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]

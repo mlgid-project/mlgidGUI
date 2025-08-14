@@ -60,7 +60,7 @@ class AbstractKey(object):
         self.project_path = project_path
 
     def file_name(self, name: str = '') -> str:
-        return re.sub('[^\w\-_\. ]', '_', _file_name(self._file_key(), name))
+        return re.sub(r'[^\w\-_\. ]', '_', _file_name(self._file_key(), name))
 
     @abstractmethod
     def _file_key(self) -> str:

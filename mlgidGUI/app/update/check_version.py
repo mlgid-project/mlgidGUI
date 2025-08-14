@@ -2,7 +2,8 @@ import json
 from enum import Enum, auto
 import logging
 import requests
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
+
 
 logger = logging.getLogger(__name__)
 

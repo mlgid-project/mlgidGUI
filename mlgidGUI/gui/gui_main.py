@@ -114,7 +114,7 @@ class GIWAXSMainController(QObject):
             q_app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
         elif name == 'Gray Dark':
             q_app.setStyleSheet('')
-            q_app.setStyleSheet(qdarkgraystyle.load_stylesheet_pyqt5())
+            q_app.setStyleSheet(qdarkgraystyle.load_stylesheet())
         else:
             return
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-
+from PyQt5.QtGui import QTransform
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QWidgetAction
 
@@ -195,8 +195,10 @@ class CustomImageViewer(GraphicsLayoutWidget):
         center[axis_ind] = - min_ / scale[axis_ind]
         if self._center != (0, 0) or self._scale != (1., 1.):
             self.image_item.resetTransform()
-        self.image_item.scale(scale[0], scale[1])
-        self.image_item.translate(- center[0], - center[1])
+        transform = QTransform()
+        transform.scale(scale[0], scale[1])
+        transform.translate(-center[0], -center[1])
+        self.image_item.setTransform(transform)
         self._scale = tuple(scale)
         self._center = tuple(center)
 

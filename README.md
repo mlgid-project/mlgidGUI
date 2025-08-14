@@ -21,7 +21,7 @@ Follow these instructions to run the AppImage: [https://docs.appimage.org/introd
 * Install miniconda
 [https://www.anaconda.com/download/success#miniconda](https://www.anaconda.com/download/success#miniconda)
 * Create environment
-`conda create -n mlgidGUI python=3.8 pip`
+`conda create -n mlgidGUI python=3.12 pip`
 * Activate environment
 `conda activate mlgidGUI`
 
