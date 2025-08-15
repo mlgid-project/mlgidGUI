@@ -36,6 +36,13 @@ Clone with git:
 `python3 main.py`
 
 
+### Alternative: Installation from PyPi
+
+`pip install mlgidGUI`
+* Apply a Patch to pyqtgraph
+
+`pip install git+https://github.com/pyqtgraph/pyqtgraph.git@6eb0bf1a928c3e8fef332bbebe8a9da3be0ab19a`
+
 ## Usage
 
 Import images or HDF5 files into the program, select an image in the Project Manager and begin labeling.
