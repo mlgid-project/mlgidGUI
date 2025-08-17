@@ -36,7 +36,7 @@ Clone with git:
 `python3 main.py`
 
 
-### Alternative: Installation from PyPi
+### Alternative: Installation from PyPI
 
 `pip install mlgidGUI`
 * Apply a Patch to pyqtgraph

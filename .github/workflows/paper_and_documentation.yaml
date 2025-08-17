@@ -1,0 +1,33 @@
+name: Generate Documentation and Paper
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upload_paper_to_latest_release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: ./docs/paper.md
+
+      - name: Get latest release upload URL
+        id: get_release
+        run: |
+          api_url="https://api.github.com/repos/${{ github.repository }}/releases/latest"
+          upload_url=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" $api_url | jq -r .upload_url)
+          echo "upload_url=${upload_url}" >> $GITHUB_OUTPUT
+
+      - name: Upload paper
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./docs/paper.pdf
+          asset_name: paper.pdf
+          asset_content_type: application/pdf

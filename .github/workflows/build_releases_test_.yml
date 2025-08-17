@@ -8,6 +8,7 @@ on:
 
 jobs:
   create_release:
+
     runs-on: ubuntu-22.04
 
     outputs:
@@ -44,7 +45,7 @@ jobs:
           draft: false
           prerelease: false
 
-  documentation_and_paper:
+  documentation:
     needs: create_release
     runs-on: ubuntu-22.04
 
@@ -75,24 +76,6 @@ jobs:
           asset_path: ./documentation.pdf
           asset_name: documentation.pdf
           asset_content_type: application/pdf
-
-      - name: Build draft PDF
-        uses: openjournals/openjournals-draft-action@master
-        with:
-          journal: joss
-          paper-path: ./docs/paper.md
-
-      - name: Upload paper
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./docs/paper.pdf
-          asset_name: paper.pdf
-          asset_content_type: application/pdf
-
-
   build:
     name: Build wheel
     runs-on: ubuntu-22.04
