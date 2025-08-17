@@ -6,17 +6,16 @@ on:
   pull_request:
     branches: [ "main" ]
 
-jobs:  
+jobs:
   create_release:
-  
     runs-on: ubuntu-22.04
-    
+
     outputs:
       upload_url: ${{steps.create_release.outputs.upload_url}}
       version: ${{ steps.set_variables.outputs.VERSION }}
-      
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set variables
         id: 'set_variables'
@@ -24,7 +23,7 @@ jobs:
           VERSION=$(grep '^version =' pyproject.toml | sed -E "s/version = \"(.*)\"/\1/")
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Delete old release                
+      - name: Delete old release
         uses: dev-drprasad/delete-older-releases@v0.2.1
         with:
           keep_latest: 0
@@ -50,7 +49,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: sed -i 's+./docs/WORKFLOW.md+#workflow+g' README.md
       - run: sed -i 's+./docs/DOCUMENTATION.md+#documentation+g' README.md
       - run: cp -r docs/images ./
@@ -93,12 +92,79 @@ jobs:
           asset_name: paper.pdf
           asset_content_type: application/pdf
 
-  test_and_win_exe:
-    needs: create_release
-    runs-on: windows-latest
+
+  build:
+    name: Build wheel
+    runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      - name: Patch pyqtgraph dependency for PyPi
+        run: |
+          sed -i "s|pyqtgraph @ git+https://github.com/pyqtgraph/pyqtgraph.git@6eb0bf1a928c3e8fef332bbebe8a9da3be0ab19a|pyqtgraph >= 0.13.0|" pyproject.toml
+          cat pyproject.toml
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build wheel
+        run: python -m build --wheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+  publish:
+    name: Publish to PyPI
+    needs: [build, test_and_win10_exe]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install twine
+        run: python -m pip install twine
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          set +e
+          twine upload --skip-existing --verbose --repository-url https://upload.pypi.org/legacy/ dist/**/*.whl
+          EXIT_CODE=$?
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "Upload failed — possibly due to duplicate file. Skipping gracefully."
+            exit 0
+          fi
+          exit $EXIT_CODE
+
+  test_and_win10_exe:
+    needs: create_release
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v2
         with:
@@ -115,7 +181,7 @@ jobs:
       - name: Create win exe
         run: |
           pyinstaller --specpath "giwaxs_gui/static/pyinstallerreq"
-          pyinstaller --onefile -w -n mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64 --add-data "mlgidGUI/static/icons;mlgidGUI/static/icons" --add-data "mlgidGUI/static/pyinstaller;xrayutilities" --add-data "mlgidGUI/static/pyinstaller/elements.db;xrayutilities/materials/data" main.py
+           pyinstaller --onefile -w -n mlgidGUI-${{ needs.create_release.outputs.version }}-win10x86_64 --add-data "mlgidGUI/static/icons;mlgidGUI/static/icons" --add-data "mlgidGUI/static/pyinstaller;xrayutilities" --add-data "mlgidGUI/static/pyinstaller/elements.db;xrayutilities/materials/data" main.py
           echo ("EXE_PATH=" + $(gci ./dist *.exe -file -name)) >> $env:GITHUB_ENV
 
       - name: Upload executable
@@ -125,7 +191,38 @@ jobs:
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_path: ./dist/${{ env.EXE_PATH }}
-          asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-x86_64.exe
+          asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-win10x86_64.exe
+          asset_content_type: application/x-executable
+
+  win11_exe:
+    needs: create_release
+    runs-on: windows-2025
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: |
+          pip install ./ pyinstaller
+
+      - name: Create win exe
+        run: |
+          pyinstaller --specpath "giwaxs_gui/static/pyinstallerreq"
+          pyinstaller --onefile -w -n mlgidGUI-${{ needs.create_release.outputs.version }}-win11x86_64 --add-data "mlgidGUI/static/icons;mlgidGUI/static/icons" --add-data "mlgidGUI/static/pyinstaller;xrayutilities" --add-data "mlgidGUI/static/pyinstaller/elements.db;xrayutilities/materials/data" main.py
+          echo ("EXE_PATH=" + $(gci ./dist *.exe -file -name)) >> $env:GITHUB_ENV
+
+      - name: Upload executable
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ./dist/${{ env.EXE_PATH }}
+          asset_name: mlgidGUI-${{ needs.create_release.outputs.version }}-win11x86_64.exe
           asset_content_type: application/x-executable
 
   build_appimage :
@@ -133,7 +230,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install dependencies
       run: |
@@ -142,10 +239,7 @@ jobs:
         sudo apt-get install -y python3.12 python3.12-dev python3-testresources python3-setuptools patchelf desktop-file-utils libgdk-pixbuf2.0-dev libfuse2
         curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py
         python3.12 get-pip.py
-        python3.12 -m pip --version
         python3.12 -m pip install setuptools
-        python3.12 -m pip install setuptools
-        python3.12 -m pip --version
         
         # Install appimagetool AppImage
         wget -O appimage-builder-x86_64.AppImage https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
