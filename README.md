@@ -1,4 +1,5 @@
 # _mlgidGUI_
+![Logo of mlgidGUI](docs%2Fimages%2Fmlgid_logo.png)
 ## Project summary
 
 _mlgidGUI_ is a graphical tool for the analysis and annotation of 2D scattering data e.g. Grazing-Incidence Wide-Angle X-ray Scattering (GIWAXS).

@@ -1,4 +1,4 @@
-name: Generate Documentation and Paper
+name: Generate Paper
 
 on:
   workflow_dispatch:
