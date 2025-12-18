@@ -27,6 +27,10 @@ from ..basic_widgets import (
     ParametersSlider,
     LabeledSlider
 )
+
+# TODO combine in-place fit and multi-fit (or remove multifit)
+
+
 class DummyRoiWidget(AbstractRoiWidget):
     def move_roi(self):
         pass
@@ -333,7 +337,7 @@ class FitPlot(Custom1DPlot):
         self.background_plot.setPen(get_pen(color='blue', style=Qt.DashDotDotLine, width=4))
         self.profile_plot.setPen(get_pen(color='white', style=Qt.DashDotDotLine, width=2))
 
-        self.range_roi: Roi = Roi(radius=0, width=1, key=-1)
+        self.range_roi: Roi = Roi(radius=0, radius_width=1, key=-1)
         self.range_widget: Roi1D = Roi1D(self.range_roi, enable_context=False)
         self.range_widget.set_color(QColor(255, 255, 255, 50))
 
@@ -350,11 +354,11 @@ class FitPlot(Custom1DPlot):
             return
         r1, r2 = self.fit.r_range
         self.range_roi.radius = (r1 + r2) / 2
-        self.range_roi.width = r2 - r1
+        self.range_roi.radius_width = r2 - r1
         self.range_widget.move_roi()
 
     def _range_updated(self):
-        r, w = self.range_roi.radius, self.range_roi.width
+        r, w = self.range_roi.radius, self.range_roi.radius_width
         self.fit.r_range = r - w / 2, r + w / 2
         self.sigRangeUpdated.emit()
 
