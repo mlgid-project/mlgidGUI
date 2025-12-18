@@ -27,7 +27,7 @@ class RoiDict(QObject):
     sig_roi_created = pyqtSignal(tuple)
     sig_roi_deleted = pyqtSignal(tuple)
     sig_roi_moved = pyqtSignal(tuple, str)
-    sig_deleted_rois_updated = pyqtSignal(tuple)
+    sig_all_rois_deleted = pyqtSignal()
 
     sig_selected = pyqtSignal(tuple)
     sig_one_selected = pyqtSignal(int)
@@ -91,6 +91,7 @@ class RoiDict(QObject):
         if len(self._roi_data):
             self.sig_roi_deleted.emit(tuple(self.keys()))
             self._roi_data.clear()
+            self.sig_all_rois_deleted.emit()
             self.log.debug(f'Roi dict cleared.')
 
     def save_and_clear(self):
@@ -117,7 +118,6 @@ class RoiDict(QObject):
         if not self._current_key:
             return
         self._update()
-        self.sig_deleted_rois_updated.emit(tuple(self._meta_data.get_deleted_rois(self._current_key)))
 
     def _update(self):
         self._roi_data = self._fm.rois_data[self._current_key] or RoiData()
@@ -243,7 +243,7 @@ class RoiDict(QObject):
         self._meta_data.add_roi(roi, self._current_key)
         self._roi_data.add_roi(roi)
         if not roi.has_fixed_angles():
-            roi.angle, roi.angle_std = self.ring_bounds
+            roi.angle, roi.angle_width = self.ring_bounds
         self.sig_roi_created.emit((roi.key,))
         if roi.active:
             self._emit_select((roi.key,))
@@ -262,11 +262,11 @@ class RoiDict(QObject):
         self.sig_roi_deleted.emit((key,))
 
     @_check_non_empty
-    def create_roi(self, radius: float = None, width: float = None, **params) -> Roi:
+    def create_roi(self, radius: float = None, radius_width: float = None, **params) -> Roi:
         d = self._default_params()
         d.update(params)
-        if radius and width:
-            d.update(radius=radius, width=width)
+        if radius and radius_width:
+            d.update(radius=radius, radius_width=radius_width)
         roi = Roi(**d)
         self.add_roi(roi)
         return roi
@@ -287,12 +287,14 @@ class RoiDict(QObject):
         r0 *= self._geometry_holder.geometry.scale
         r1 *= self._geometry_holder.geometry.scale
         radius = (r0 + r1) / 2
-        width = (r1 - r0) / 10
-        angle, angle_std = self.ring_bounds
-        return dict(radius=radius, width=width, angle=angle, angle_std=angle_std)
+        radius_width = (r1 - r0) / 10
+        angle, angle_width = self.ring_bounds
+        return dict(radius=radius, radius_width=radius_width, angle=angle, angle_width=angle_width)
 
     @pyqtSlot(int, str, name='moveRoi')
     def move_roi(self, key: int, name: str):
+        # TODO: add roiIsAboutToMove(self, key: int) slot
+        # TODO: how to implement roiIsMoved ? (mouse interaction only? or time?)
         self.select(key)
         self.sig_roi_moved.emit((key,), name)
         roi = self[key]
@@ -321,6 +323,13 @@ class RoiDict(QObject):
 
     @pyqtSlot(int, name='roiTypeChanged')
     def change_roi_type(self, key: int):
+        # try:
+        #     roi = self[key]
+        #     if roi.should_adjust_angles(*self.ring_bounds):
+        #         roi.angle, roi.angle_width = self.ring_bounds
+        #         self.sig_roi_moved.emit((key,), self.EMIT_NAME)
+        # except KeyError:
+        #     return
         self.sig_type_changed.emit(key)
 
     @pyqtSlot(name='fixAll')
@@ -449,11 +458,11 @@ class CopiedRois(object):
             s = geometry.scale / self._scale
             for roi in rois:
                 roi.radius *= s
-                roi.width *= s
+                roi.radius_width *= s
         if self._bounds != geometry.ring_bounds:
             for roi in rois:
                 if not roi.has_fixed_angles():
-                    roi.angle, roi.angle_std = geometry.ring_bounds
+                    roi.angle, roi.angle_width = geometry.ring_bounds
         if clear_keys:
             for roi in rois:
                 roi.key = None

@@ -1,11 +1,13 @@
+import os.path
 from typing import List
 from pathlib import Path
-
+import shutil
 from h5py import File, Group
 import numpy as np
 
 from ..geometry import Geometry
 from .saving_parameters import SavingParameters, SaveMode
+from .saving_parameters import h5_saving_dtype
 from ..file_manager import (FileManager, FolderKey, ImageKey,
                             IMAGE_PROJECT_KEY, PROJECT_KEY)
 from ..image_holder import ImageHolder
@@ -20,9 +22,9 @@ class SaveH5(object):
 
     def save(self, params: SavingParameters) -> bool:
         filepath = _get_h5_path(params.path)
+        path_str: str = str(filepath.resolve())
 
         save_successfull = _init_h5_project_file(filepath, params)
-        path_str: str = str(filepath.resolve())
 
         for folder_key, image_keys in params.selected_images.items():
             self._save_folder_as_h5(path_str, folder_key, image_keys, params)
@@ -79,54 +81,63 @@ class SaveH5(object):
             return
 
         with File(path, 'a') as f:
-            group = _get_folder_group(f, folder_key.name)
-
-            self._save_folder_data(group, folder_key, params)
-
-            for image_key in image_keys:
-                self._save_image_as_h5(group, image_key, params)
-
-    def _save_folder_data(self, group: Group, folder_key: FolderKey, params: SavingParameters):
-
-        if params.save_geometries:
-            default_geometry = self._fm.geometries.default[folder_key]
-            if default_geometry:
-                self._fm.geometries.default.set_h5(group, folder_key, default_geometry)
-
-        if params.save_roi_metadata:
-            roi_metadata = self._fm.rois_meta_data[folder_key]
-            if roi_metadata:
-                self._fm.rois_meta_data.set_h5(group, folder_key, roi_metadata)
+            for img_idx, image_key in enumerate(image_keys):
+                self._save_image_as_h5(f, image_key, img_idx)
 
     def _save_image_as_h5(self,
-                          h5group: Group,
+                          f,
                           image_key: ImageKey,
-                          params: SavingParameters
+                          img_idx: int
                           ):
 
-        if image_key.name in h5group.keys():
-            del h5group[image_key.name]
 
-        img_group = h5group.create_group(image_key.name)
-        img_group.attrs[IMAGE_PROJECT_KEY] = True
+        h5group = _get_folder_group(f,image_key.parent.path.name)
 
-        polar_image = load_image_data(self._fm, self._image_holder, image_key, ImageDataFlags.POLAR_IMAGE).polar_image
+        h5group.require_group('data').attrs.update({"NX_class": "NXdata", "EX_required": "true", "signal": "img_gid_q"})
+        h5group['data'].require_group('analysis').attrs.update({"NX_class": "NXparameters", "EX_required": "true", "signal": "img_gid_q"})
+        try:
+            h5group['data'].create_dataset('img_gid_q', maxshape=(None, *image_key.get_image().shape), data=image_key.get_image()[np.newaxis, :, :])
+        except:
+            #append to the existing image array
+            h5group['data']['img_gid_q'].resize((h5group['data']['img_gid_q'].shape[0] + image_key.get_image()[np.newaxis, :, :].shape[0]), axis=0)
+            h5group['data']['img_gid_q'][-image_key.get_image()[np.newaxis, :, :].shape[0]:] = image_key.get_image()[np.newaxis, :, :]
 
-        if params.save_image:
-            self._fm.images.set_h5(img_group, image_key, image_key.get_image())
+        try:
+            del h5group['data']['analysis']['frame' + str(img_idx).zfill(5)]['fitted_peaks']
+        except:
+            h5group['data']['analysis'].require_group('frame' + str(img_idx).zfill(5))
 
-        if params.save_polar_image and polar_image is not None:
-            self._fm.polar_images.set_h5(img_group, image_key, polar_image)
+        diagonal_length = (image_key.get_image().shape[0] ** 2 + image_key.get_image().shape[1] ** 2) ** (1 / 2)
+        diagonal_length_q = (image_key.qxy ** 2 + image_key.qz ** 2) ** (1 / 2)
+        pixel_per_angstroem = diagonal_length / diagonal_length_q
 
-        roi_data = self._fm.rois_data[image_key]
+        if self._fm.rois_data[image_key] is not None:
+            rois_data = self._fm.rois_data[image_key].to_dict()
+            results_struct = np.zeros(len(rois_data['key']), dtype=h5_saving_dtype)
+            results_struct['amplitude'] = [0] * len(rois_data['key'])
+            results_struct['angle'] = rois_data['angle']
+            results_struct['angle_width'] = rois_data['angle_width']
+            results_struct['radius'] = rois_data['radius'] / pixel_per_angstroem
+            results_struct['radius_width'] = rois_data['radius_width'] / pixel_per_angstroem
+            results_struct['q_xy'] = [0] * len(rois_data['key'])
+            results_struct['q_z'] = [0] * len(rois_data['key'])
+            results_struct['theta'] = [0] * len(rois_data['key'])
+            results_struct['A'] = [0] * len(rois_data['key'])
+            results_struct['B'] = [0] * len(rois_data['key'])
+            results_struct['C'] = [0] * len(rois_data['key'])
+            results_struct['is_cut_qz'] = [0] * len(rois_data['key'])
+            results_struct['is_cut_qxy'] = [0] * len(rois_data['key'])
+            results_struct['is_ring'] =  np.vectorize({1: True, 2: False,3: False}.get)(rois_data['type'])
+            results_struct['visibility'] = np.vectorize({1.0:3, 0.5:2, 0.1:1, -1.0:0}.get)(rois_data['confidence_level'])
+            results_struct['score'] = rois_data['score']
+            results_struct['id'] = list(range(len(rois_data['key'])))
+            h5group['data']['analysis']['frame' + str(img_idx).zfill(5)].create_dataset('fitted_peaks', data=results_struct,dtype=h5_saving_dtype)
+        try:
+            h5group['data']['q_xy'] = np.linspace(0, image_key.qxy, image_key.get_image().shape[1])
+            h5group['data']['q_z'] = np.linspace(0, image_key.qz, image_key.get_image().shape[0])
+        except OSError:
+            pass
 
-        if roi_data:
-            self._fm.rois_data.set_h5(img_group, image_key, roi_data)
-
-        geometry = self._fm.geometries[image_key]
-
-        if geometry and params.save_geometries:
-            self._fm.geometries.set_h5(img_group, image_key, geometry)
 
 
 def _init_h5_project_file(filepath: Path, params: SavingParameters) -> bool:
@@ -139,19 +150,17 @@ def _init_h5_project_file(filepath: Path, params: SavingParameters) -> bool:
         if filepath.exists() and params.save_mode.value == SaveMode.create.value:
             raise IOError(f'File {path_str} already exists.')
 
+        if os.path.exists(str(next(iter(params.selected_images)).project_path / 'prototype.h5')):
+            shutil.copy(str(next(iter(params.selected_images)).project_path / 'prototype.h5'), path_str)
+
         if params.save_mode.value == SaveMode.add.value:
             with File(path_str, 'a') as f:
                 if PROJECT_KEY not in f.attrs:
                     raise IOError(f'Chosen file {path_str} is not a h5 project file!')
 
-        elif params.save_mode.value == SaveMode.create.value:
-            with File(path_str, 'w') as f:
-                f.attrs[PROJECT_KEY] = True
         return True
     except:
         return False
-
-
 
 def _get_h5_path(path: Path) -> Path:
     path = path.resolve()
@@ -160,8 +169,8 @@ def _get_h5_path(path: Path) -> Path:
         path = path.parent / name
     return path
 
-
 def _get_folder_group(f: File, name: str) -> Group:
+    # TODO carefully handle name collisions by checking Path attribute (or any others)
     return f.create_group(name) if name not in f.keys() else f[name]
 
 

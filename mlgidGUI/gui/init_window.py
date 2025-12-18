@@ -27,8 +27,7 @@ class InitWindow(QWidget):
     HEIGHT = 700
 
     def __init__(self,
-                 recent_projects: List[Path] = None,
-                 is_updated: bool = False):
+                 recent_projects: List[Path] = None):
         flags = Qt.WindowFlags()
         flags |= Qt.FramelessWindowHint
         super().__init__(flags=flags)
@@ -40,13 +39,13 @@ class InitWindow(QWidget):
         self.project_name: str = path.basename(self.project_path)
         self.dock_area: AppDockArea = AppDockArea()
 
-        self.__init_ui(recent_projects, is_updated)
+        self.__init_ui(recent_projects)
         self.setMaximumHeight(self.HEIGHT)
         self.setFixedWidth(self.WIDTH)
         center_widget(self)
         self.show()
 
-    def __init_ui(self, recent_projects: List[Path] or None, is_updated: bool = False):
+    def __init_ui(self, recent_projects: List[Path] or None):
         layout = QGridLayout(self)
         layout.setContentsMargins(40, 20, 40, 40)
         self.file_line = QLineEdit(str(self.project_path), self)
@@ -58,10 +57,7 @@ class InitWindow(QWidget):
         self.create_button = QPushButton(f'Create project "{self.project_name}"', self)
         self.create_button.clicked.connect(self._create)
 
-        if is_updated:
-            title = f'mlgidGUI. Updated to the latest version {__version__}!'
-        else:
-            title = f'mlgidGUI (version {__version__})'
+        title = f'mlgidGUI (version {__version__})'
 
         layout.addWidget(Label(title, self, 11, True), 0, 0, 1, 3, alignment=Qt.AlignHCenter)
         layout.addWidget(Label('', self, 9.5), 1, 0, 1, 3)

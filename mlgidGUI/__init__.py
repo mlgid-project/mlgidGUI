@@ -5,7 +5,7 @@ import logging
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 
-from mlgidGUI.app import App, launch_detached
+from mlgidGUI.app import App
 from mlgidGUI.gui import GIWAXSMainController, UncaughtHook, DebugWindow
 from mlgidGUI.__version import __version__
 
@@ -40,10 +40,6 @@ def main():
     level: int = logging.DEBUG if args.debug else logging.ERROR
 
     exit_code: int = run(level)
-
-    if exit_code == GIWAXSMainController.EXIT_CODE_REBOOT:
-        launch_detached()
-        return 0
 
     return exit_code
 

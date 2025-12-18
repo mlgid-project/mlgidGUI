@@ -81,7 +81,7 @@ class PolarImage(object):
     def get_angular_profile(self, geometry: Geometry, roi: Roi) -> np.ndarray or None:
         if self.polar_image is None:
             return
-        r1, r2 = roi.radius - roi.width / 2, roi.radius + roi.width / 2
+        r1, r2 = roi.radius - roi.radius_width / 2, roi.radius + roi.radius_width / 2
 
         r_min, r_max = geometry.r_range
         scale = geometry.scale

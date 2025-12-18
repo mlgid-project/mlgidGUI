@@ -46,23 +46,25 @@ _DEFAULT_CONFIDENCE_LEVEL = 'Not set'
 
 ROI_DICT_KEYS = (
     'radius',
-    'width',
+    'radius_width',
     'angle',
-    'angle_std',
+    'angle_width',
     'key',
     'type',
     'confidence_level',
+    'score',
     'cif_file'
 )
 
 DTYPES = [
     ('radius', 'f4'),
-    ('width', 'f4'),
+    ('radius_width', 'f4'),
     ('angle', 'f4'),
-    ('angle_std', 'f4'),
+    ('angle_width', 'f4'),
     ('key', 'i4'),
     ('type', 'i4'),
     ('confidence_level', 'f4'),
+    ('score', 'f4'),
     ('cif_file', '|S30')
 ]
 
@@ -72,9 +74,9 @@ _ROI_NAMES = list(map(lambda x: x[0], DTYPES))
 @dataclass
 class Roi:
     radius: float
-    width: float
+    radius_width: float
     angle: float = 180
-    angle_std: float = 360
+    angle_width: float = 360
     key: int = None
     name: str = ''
     group: str = ''
@@ -84,6 +86,7 @@ class Roi:
     active: bool = False
     deleted: bool = False
     confidence_level: float = -1.
+    score: float = 0
     cif_file: str = 'not set'
 
     CONFIDENCE_LEVELS = _CONFIDENCE_LEVELS
@@ -114,7 +117,7 @@ class Roi:
         self.__dict__ = other.__dict__
 
     def to_array(self) -> np.ndarray:
-        return np.array([self.radius, self.width, self.angle, self.angle_std,
+        return np.array([self.radius, self.radius_width, self.angle, self.angle_width,
                          self.key, self.type.value])
 
     @classmethod
@@ -123,12 +126,12 @@ class Roi:
         roi.type = RoiTypes(roi.type)
         return roi
 
-    def should_adjust_angles(self, angle: float, angle_std: float) -> bool:
+    def should_adjust_angles(self, angle: float, angle_width: float) -> bool:
         return (
                        self.type == RoiTypes.ring or
                        self.type == RoiTypes.background
                ) and (
-                       self.angle != angle or self.angle_std != angle_std
+                       self.angle != angle or self.angle_width != angle_width
                )
 
     def has_fixed_angles(self) -> bool:
@@ -177,7 +180,7 @@ class Roi:
         return cls(**cls_params, **kwargs)
 
 def roi_to_tuple(roi: Roi):
-    return (roi.radius, roi.width, roi.angle, roi.angle_std,
+    return (roi.radius, roi.radius_width, roi.angle, roi.angle_width,
             roi.key, roi.name, roi.group, roi.type.value)
 
 @dataclass

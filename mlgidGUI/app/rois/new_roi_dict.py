@@ -74,9 +74,9 @@ class _RoiDictModel(object):
         r0 *= self.geometry_holder.geometry.scale
         r1 *= self.geometry_holder.geometry.scale
         radius = (r0 + r1) / 2
-        width = (r1 - r0) / 10
-        angle, angle_std = self.ring_bounds
-        return dict(radius=radius, width=width, angle=angle, angle_std=angle_std)
+        radius_width = (r1 - r0) / 10
+        angle, angle_width = self.ring_bounds
+        return dict(radius=radius, radius_width=radius_width, angle=angle, angle_width=angle_width)
 
     @property
     def selected_rois(self) -> List[Roi]:
@@ -257,11 +257,11 @@ class CreateRoiAction(BasicRoiDictAction):
         self._add_roi_action = None
 
     def execute(self, roi_model: _RoiDictModel, roi_signals: _RoiDictSignals,
-                radius: float, width: float, params: dict) -> Roi:
+                radius: float, radius_width: float, params: dict) -> Roi:
         d = roi_model.default_params()
         d.update(params)
-        if radius and width:
-            d.update(radius=radius, width=width)
+        if radius and radius_width:
+            d.update(radius=radius, radius_width=radius_width)
         roi = Roi(**d)
         self._add_roi_action = AddRoiAction()
         self._add_roi_action.execute(roi_model, roi_signals, roi)
@@ -284,7 +284,7 @@ class AddRoiAction(BasicRoiDictAction):
         roi_model.meta_data.add_roi(roi, roi_model.current_key)
         roi_model.roi_data.add_roi(roi)
         if not roi.has_fixed_angles():
-            roi.angle, roi.angle_std = roi_model.ring_bounds
+            roi.angle, roi.angle_width = roi_model.ring_bounds
 
         self._added_roi_key = key = roi.key
         roi_signals.sigRoiCreated.emit((key,))
@@ -486,8 +486,8 @@ class RoiDictApi(QObject):
         self._roi_dict.execute(DeleteRoiAction(), key)
 
     @_check_non_empty
-    def create_roi(self, radius: float = None, width: float = None, **params) -> Roi:
-        return self._roi_dict.execute(CreateRoiAction(), radius, width, params)
+    def create_roi(self, radius: float = None, radius_width: float = None, **params) -> Roi:
+        return self._roi_dict.execute(CreateRoiAction(), radius, radius_width, params)
 
     @pyqtSlot(tuple, name='change_ring_bounds')
     def change_ring_bounds(self, bounds: Tuple[float, float]):
@@ -521,7 +521,7 @@ class RoiDictApi(QObject):
         try:
             roi = self[key]
             if roi.should_adjust_angles(*self.ring_bounds):
-                roi.angle, roi.angle_std = self.ring_bounds
+                roi.angle, roi.angle_width = self.ring_bounds
                 self.sig_roi_moved.emit((key,), self.EMIT_NAME)
         except KeyError:
             return
@@ -653,11 +653,11 @@ class CopiedRois(object):
             s = geometry.scale / self._scale
             for roi in rois:
                 roi.radius *= s
-                roi.width *= s
+                roi.radius_width *= s
         if self._bounds != geometry.ring_bounds:
             for roi in rois:
                 if not roi.has_fixed_angles():
-                    roi.angle, roi.angle_std = geometry.ring_bounds
+                    roi.angle, roi.angle_width = geometry.ring_bounds
         if clear_keys:
             for roi in rois:
                 roi.key = None

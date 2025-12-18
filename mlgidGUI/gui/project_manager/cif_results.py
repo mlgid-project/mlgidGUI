@@ -107,7 +107,7 @@ class CIFRingsWidget(AbstractRoiHolder, QWidget):
     def empty_simulation(self) -> None:
         roi_widget = CIFRingWidget(CIFPeakRoi(
             radius = 0,
-            width = 0,
+            radius_width = 0,
             cif_file='Please add a CIF-file to start the simulation.',
         ), self.tree_view)
         self._model.appendRow(roi_widget.items())

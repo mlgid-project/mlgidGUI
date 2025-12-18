@@ -48,13 +48,13 @@ class Roi1D(AbstractRoiWidget, LinearRegionItem):
         r, w = (x1 + x2) / 2, x2 - x1
 
         self.roi.radius = r
-        self.roi.width = w
+        self.roi.radius_width = w
 
         self.sigRoiMoved.emit(self.roi.key)
 
     @pyqtSlot(name='move_roi')
     def move_roi(self):
-        r, w = self.roi.radius, abs(self.roi.width)
+        r, w = self.roi.radius, abs(self.roi.radius_width)
         x1, x2 = r - w / 2, r + w / 2
         self.setRegion((x1, x2))
         self.update()
@@ -122,7 +122,7 @@ class Roi1DAngular(Roi1D):
 
     @pyqtSlot(name='move_roi')
     def move_roi(self):
-        a, a_w = self.roi.angle, self.roi.angle_std
+        a, a_w = self.roi.angle, self.roi.angle_width
         x1, x2 = a - a_w / 2, a + a_w / 2
         self.setRegion((x1, x2))
 
@@ -131,6 +131,6 @@ class Roi1DAngular(Roi1D):
         a, a_w = (x1 + x2) / 2, x2 - x1
 
         self.roi.angle = a
-        self.roi.angle_std = a_w
+        self.roi.angle_width = a_w
 
         self.sigRoiMoved.emit(self.roi.key)

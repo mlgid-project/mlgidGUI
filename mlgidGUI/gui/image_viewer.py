@@ -68,9 +68,7 @@ class ImageViewer(AbstractRoiHolder, CustomImageViewer):
         if self.app.fm.current_key and bool(cif_results):
             try:
                 q_range = math.sqrt(math.pow(self.app.fm.current_key.get_q_range()[0], 2) + math.pow(self.app.fm.current_key.get_q_range()[1], 2))
-                y_max = self.app.geometry.shape[0]
                 x_max = self.app.geometry.shape[1]
-                y_min = self.app.geometry.beam_center[0]
                 x_min = self.app.geometry.beam_center[1]
 
                 for key, cif_result in cif_results.items():
@@ -117,6 +115,7 @@ class MainImageViewer(ImageViewer):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.parent = parent
         self.app = App()
         self.register_key_patch()
         self._draw_roi = ImageDrawRoiController(self.view_box, self)
@@ -141,6 +140,8 @@ class MainImageViewer(ImageViewer):
         image = self.app.image
         if image is not None:
             self.set_data(image)
+            self.parent.qxy_range_edit.setText(str(self.app.fm.current_key.get_q_range()[0]))
+            self.parent.qz_range_edit.setText(str(self.app.fm.current_key.get_q_range()[1]))
 
     def __init_center_roi(self):
         beam_center = tuple(self.app.geometry.beam_center)
@@ -181,7 +182,7 @@ class ImageDrawRoiController(DrawRoiController):
         r1 = np.sqrt(r1 ** 2 + p1 ** 2)
         r2 = np.sqrt(r2 ** 2 + p2 ** 2)
 
-        self._roi.radius, self._roi.width = (r1 + r2) / 2, abs(r2 - r1)
+        self._roi.radius, self._roi.radius_width = (r1 + r2) / 2, abs(r2 - r1)
 
 
 class GeometryParametersWidget(QWidget):
@@ -278,7 +279,7 @@ class Basic2DImageWidget(QMainWindow):
         label = QLabel('Q<sub>' + suffix +'</sub> (Å<sup>-1</sup>)')
         label.setStyleSheet("font: 10pt;")
         toolbar.addWidget(label)
-        qlineedit = QLineEdit('2.7')
+        qlineedit = QLineEdit(str(2.7))
         qlineedit.setMaximumWidth(60)
         qlineedit.setMaxLength(4)
         qlineedit.setValidator(QDoubleValidator(0, 100, 2))
@@ -287,6 +288,7 @@ class Basic2DImageWidget(QMainWindow):
 
     def _init_toolbar(self):
         toolbar = BlackToolBar('Geometry', self)
+        self.toolbar = toolbar
         self.addToolBar(toolbar)
 
         rotate_action = toolbar.addAction(Icon('rotate'), 'Rotate')
@@ -309,13 +311,13 @@ class Basic2DImageWidget(QMainWindow):
         self._set_default_geometry_button.clicked.connect(self.app.geometry_holder.save_as_default)
         toolbar.addWidget(self._set_default_geometry_button)
 
-        qz_range_edit = self._add_q_range_edits('z', toolbar)
-        qz_range_edit.editingFinished.connect(
-            lambda: self.app.fm.current_key.set_qz(float(qz_range_edit.text())))
+        self.qz_range_edit = self._add_q_range_edits('z', toolbar)
+        self.qz_range_edit.editingFinished.connect(
+            lambda: self.app.fm.current_key.set_qz(float(self.qz_range_edit.text())))
 
-        qxy_range_edit = self._add_q_range_edits('xy', toolbar)
-        qxy_range_edit.editingFinished.connect(
-            lambda: self.app.fm.current_key.set_qz(float(qxy_range_edit.text())))
+        self.qxy_range_edit = self._add_q_range_edits('xy', toolbar)
+        self.qxy_range_edit.editingFinished.connect(
+            lambda: self.app.fm.current_key.set_qz(float(self.qxy_range_edit.text())))
 
         toolbar.addWidget(QLabel(''))
         self._refresh_sim = QPushButton('Refresh CIF-Simulation')

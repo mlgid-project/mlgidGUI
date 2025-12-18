@@ -105,8 +105,8 @@ class PolarDrawRoi(DrawRoiController):
     def _update_roi(self, point: QPointF):
         r1, r2 = self._init_point.x(), point.x()
         p1, p2 = self._init_point.y(), point.y()
-        self._roi.radius, self._roi.width = (r1 + r2) / 2, abs(r2 - r1)
-        self._roi.angle, self._roi.angle_std = (p1 + p2) / 2, abs(p2 - p1)
+        self._roi.radius, self._roi.radius_width = (r1 + r2) / 2, abs(r2 - r1)
+        self._roi.angle, self._roi.angle_width = (p1 + p2) / 2, abs(p2 - p1)
 
     def _init_roi(self) -> Roi:
         return Roi(0, 0, 0, 0, type=RoiTypes.segment)
@@ -114,6 +114,9 @@ class PolarDrawRoi(DrawRoiController):
 
 class InterpolateSetupWindow(BasicInputParametersWidget):
     P = BasicInputParametersWidget.InputParameters
+
+    # TODO: add info to interpolation parameters
+
     PARAMETER_TYPES = (P('r_size', 'Radius axis size', int),
                        P('phi_size', 'Angle axis size', int),
                        P('mode', 'Interpolation algorithm', str))

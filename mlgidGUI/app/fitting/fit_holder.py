@@ -230,7 +230,7 @@ class FitHolder(object):
     # Private methods for calculating geometric properties
 
     def _get_r_range(self, roi: Roi, factor: float):
-        r1, r2 = roi.radius - roi.width * (factor + 1), roi.radius + roi.width * (factor + 1)
+        r1, r2 = roi.radius - roi.radius_width * (factor + 1), roi.radius + roi.radius_width * (factor + 1)
         return min(r1, roi.radius - self.min_range / 2), max(r2, roi.radius + self.min_range / 2)
 
     def _get_x_y(self, roi: Roi, x1: int, x2: int):
@@ -242,8 +242,8 @@ class FitHolder(object):
         if not roi.has_fixed_angles():
             y_profile = self.r_profile.copy()
         else:
-            p1, p2 = self._get_p_coords(roi.angle - roi.angle_std / 2), \
-                     self._get_p_coords(roi.angle + roi.angle_std / 2)
+            p1, p2 = self._get_p_coords(roi.angle - roi.angle_width / 2), \
+                     self._get_p_coords(roi.angle + roi.angle_width / 2)
             y_profile = np.nanmean(self.polar_image[max(0, p1):min(p2, self.phi_axis.size - 1)],axis=0)
 
         y = y_profile[x1:x2]

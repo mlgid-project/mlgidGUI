@@ -38,9 +38,9 @@ def calculate_cif_peaks(project_root_key, image_key):
                 for cif_peak in zip(is_powder, q_xy, q_z, intensities, intensities_raw, intensities_perc, mi_indices):
                     cif_results[cif_file_key.name + 'p' + str(i)] = CIFPeakRoi(
                         radius = 0,
-                        width = 0,
+                        radius_width= 0,
                         angle = 0,
-                        angle_std = 0,
+                        angle_width = 0,
                         key = cif_file_key.name + 'p' + str(i),
                         name = cif_file_key.name + str(i),
                         movable = False,

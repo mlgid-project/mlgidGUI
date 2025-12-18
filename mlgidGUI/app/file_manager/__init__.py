@@ -33,6 +33,7 @@ class FileManager(QObject):
     sigNewFile = pyqtSignal(object)
     sigNewCIFFile = pyqtSignal()
     sigRedrawCIFPeaks = pyqtSignal(object)
+    sigQrangeChanged = pyqtSignal(float,float)
 
     log = logging.getLogger(__name__)
 

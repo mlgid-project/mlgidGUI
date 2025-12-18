@@ -98,18 +98,18 @@ class RoiData(dict):
         self._selected_keys = set()
 
     def change_ring_bounds(self, bounds: Tuple[float, float]) -> List[int]:
-        angle, angle_std = bounds
+        angle, angle_width = bounds
         keys = list()
         for k, roi in self.items():
-            if roi.should_adjust_angles(angle, angle_std):
+            if roi.should_adjust_angles(angle, angle_width):
                 keys.append(k)
-                roi.angle, roi.angle_std = bounds
+                roi.angle, roi.angle_width = bounds
         return keys
 
     def on_scale_changed(self, scale_change: float):
         for roi in self.values():
             roi.radius *= scale_change
-            roi.width *= scale_change
+            roi.radius_width *= scale_change
 
     def apply_fit(self, rois: List[Roi]):
         keys_to_move = []
@@ -158,10 +158,17 @@ class RoiData(dict):
         if not keys:
             return cls()
         num_rois = len(arr_dict[keys[0]])
-        rois = [
-            Roi.from_dict({k: arr_dict[k][i] for k in arr_dict.keys()}, name = i)
-            for i in range(num_rois)
-        ]
+        rois = []
+        for i in range(num_rois):
+            roi_data = {}
+            for k in arr_dict.keys():
+                try:
+                    roi_data[k] = arr_dict[k][i]
+                except (IndexError, KeyError, TypeError) as e:
+                    print(f"Error accessing arr_dict[{k}][{i}]: {e}")
+                    continue  # Skip this key but continue building roi_data
+            roi = Roi.from_dict(roi_data, name=i)
+            rois.append(roi)
         return cls(rois)
 
     @property

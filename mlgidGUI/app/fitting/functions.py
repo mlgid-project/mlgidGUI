@@ -65,7 +65,7 @@ class FittingFunction(object):
 
 class Gaussian(FittingFunction):
     NAME: str = 'Gaussian'
-    PARAM_NAMES: tuple = ('peak height', 'radius', 'width')
+    PARAM_NAMES: tuple = ('peak height', 'radius', 'radius_width')
     NUM = 3
     TYPE = FittingType.gaussian
 
@@ -77,21 +77,21 @@ class Gaussian(FittingFunction):
     @staticmethod
     def set_roi_from_params(roi: Roi, params: list):
         roi.radius = params[1]
-        roi.width = params[2]
+        roi.radius_width = params[2]
 
     @staticmethod
     def _bounds(x: np.ndarray, y: np.ndarray, roi: Roi, background: Background):
         init_b, upper_b, lower_b = background.bounds(x, y, roi)
         amp, amp_max, amp_min = background.amp_bounds(x, y, init_b)
 
-        return ([amp, roi.radius, roi.width] + init_b,
-                [amp_max, roi.radius + roi.width / 2, roi.width * 2] + upper_b,
-                [amp_min, roi.radius - roi.width / 2, 0] + lower_b)
+        return ([amp, roi.radius, roi.radius_width] + init_b,
+                [amp_max, roi.radius + roi.radius_width / 2, roi.radius_width * 2] + upper_b,
+                [amp_min, roi.radius - roi.radius_width / 2, 0] + lower_b)
 
 
 class Lorentzian(Gaussian):
     NAME: str = 'Lorentzian'
-    PARAM_NAMES: tuple = ('peak height', 'radius', 'width')
+    PARAM_NAMES: tuple = ('peak height', 'radius', 'radius_width')
     TYPE = FittingType.lorentzian
 
     @staticmethod

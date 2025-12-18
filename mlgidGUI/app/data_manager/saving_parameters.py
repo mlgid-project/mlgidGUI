@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List
 from pathlib import Path
+import numpy as np
 
 from ..file_manager import FolderKey, ImageKey
 
@@ -86,3 +87,23 @@ class SavingParameters:
     @property
     def num_images(self) -> int:
         return sum(map(len, self.selected_images.values()))
+
+h5_saving_dtype = np.dtype([
+        ('amplitude', 'f4'),
+        ('angle', 'f4'),
+        ('angle_width', 'f4'),
+        ('radius', 'f4'),
+        ('radius_width', 'f4'),
+        ('q_xy', 'f4'),
+        ('q_z', 'f4'),
+        ('theta', 'f4'),
+        ('score', 'f4'),
+        ('A', 'f4'),
+        ('B', 'f4'),
+        ('C', 'i4'),
+        ('is_cut_qz', 'bool'),
+        ('is_cut_qxy', 'bool'),
+        ('is_ring', 'bool'),
+        ('visibility', 'i4'),
+        ('id', 'i4'),
+    ])

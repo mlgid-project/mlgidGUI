@@ -49,15 +49,15 @@ class Roi2DRect(AbstractRoiWidget, RectROI):
         w, a_w = size
         r, a = abs(pos[0] + w / 2), pos[1] + a_w / 2
         self.roi.radius = r
-        self.roi.width = w
+        self.roi.radius_width = w
         self.roi.angle = a
-        self.roi.angle_std = a_w
+        self.roi.angle_width = a_w
         self.sigRoiMoved.emit(self.roi.key)
 
     @pyqtSlot(name='move_roi')
     def move_roi(self):
-        r, w = self.roi.radius, abs(self.roi.width)
-        a, a_w = self.roi.angle, abs(self.roi.angle_std)
+        r, w = self.roi.radius, abs(self.roi.radius_width)
+        a, a_w = self.roi.angle, abs(self.roi.angle_width)
 
         pos = [r - w / 2, a - a_w / 2]
         size = [w, a_w]

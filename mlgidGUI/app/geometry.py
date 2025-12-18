@@ -198,8 +198,8 @@ class Geometry(object):
         phi = np.arctan2(zz, yy)
         self._r_range = (np.nanmin(rr), np.nanmax(rr))
         self._phi_range = p_min, p_max = np.nanmin(phi), np.nanmax(phi)
-        angle, angle_std = (p_max + p_min) / 2 * 180 / np.pi, (p_max - p_min) * 180 / np.pi
-        self._ring_bounds = (angle, angle_std)
+        angle, angle_width = (p_max + p_min) / 2 * 180 / np.pi, (p_max - p_min) * 180 / np.pi
+        self._ring_bounds = (angle, angle_width)
 
     def _update_polar_grid(self):
         self._phi = np.linspace(*self.phi_range, self.polar_shape[0])

@@ -11,8 +11,8 @@ def test_loading_state(project_1):
     image_key_with_segments = image_keys[0]
     app.fm.change_image(image_key_with_segments)
 
-    app.roi_dict.create_roi(radius=1, width=2)
-    app.roi_dict.create_roi(radius=3, width=3)
+    app.roi_dict.create_roi(radius=1, radius_width=2)
+    app.roi_dict.create_roi(radius=3, radius_width=3)
     app.save_state()
     assert len(app.roi_dict) == 2
 

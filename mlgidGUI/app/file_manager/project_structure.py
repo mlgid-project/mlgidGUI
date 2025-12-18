@@ -61,7 +61,7 @@ class ProjectRootKey(FolderKey):
             self._folder_children.append(folder_key)
             for image in listdir(folder_key.path):
                 if (image.endswith(AVAILABLE_IMAGE_FORMATS)):
-                    image_key = ImagePathKey(project_path=self.path, parent=folder_key, path=Path(image))
+                    image_key = ImagePathKey(project_path=self.path, parent=folder_key, path=Path(folder_key.path/image))
                     folder_key._image_children.append(image_key)
             return folder_key, True
         elif path.is_file() and path.suffix in AVAILABLE_IMAGE_FORMATS:

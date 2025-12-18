@@ -165,8 +165,11 @@ class GIWAXS:
             indices_sum[b] = np.where(all_indices == a)[0][0]
             if a != b:
                 # remove b element from all_indices
-                index = np.where(all_indices == b)[0][0]
-                all_indices = np.delete(all_indices, index)
+                try:
+                    index = np.where(all_indices == b)[0][0]
+                    all_indices = np.delete(all_indices, index)
+                except:
+                    pass
         q_1d_fin = q_1d[all_indices]
         if intensity is None:
             int_fin = np.ones_like(q_1d_fin)

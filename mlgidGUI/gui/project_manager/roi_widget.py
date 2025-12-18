@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 from PyQt5.QtWidgets import (QWidget,
                              QGridLayout, QTreeView, QPushButton)
-from PyQt5.QtCore import Qt, QObject, QItemSelection
+from PyQt5.QtCore import Qt, QObject, QItemSelection, QItemSelectionModel
 from PyQt5.QtGui import QColor, QStandardItem, QStandardItemModel
 
 from mlgidGUI.app.rois import Roi
@@ -32,15 +32,15 @@ class RoiWidgetItem(AbstractRoiWidget, QObject):
         fixed_active=QColor(255, 0, 255, 100)
     )
 
-    PARAM_DICT = OrderedDict([('name', 'Name'),
-                              ('type', 'ROI type'),
-                              ('radius', 'Radius'),
-                              ('width', 'Width'),
+    PARAM_DICT = OrderedDict([('radius', 'Radius'),
+                              ('radius_width', 'Width'),
                               ('angle', 'Angle'),
-                              ('angle_std', 'Angle Width'),
+                              ('angle_width', 'Angle Width'),
                               ('confidence_level_name', 'Confidence level'),
+                              ('score', 'Score'),
                               ('key', 'Key'),
-                              ('cif_file', 'CIF File')
+                              ('cif_file', 'CIF File'),
+                              ('type', 'ROI type')
                               ])
 
     def __init__(self, roi: Roi, parent):
@@ -61,15 +61,17 @@ class RoiWidgetItem(AbstractRoiWidget, QObject):
                      key=StandardItem(str(self.roi.key), roi_key),
                      type=StandardItem(str(self.roi.type.name), roi_key, False),
                      confidence_level_name=StandardItem(str(self.roi.confidence_level_name), roi_key),
+                     score=StandardItem(str(self.roi.score), roi_key),
                      cif_file = StandardItem(str(self.roi.cif_file), roi_key)
                      )
-        for key in 'radius width angle angle_std'.split():
+        items['score'].setEditable(False)
+        for key in 'radius radius_width angle angle_width'.split():
             items[key] = StandardItem('', roi_key)
 
         return items
 
     def move_roi(self):
-        for key in 'radius width angle angle_std'.split():
+        for key in 'radius radius_width angle angle_width'.split():
             self.__items[key].setText(f'{getattr(self.roi, key):.2f}')
 
     def items(self):
@@ -115,6 +117,7 @@ class RoiMetaWidget(AbstractRoiHolder, QWidget):
         self._roi_dict.sig_roi_renamed.connect(self._rename)
         self._roi_dict.sig_cif_renamed.connect(self._change_cif_file)
         self._roi_dict.sigConfLevelChanged.connect(self._change_conf_level)
+        self._roi_dict.sig_all_rois_deleted.connect(self.clear_all_rois)
 
         self._init_ui()
 
@@ -130,10 +133,19 @@ class RoiMetaWidget(AbstractRoiHolder, QWidget):
     def _type_changed(self, key: int):
         self._roi_widgets[key].change_type()
 
-    def _delete_roi_widget(self, roi_widget) -> None:
-        self.tree_view.selectionModel().blockSignals(True)
-        self._model.removeRow(roi_widget.row)
-        self.tree_view.selectionModel().blockSignals(False)
+    def _delete_roi_widget(self, item) -> None:
+
+        [self._model.item(row, 6).text() for row in range(self._model.rowCount())]
+        item_key = item.roi.key
+        row_in_model = next((row for row in range(self._model.rowCount()) if self._model.item(row, 6).text() == str(item_key)), None)
+
+        if row_in_model is not None:
+            self.tree_view.selectionModel().blockSignals(True)
+            self._model.removeRow(row_in_model)
+            self.tree_view.selectionModel().blockSignals(False)
+            new_index = self._model.index(row_in_model + 1, 0)
+            self.tree_view.setCurrentIndex(new_index)
+            self.tree_view.viewport().update()
 
     def _make_roi_widget(self, roi: Roi) -> AbstractRoiWidget:
         roi_widget = RoiWidgetItem(roi, self.tree_view)
@@ -169,3 +181,19 @@ class RoiMetaWidget(AbstractRoiHolder, QWidget):
             self._roi_widgets[key].change_cif_file()
         except KeyError:
             pass
+
+    def clear_all_rois(self):
+        # Block signals to avoid triggering selectionChanged or other slots
+        self.tree_view.selectionModel().blockSignals(True)
+
+        # Remove all rows from the model
+        self._model.removeRows(0, self._model.rowCount())
+
+        # Clear internal ROI widget dictionary
+        self._roi_widgets.clear()
+
+        # Optionally clear selection
+        self.tree_view.clearSelection()
+
+        # Unblock signals
+        self.tree_view.selectionModel().blockSignals(False)

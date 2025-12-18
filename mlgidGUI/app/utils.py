@@ -108,17 +108,3 @@ class Worker(QRunnable):
                 self.signals.finished.emit()
             except RuntimeError:
                 return
-
-
-class UpdateWorkerSignals(WorkerSignals):
-    sigSetMax = pyqtSignal(int)
-    sigSetProgress = pyqtSignal(int)
-
-
-class UpdateWorker(Worker):
-    def __init__(self, fn, *args, **kwargs):
-        super().__init__(fn, *args, signals=UpdateWorkerSignals(), **kwargs)
-
-    def call_func(self):
-        return self.fn(*self.args, process_callback=self.signals.sigSetProgress.emit,
-                       set_max_callback=self.signals.sigSetMax.emit, **self.kwargs)

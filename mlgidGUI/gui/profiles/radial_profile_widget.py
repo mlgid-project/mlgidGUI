@@ -111,7 +111,7 @@ class RadialProfileWidget(AbstractRoiHolder, PlotBC):
             return
         w = self._fit_params_dict.get('init_width', 30) * App().geometry.scale
         for r in peaks:
-            self._roi_dict.create_roi(radius=self.x[r], width=w)
+            self._roi_dict.create_roi(radius=self.x[r], radius_width=w)
 
     def _make_roi_widget(self, roi):
         roi_widget = Roi1D(roi)
@@ -137,7 +137,7 @@ class RadialProfileWidget(AbstractRoiHolder, PlotBC):
 class RadialDrawRoi(DrawRoiController):
     def _update_roi(self, point: QPointF):
         r1, r2 = self._init_point.x(), point.x()
-        self._roi.radius, self._roi.width = (r1 + r2) / 2, abs(r2 - r1)
+        self._roi.radius, self._roi.radius_width = (r1 + r2) / 2, abs(r2 - r1)
 
 
 class PeaksSetupWindow(BasicInputParametersWidget):

@@ -317,7 +317,7 @@ class FitWidget(QWidget):
         roi.type = t
 
         if not roi.has_fixed_angles():
-            roi.angle, roi.angle_std = self.fit_object.bounds
+            roi.angle, roi.angle_width = self.fit_object.bounds
 
         if roi.key == self.selected_key:
             self._basic_update(MoveSource.change_roi_type)
@@ -866,7 +866,7 @@ class RadialFitWidget(PlotBC):
 
         self.fit: Fit = None
         self.roi_widget: Roi1D = Roi1D(Roi(0, 0), enable_context=False)
-        self.range_roi: Roi = Roi(radius=0, width=1, key=-1)
+        self.range_roi: Roi = Roi(radius=0, radius_width=1, key=-1)
         self.range_widget: Roi1D = Roi1D(self.range_roi, enable_context=False)
         self.range_widget.set_color(QColor(255, 255, 255, 50))
 
@@ -893,7 +893,7 @@ class RadialFitWidget(PlotBC):
         r1, r2 = fit.r_range
 
         self.range_roi.radius = (r1 + r2) / 2
-        self.range_roi.width = r2 - r1
+        self.range_roi.radius_width = r2 - r1
         self.range_widget.move_roi()
 
         self.range_widget.show()
@@ -907,13 +907,13 @@ class RadialFitWidget(PlotBC):
         self.roi_widget.move_roi()
         r1, r2 = self.fit.r_range
         self.range_roi.radius = (r1 + r2) / 2
-        self.range_roi.width = r2 - r1
+        self.range_roi.radius_width = r2 - r1
         self.range_widget.move_roi()
 
     def _update_fit(self, key: int):
         is_range_widget: bool = (key == -1)
         if is_range_widget:
-            r, w = self.range_roi.radius, self.range_roi.width
+            r, w = self.range_roi.radius, self.range_roi.radius_width
             self.fit.r_range = r - w / 2, r + w / 2
         self.sigUpdateFit.emit(is_range_widget)
 

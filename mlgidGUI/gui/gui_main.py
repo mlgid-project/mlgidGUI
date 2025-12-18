@@ -22,22 +22,15 @@ from .tools import Icon, get_filepath_dialog, get_folder_filepath, save_file_dia
 from .init_window import InitWindow
 from .debug_widgets import DebugWindow
 from .exception_message import UncaughtHook
-from .notifications import PopUpWrapper
-from .background_tasks import BackgroundTasks
-from .background_update import BackgroundUpdate
 
 
 class GIWAXSMainController(QObject):
-    EXIT_CODE_REBOOT: int = -123456789
 
     log = logging.getLogger(__name__)
 
     def __init__(self):
         super().__init__()
         self.app = App(parent=self)
-        self.background_tasks = BackgroundTasks(self)
-        self.background_update = BackgroundUpdate(self)
-        self.background_update.sigRestartAfterUpdate.connect(self.restart_after_update)
 
         self.init_window = None
         self.main_window = None
@@ -56,15 +49,12 @@ class GIWAXSMainController(QObject):
         self.main_window = GIWAXSMainWindow(self.app)
 
         self.main_window.sigCloseApp.connect(self.close_app)
-        self.main_window.sigRestartApp.connect(self.restart_app)
         self.main_window.sigOpenProject.connect(self.open_new_project)
         self.main_window.sigCloseProject.connect(self.close_project)
         self.main_window.sigSetStyle.connect(self.set_style)
 
-        self.background_update.run()
-
     def open_init_window(self):
-        self.init_window = InitWindow(self.app.fm.recent_projects, self.background_update.is_updated)
+        self.init_window = InitWindow(self.app.fm.recent_projects)
         self.init_window.sigOpenProject.connect(self.open_new_project)
         self.init_window.sigExit.connect(self.close_app)
 
@@ -84,18 +74,6 @@ class GIWAXSMainController(QObject):
         else:
             self.main_window.show()
         self.app.fm.open_project(path)
-
-    @pyqtSlot(name='restartAppAfterUpdate')
-    def restart_after_update(self):
-        self.app.fm.config['is_updated'] = True
-        self.restart_app()
-
-    @pyqtSlot(name='restartApp')
-    def restart_app(self):
-        self.app.close()
-        q_app = QApplication.instance()
-        App._instance = None
-        q_app.exit(self.EXIT_CODE_REBOOT)
 
     @pyqtSlot(name='closeApp')
     def close_app(self):
@@ -127,7 +105,6 @@ class GIWAXSMainWindow(QMainWindow):
     sigCloseApp = pyqtSignal()
     sigOpenProject = pyqtSignal(object)
     sigCloseProject = pyqtSignal()
-    sigRestartApp = pyqtSignal()
     sigSetStyle = pyqtSignal(str)
 
     def __init__(self, app: App, parent=None):
@@ -135,8 +112,6 @@ class GIWAXSMainWindow(QMainWindow):
         self.__closing: bool = False
         self.app = app
         self.dock_area = AppDockArea(self)
-        self.popups = PopUpWrapper(self)
-        self._connect_background_tasks()
 
         self._init_toolbar()
         self._init_shortcuts()
@@ -154,13 +129,6 @@ class GIWAXSMainWindow(QMainWindow):
         #open the fit view and the angular profile view by default
         self.dock_area.show_hide_docks('fit_view')
         self.dock_area.show_hide_docks('angular_profile')
-
-
-    def _connect_background_tasks(self):
-        background_tasks = BackgroundTasks()
-        background_tasks.tasks.sigAddNotification.connect(self.popups.add_notification)
-        background_tasks.tasks.sigRemoveNotification.connect(self.popups.remove_by_name)
-        background_tasks.tasks.sigAddProgressBar.connect(self._add_progress_bar)
 
     def _add_progress_bar(self, progress_bar_func):
         return progress_bar_func(self)
@@ -230,10 +198,6 @@ class GIWAXSMainWindow(QMainWindow):
         # Close project
 
         self.file_menu.addAction('Close project', lambda *x: self.sigCloseProject.emit())
-
-        # Restart
-
-        self.file_menu.addAction('Restart', lambda *x: self.restart())
 
         # Data menu
 
@@ -326,11 +290,6 @@ class GIWAXSMainWindow(QMainWindow):
         else:
             self.setWindowState(Qt.WindowFullScreen)
             self.fullscreen_action.setIcon(Icon('fromfullscreen'))
-
-    @pyqtSlot(name='restartApp')
-    def restart(self):
-        self.__closing = True
-        self.sigRestartApp.emit()
 
     def closeEvent(self, a0) -> None:
         if self.__closing:

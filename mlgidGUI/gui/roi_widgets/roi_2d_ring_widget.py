@@ -12,9 +12,9 @@ from .abstract_roi_widget import AbstractRoiWidget
 class BasicRoiRing(ROI):
     def __init__(self,
                  radius: float,
-                 width: float,
+                 radius_width: float,
                  angle: float,
-                 angle_std: float,
+                 angle_width: float,
                  center: tuple = (0, 0),
                  movable: bool = False,
                  rotatable: bool = False,
@@ -32,53 +32,53 @@ class BasicRoiRing(ROI):
 
         self._center = center
         self._radius = radius
-        self._width = width
+        self._radius_width = radius_width
         self._angle = angle
-        self._angle_std = angle_std
+        self._angle_width = angle_width
 
         self.aspectLocked = True
         self.set_radius(self._radius)
 
     def set_center(self, center: tuple):
         self._center = center
-        d = self._radius + self._width / 2
+        d = self._radius + self._radius_width / 2
         pos = (center[1] - d, center[0] - d)
         self.setPos(pos)
 
     def set_radius(self, radius):
         self._radius = radius if radius > 0 else 0
-        s = 2 * radius + self._width
+        s = 2 * radius + self._radius_width
         self.setSize((s, s))
         self.set_center(self._center)
 
-    def set_width(self, width):
-        self._width = width
+    def set_radius_width(self, radius_width):
+        self._radius_width = radius_width
         self.set_radius(self._radius)
 
     def set_angle(self, angle):
         self._angle = angle
         self.set_center(self._center)
 
-    def set_angle_std(self, angle):
-        self._angle_std = angle
+    def set_angle_width(self, angle):
+        self._angle_width = angle
         self.set_center(self._center)
 
     def set_params(self, *,
-                   radius: float = None, width: float = None, angle: float = None,
-                   angle_std: float = None, center: tuple = None):
+                   radius: float = None, radius_width: float = None, angle: float = None,
+                   angle_width: float = None, center: tuple = None):
 
         should_set_radius: bool = False
 
         if radius is not None and radius != self._radius:
             self._radius = radius
             should_set_radius = True
-        if width is not None and width != self._width:
-            self._width = width
+        if radius_width is not None and radius_width != self._radius_width:
+            self._radius_width = radius_width
             should_set_radius = True
         if angle is not None and angle != self._angle:
             self._angle = angle
-        if angle_std is not None and angle_std != self._angle_std:
-            self._angle_std = angle_std
+        if angle_width is not None and angle_width != self._angle_width:
+            self._angle_width = angle_width
         if center is not None and self._center != center:
             self._center = center
         if should_set_radius:
@@ -91,10 +91,10 @@ class BasicRoiRing(ROI):
         p.setPen(self.currentPen)
 
         x1, y1 = 0, 0
-        x2, y2 = x1 + self._width, y1 + self._width
-        x3, y3 = x1 + self._width / 2, y1 + self._width / 2
-        d1, d2, d3 = (2 * self._radius + self._width,
-                      2 * self._radius - self._width,
+        x2, y2 = x1 + self._radius_width, y1 + self._radius_width
+        x3, y3 = x1 + self._radius_width / 2, y1 + self._radius_width / 2
+        d1, d2, d3 = (2 * self._radius + self._radius_width,
+                      2 * self._radius - self._radius_width,
                       2 * self._radius)
 
         # p.scale(self._radius, self._radius)
@@ -102,8 +102,8 @@ class BasicRoiRing(ROI):
         r2 = QRectF(x2, y2, d2, d2)
         r3 = QRectF(x3, y3, d3, d3)
         angle = - self._angle or 0
-        angle_std = self._angle_std or 360
-        a1, a2 = int((angle - angle_std / 2) * 16), int(angle_std * 16)
+        angle_width = self._angle_width or 360
+        a1, a2 = int((angle - angle_width / 2) * 16), int(angle_width * 16)
         p.drawArc(r1, a1, a2)
         p.drawArc(r2, a1, a2)
         dash_pen = QPen(self.currentPen)
@@ -151,9 +151,9 @@ class Roi2DRing(AbstractRoiWidget, BasicRoiRing):
         AbstractRoiWidget.__init__(self, roi)
         BasicRoiRing.__init__(self,
                               radius=roi.radius,
-                              width=roi.width,
+                              radius_width=roi.radius_width,
                               angle=roi.angle,
-                              angle_std=roi.angle_std,
+                              angle_width=roi.angle_width,
                               parent=parent)
 
         self.update_roi()
@@ -164,11 +164,11 @@ class Roi2DRing(AbstractRoiWidget, BasicRoiRing):
     @pyqtSlot(name='move_roi')
     def move_roi(self):
         self.set_radius(self.roi.radius)
-        self.set_width(self.roi.width)
+        self.set_radius_width(self.roi.radius_width)
         if self.roi.angle is not None:
             self.set_angle(self.roi.angle)
-        if self.roi.angle_std is not None:
-            self.set_angle_std(self.roi.angle_std)
+        if self.roi.angle_width is not None:
+            self.set_angle_width(self.roi.angle_width)
 
     def send_move(self):
         pass

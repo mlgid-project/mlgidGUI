@@ -34,12 +34,10 @@ class FolderItem(QStandardItem):
         super().__init__(key.name)
         self.key = key
         self.setIcon(Icon('folder'))
-        self._updated: bool = False
 
     def on_clicked(self):
-        if not self._updated:
-            self.update()
-        self._updated = True
+        # TODO: _update field duplicate FolderKey functionality and should be removed
+        self._fill()
 
     def _fill(self):
         for folder in self.key.folder_children:

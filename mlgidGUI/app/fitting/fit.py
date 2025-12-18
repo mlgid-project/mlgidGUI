@@ -96,7 +96,7 @@ class Fit:
             logging.exception(err)
             return
 
-    def set_roi_from_params(self, params=None):
+    def set_roi_from_params(self, params = None):
         if params is None:
             if self.fitted_params is None:
                 return
@@ -109,12 +109,12 @@ class Fit:
         r1, r2 = self.r_range
         roi = self.roi
         roi.radius = (r1 + r2) / 2
-        roi.width = (r2 - r1) / 2
+        roi.radius_width = (r2 - r1) / 2
 
     def update_roi_fit_dict(self):
         self.roi.fitted_parameters = {}
 
-        if self.fitted_params is not None:
+        if self.fitted_params and self.fitted_params[self.param_names.index('radius_width')] > 2 :
             self.roi.fitted_parameters.update(dict(zip(self.param_names, self.fitted_params)))
             self.roi.fitted_parameters['fitted_params'] = self.fitted_params
             self.roi.fitted_parameters['fit_errors'] = self.fit_errors
