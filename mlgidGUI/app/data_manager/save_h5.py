@@ -103,7 +103,7 @@ class SaveH5(object):
             h5group['data']['img_gid_q'][-image_key.get_image()[np.newaxis, :, :].shape[0]:] = image_key.get_image()[np.newaxis, :, :]
 
         try:
-            del h5group['data']['analysis']['frame' + str(img_idx).zfill(5)]['fitted_peaks']
+            del h5group['data']['analysis']['frame' + str(img_idx).zfill(5)]['detected_peaks']
         except:
             h5group['data']['analysis'].require_group('frame' + str(img_idx).zfill(5))
 
@@ -131,7 +131,7 @@ class SaveH5(object):
             results_struct['visibility'] = np.vectorize({1.0:3, 0.5:2, 0.1:1, -1.0:0}.get)(rois_data['confidence_level'])
             results_struct['score'] = rois_data['score']
             results_struct['id'] = list(range(len(rois_data['key'])))
-            h5group['data']['analysis']['frame' + str(img_idx).zfill(5)].create_dataset('fitted_peaks', data=results_struct,dtype=h5_saving_dtype)
+            h5group['data']['analysis']['frame' + str(img_idx).zfill(5)].create_dataset('detected_peaks', data=results_struct,dtype=h5_saving_dtype)
         try:
             h5group['data']['q_xy'] = np.linspace(0, image_key.qxy, image_key.get_image().shape[1])
             h5group['data']['q_z'] = np.linspace(0, image_key.qz, image_key.get_image().shape[0])

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlgidGUI"
-version = "0.6.1"
+version = "0.6.2"
 description = "A GUI program for GIWAXS images analysis and annotation"
 readme = "README.md"
 requires-python = ">=3.12.0"
