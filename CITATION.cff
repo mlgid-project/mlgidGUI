@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the following metadata."
+title: "mlgidGUI - an annotation program for 2D scattering data"
+
+authors:
+  - family-names: "Völter"
+    given-names: "Constantin"
+  - family-names: "Starostin"
+    given-names: "Vladimir"
+  - family-names: "Romodin"
+    given-names: "Mikhail"
+  - family-names: "Kneschaurek"
+    given-names: "Ekaterina"
+  - family-names: "Lapkin"
+    given-names: "Dmitry"
+  - family-names: "Hinderhofer"
+    given-names: "Alexander"
+  - family-names: "Schreiber"
+    given-names: "Frank"
+
+doi: "10.21105/joss.08499"
+url: "https://doi.org/10.21105/joss.08499"
+date-released: "2025-09-11"
+
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Völter"
+      given-names: "Constantin"
+    - family-names: "Starostin"
+      given-names: "Vladimir"
+    - family-names: "Romodin"
+      given-names: "Mikhail"
+    - family-names: "Kneschaurek"
+      given-names: "Ekaterina"
+    - family-names: "Lapkin"
+      given-names: "Dmitry"
+    - family-names: "Hinderhofer"
+      given-names: "Alexander"
+    - family-names: "Schreiber"
+      given-names: "Frank"
+  title: "mlgidGUI - an annotation program for 2D scattering data"
+  journal: "Journal of Open Source Software"
+  volume: "10"
+  issue: "115"
+  pages: "8499"
+  year: "2025"
+  doi: "10.21105/joss.08499"
