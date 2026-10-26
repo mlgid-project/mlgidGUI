@@ -336,6 +336,13 @@ class FilesMixin:
             if all(file_model.is_fabio_image(p) for p in raw_paths):
                 if self._offer_import_for_float_images(raw_paths):
                     return
+            # Raw files dropped one at a time join the existing raw batch:
+            # a session per drop left the Conversion panel showing only
+            # the newest file.
+            target = self._raw_session_to_extend()
+            if target is not None:
+                self._extend_raw_session(target, raw_paths, entry_cache)
+                return
             try:
                 session = RawSession.open(raw_paths)
             except Exception as exc:
@@ -350,6 +357,137 @@ class FilesMixin:
                 self._set_active_session(session)
                 self._add_recent_files(session.raw_paths, "raw")
                 self._refresh_tree_raw_paths()
+
+    def _raw_session_to_extend(self) -> RawSession | None:
+        """The raw session newly opened raw files should join, if any.
+
+        The active one when it is raw, else the most recent raw session
+        (a NeXus file may be in front while a raw batch waits behind it).
+        """
+        active = self._active_session
+        if isinstance(active, RawSession):
+            return active
+        for s in reversed(self._sessions):
+            if isinstance(s, RawSession):
+                return s
+        return None
+
+    def _extend_raw_session(
+        self,
+        target: RawSession,
+        raw_paths: list[Path],
+        entry_cache: dict[str, list],
+    ) -> None:
+        """Append ``raw_paths`` to ``target`` and show them.
+
+        Files already in the batch are skipped. An active target keeps its
+        Conversion rows and check state and gains only the new rows; a
+        target behind a NeXus session is activated, which rebuilds the
+        views from its full file list.
+        """
+        try:
+            added = target.add_paths(raw_paths)
+        except Exception as exc:
+            QMessageBox.critical(self, "Open failed", str(exc))
+            return
+        if not added:
+            self.conversion_panel.append_log(
+                "Already open: " + ", ".join(p.name for p in raw_paths)
+            )
+            return
+        cache = getattr(target, "_raw_entries_cache", None) or {}
+        cache.update(entry_cache)
+        target._raw_entries_cache = cache  # type: ignore[attr-defined]
+        self._queue_tree_inserts([str(p) for p in added])
+        self._add_recent_files(added, "raw")
+        self._refresh_tree_raw_paths()
+        if target is self._active_session:
+            self._append_raw_entries(added)
+        else:
+            self._set_active_session(target)
+
+    def _shown_raw_file(self) -> str | None:
+        """Path of the raw file whose entry the viewer is showing, if any."""
+        entry = getattr(self, "_raw_entries", {}).get(
+            self.entry_combo.currentText()
+        )
+        if entry is None:
+            return None
+        try:
+            return str(Path(entry.file_path).resolve())
+        except OSError:
+            return str(entry.file_path)
+
+    def _remove_raw_files(self, session: RawSession, paths: list[str]) -> None:
+        """Close single files out of an open raw batch.
+
+        The files leave the file browser, the entry dropdown and the
+        Conversion Selection together; every other file keeps its row and
+        check state. Removing the last file closes the session. When the
+        file on screen goes, the viewer moves to the first remaining entry.
+        """
+        drop = set(paths) & set(session.raw_path_strs)
+        if not drop:
+            return
+        if drop == set(session.raw_path_strs):
+            self._close_session(session)
+            return
+        was_active = session is self._active_session
+        if was_active:
+            self.viewer.commit_pending_manual()
+            self._pause_playback()
+        session.remove_paths(sorted(drop))
+        cache = getattr(session, "_raw_entries_cache", None)
+        if cache:
+            for p in drop:
+                cache.pop(p, None)
+        # Files still waiting for their browser row never get one.
+        queued = len(self._tree_insert_queue)
+        self._tree_insert_queue[:] = [
+            p for p in self._tree_insert_queue if p not in drop
+        ]
+        self._tree_insert_total -= queued - len(self._tree_insert_queue)
+        self._update_tree_insert_progress()
+        model = self.tree.findHdf5TreeModel()
+        if isinstance(model, _MlgidHdf5TreeModel):
+            model.remove_file_rows(drop)
+        self._refresh_tree_raw_paths()
+        self.conversion_panel.remove_raw_inputs(drop)
+        entries = getattr(self, "_raw_entries", {})
+        gone = [
+            label for label, e in entries.items() if str(e.file_path) in drop
+        ]
+        for label in gone:
+            entries.pop(label, None)
+        for p in drop:
+            self._raw_entry_label_by_path.pop(p, None)
+        if was_active:
+            self._drop_raw_combo_items(gone)
+        self._update_title()
+        self._update_actions()
+
+    def _drop_raw_combo_items(self, labels: list[str]) -> None:
+        """Remove ``labels`` from the entry dropdown; reload if the shown
+        one was among them."""
+        shown_gone = self.entry_combo.currentText() in labels
+        self.entry_combo.blockSignals(True)
+        try:
+            for label in labels:
+                i = self.entry_combo.findText(label)
+                if i >= 0:
+                    self.entry_combo.removeItem(i)
+            if shown_gone and self.entry_combo.count():
+                self.entry_combo.setCurrentIndex(0)
+        finally:
+            self.entry_combo.blockSignals(False)
+        if shown_gone:
+            if self.entry_combo.count():
+                self._load_raw_entry_into_viewer(self.entry_combo.currentText())
+            else:
+                self.viewer.clear()
+                self.viewer.clear_history()
+        self._update_status_entry()
+        self._update_status_frame()
 
     def _show_open_progress(self, name: str) -> None:
         """Show the bottom-left open indicator and force it to paint NOW.
@@ -459,6 +597,13 @@ class FilesMixin:
         active = self._active_session
         if active is None:
             return
+        if isinstance(active, RawSession):
+            # A raw batch is several files: close the one on screen and
+            # leave the rest (and their Selection rows) alone.
+            shown = self._shown_raw_file()
+            if shown is not None:
+                self._remove_raw_files(active, [shown])
+                return
         if not self._confirm_discard_changes(active):
             return
         self._close_session(active)
@@ -683,6 +828,16 @@ class FilesMixin:
             session.close()
         # Closed session may have been raw — rebuild the tree's raw set.
         self._refresh_tree_raw_paths()
+        # The Conversion panel lists the files of the raw session that was
+        # last shown. Once that session is closed its rows must go too;
+        # another raw session coming to the front repopulates them below.
+        if isinstance(session, RawSession) and (
+            was_active
+            or not any(isinstance(s, RawSession) for s in self._sessions)
+        ):
+            self.conversion_panel.set_raw_inputs([])
+            self._raw_entries = {}
+            self._raw_entry_label_by_path = {}
         if was_active:
             new_active = self._sessions[-1] if self._sessions else None
             if new_active is not None:
@@ -907,6 +1062,9 @@ class FilesMixin:
                 stack.setCurrentWidget(self.tabs)
 
         is_raw = session is not None and session.kind == "raw"
+        # Read before the docks are shown, hidden and re-tabified below:
+        # each of those can bring another tab forward for a moment.
+        front = getattr(self, "_right_front_dock", None)
         self._pipeline_dock.setVisible(not is_raw)
         self._conversion_dock.setVisible(is_raw)
         # Re-tabify the right-dock chain per mode so the tab bar
@@ -921,12 +1079,16 @@ class FilesMixin:
             self.tabifyDockWidget(self._display_dock, self._conversion_dock)
             self.tabifyDockWidget(self._conversion_dock, self._logs_dock)
             self._conversion_dock.raise_()
+            self._right_front_dock = self._conversion_dock
         else:
             self.tabifyDockWidget(self._display_dock, self._pipeline_dock)
             self.tabifyDockWidget(self._pipeline_dock, self._logs_dock)
-            # Keep Display in front by default for NeXus sessions; users
-            # who prefer Pipeline up-front can click its tab.
-            self._display_dock.raise_()
+            # Keep whichever tab the user had in front. Pipeline when
+            # there is none yet, or when it was Conversion (raw to NeXus).
+            if front is None or front is self._conversion_dock:
+                front = self._pipeline_dock
+            front.raise_()
+            self._right_front_dock = front
         # Hide NeXus-mode-only widgets in raw mode. Peaks is hidden
         # alongside Profiles since both depend on peak tables that
         # only exist after conversion.
@@ -934,7 +1096,13 @@ class FilesMixin:
         if hasattr(self, "_peaks_dock"):
             self._peaks_dock.setVisible(not is_raw)
         if hasattr(self, "_scan_tracking_dock"):
-            self._scan_tracking_dock.setVisible(not is_raw)
+            if is_raw:
+                self._tracking_hidden_by_rule = False
+                self._scan_tracking_dock.setVisible(False)
+                self._sync_scan_tracking_visibility()
+            else:
+                # Hidden instead when the data has a single frame.
+                self._sync_scan_tracking_visibility(from_scratch=True)
         if hasattr(self, "parameter_panel"):
             self.parameter_panel.setVisible(not is_raw)
         # Cartesian / Polar radios — meaningless before conversion.

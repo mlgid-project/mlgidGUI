@@ -115,16 +115,22 @@ def parse_hkl(text: str) -> tuple[int, int, int]:
     """Parse a user-typed orientation like ``"0 0 1"`` / ``"-1,1,0"``.
 
     Accepts three integers separated by spaces, commas or semicolons
-    (signs allowed). Raises ``ValueError`` with a user-readable message
+    (signs allowed), or three single-digit indices written together
+    with optional signs (``010``, ``-110``, ``1-10``), the way they are
+    usually printed. Raises ``ValueError`` with a user-readable message
     on anything else — including the direction-less ``0 0 0``, which is
     what the random/powder mode is for.
     """
     import re
 
-    parts = [p for p in re.split(r"[,;\s]+", str(text).strip()) if p]
+    stripped = str(text).strip()
+    parts = [p for p in re.split(r"[,;\s]+", stripped) if p]
+    if len(parts) == 1 and re.fullmatch(r"(?:[+-]?\d){3}", stripped):
+        parts = re.findall(r"[+-]?\d", stripped)
     if len(parts) != 3:
         raise ValueError(
-            f"{str(text).strip()!r} — type three integers, e.g. 0 0 1"
+            f"{stripped!r} — type three integers, e.g. 0 0 1, or three "
+            "digits written together, e.g. 001"
         )
     try:
         h, k, l = (int(p) for p in parts)

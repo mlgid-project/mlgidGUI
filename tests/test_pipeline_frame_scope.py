@@ -94,3 +94,21 @@ def test_frame_range_partly_outside_runs_with_valid_frames(panel):
     assert len(got) == 1
     assert got[0].kwargs["frame_num"] == [4, 5]
     assert any("ignoring" in m for m in logs)
+
+
+def test_fit_form_starts_from_the_mlgidbase_defaults(panel):
+    """An unedited Fitting form is a bare run_fitting(): the clustering
+    distances are 2 / 2 since mlgidbase 0.1.11 (they were 10 / 10), and
+    the numbers come from manual_fit so every fallback agrees."""
+    from mlgidlab import manual_fit
+
+    assert panel.fit_dist_peaks.value() == manual_fit.DEFAULT_CLUSTERING_DISTANCE_PEAKS == 2.0
+    assert panel.fit_dist_rings.value() == manual_fit.DEFAULT_CLUSTERING_DISTANCE_RINGS == 2.0
+    assert panel.fit_cluster_extend.value() == manual_fit.DEFAULT_CLUSTERING_EXTEND == 2
+    got = _commands(panel)
+    panel._on_run_fitting()
+    assert len(got) == 1
+    kw = got[0].kwargs
+    assert kw["clustering_distance_peaks"] == 2.0
+    assert kw["clustering_distance_rings"] == 2.0
+    assert kw["clustering_extend"] == 2

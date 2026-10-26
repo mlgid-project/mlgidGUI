@@ -70,6 +70,10 @@ class ScanTrackingPanel(QWidget):
     # the inject + 2D-fit + match pipeline pass (real data, not a
     # display overlay).
     interpolateRequested = Signal()
+    # "Load saved tracks" clicked — the file carries a tracking table
+    # that was not loaded on its own (it no longer matches the fitted
+    # peaks); the host loads it anyway.
+    loadSavedRequested = Signal()
     # Delete pressed on a selected table row: (track index). The host
     # removes the track from the tracking RESULTS only — no peaks are
     # deleted from the file.
@@ -164,6 +168,39 @@ class ScanTrackingPanel(QWidget):
 
         layout.addLayout(controls)
 
+        # Second row: tracking options that would crowd the first (the
+        # dock's minimum width, and with it the window's dock layout,
+        # follows the widest row).
+        options = QHBoxLayout()
+        options.setSpacing(6)
+        options.addWidget(QLabel("Max frame gap", self))
+        self.spin_window = QSpinBox(self)
+        self.spin_window.setRange(0, 99999)
+        self.spin_window.setValue(0)
+        self.spin_window.setSpecialValueText("off")
+        self.spin_window.setToolTip(
+            "Max frame gap: never link two peaks more than this many "
+            "frames apart, "
+            "however much their boxes overlap (mlgidBASE window_size). "
+            "Off (0) = no limit. Use it when a peak position recurs "
+            "later in a long scan and should not be joined to an "
+            "earlier track."
+        )
+        options.addWidget(self.spin_window)
+        options.addStretch(1)
+
+        self.btn_load_saved = QPushButton("Load saved tracks", self)
+        self.btn_load_saved.setToolTip(
+            "The file carries a peak-tracking table that was not loaded "
+            "automatically because some of its members no longer match a "
+            "fitted peak. Load it anyway (those members are skipped)."
+        )
+        self.btn_load_saved.clicked.connect(self.loadSavedRequested)
+        self.btn_load_saved.hide()
+        options.addWidget(self.btn_load_saved)
+
+        layout.addLayout(options)
+
         # --- Status line ---
         self.lbl_status = QLabel(
             "No tracks yet — run Fitting on all frames, then "
@@ -172,6 +209,13 @@ class ScanTrackingPanel(QWidget):
         )
         self.lbl_status.setWordWrap(True)
         layout.addWidget(self.lbl_status)
+
+        # Where the shown tracks came from / why saved ones were not
+        # loaded. Empty (hidden) after a plain "Track peaks" run.
+        self.lbl_saved = QLabel("", self)
+        self.lbl_saved.setWordWrap(True)
+        self.lbl_saved.hide()
+        layout.addWidget(self.lbl_saved)
 
         # --- Tracks table ---
         self._model = QStandardItemModel(self)
@@ -246,6 +290,31 @@ class ScanTrackingPanel(QWidget):
     @property
     def min_length(self) -> int:
         return int(self.spin_length.value())
+
+    def set_saved_note(self, text: str, *, can_load: bool = False) -> None:
+        """Say where the shown tracks came from, or why a saved table was
+        left alone. ``can_load`` offers the "Load saved tracks" button.
+        An empty ``text`` hides both."""
+        self.lbl_saved.setText(text)
+        self.lbl_saved.setVisible(bool(text))
+        self.btn_load_saved.setVisible(bool(text) and can_load)
+
+    def apply_settings(
+        self, threshold: "float | None", length: "int | None",
+        window_size: "int | None",
+    ) -> None:
+        """Show the settings a result was made with (loaded from a file),
+        so a re-run starts from them. None leaves a control alone."""
+        if threshold is not None:
+            self.spin_threshold.setValue(float(threshold))
+        if length is not None:
+            self.spin_length.setValue(int(length))
+        self.spin_window.setValue(int(window_size or 0))
+
+    @property
+    def window_size(self) -> int:
+        """Max frame gap for a link; 0 = no limit."""
+        return int(self.spin_window.value())
 
     @property
     def payload(self) -> TrackingPayload | None:
@@ -332,6 +401,9 @@ class ScanTrackingPanel(QWidget):
         finally:
             self._repopulating = False
         self._table.resizeColumnsToContents()
+        # Provenance notes belong to one result; the host sets a fresh
+        # one after installing a result it loaded from the file.
+        self.set_saved_note("")
         # No results -> the filter has nothing to whitelist; untick so
         # the fitted overlay comes back (the toggled emit routes
         # through the host, which lifts the viewer filter).
@@ -346,7 +418,12 @@ class ScanTrackingPanel(QWidget):
             self.lbl_status.setText(
                 f"{payload.n_tracks} tracks from {payload.n_members} "
                 f"fitted-peak instances (IoU ≥ {payload.threshold:.2f}, "
-                f"members > {payload.length}) · entry {payload.entry}."
+                f"members > {payload.length}"
+                + (
+                    f", gap ≤ {payload.window_size} frames"
+                    if payload.window_size else ""
+                )
+                + f") · entry {payload.entry}."
             )
         self._apply_enabled()
 

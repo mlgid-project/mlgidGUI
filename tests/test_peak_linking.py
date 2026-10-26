@@ -10,8 +10,9 @@ with it.
 This file starts at the storage layer, which is where the pairing has to
 be expressible at all: ``file_model``'s add helpers had no way to write a
 row under a chosen id, and the snapshot helper had no way to report the
-id a row had. The re-key exists because a pipeline fitting run assigns
-fitted ids positionally and would otherwise break every pair.
+id a row had. (A pipeline fitting run used to assign fitted ids
+positionally and needed a re-key pass to keep the pairs; pygidfit 0.1.8
+copies the detected ids itself, so the pass is gone.)
 
 No Qt in this section — it runs in the backend-less CI environment too.
 """
@@ -148,61 +149,6 @@ def test_the_snapshot_can_carry_the_id_it_had(tmp_path):
     stripped = dict(with_ids[0])
     stripped.pop("id")
     assert stripped == plain[0]
-
-
-# -- Re-keying fitted ids after a pipeline fitting run -------------------
-
-def test_the_rekey_maps_fitted_onto_detected_by_position(tmp_path):
-    """A pipeline run numbers fitted rows 0..N-1 by position over the
-    detected table, so once detected has gaps the two disagree."""
-    path = _build(tmp_path, [3, 7, 11], [0, 1, 2])
-    assert file_model.rekey_fitted_ids_to_detected(path, ENTRY) == 1
-    assert _ids(path, "fitted") == [3, 7, 11]
-    # Row order and content are untouched; only the id column moved.
-    with h5py.File(path, "r") as f:
-        arr = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"][()]
-    assert [float(v) for v in arr["radius"]] == [1.0, 2.0, 3.0]
-
-
-def test_the_rekey_is_a_no_op_when_the_ids_already_agree(tmp_path):
-    path = _build(tmp_path, [0, 1, 2], [0, 1, 2])
-    assert file_model.rekey_fitted_ids_to_detected(path, ENTRY) == 0
-    assert _ids(path, "fitted") == [0, 1, 2]
-
-
-def test_the_rekey_skips_a_frame_whose_counts_disagree(tmp_path):
-    """Two fits against three detections cannot be paired positionally.
-    Guessing would silently mislabel peaks, so the frame is left alone."""
-    path = _build(tmp_path, [3, 7, 11], [0, 1])
-    assert file_model.rekey_fitted_ids_to_detected(path, ENTRY) == 0
-    assert _ids(path, "fitted") == [0, 1]
-
-
-def test_the_rekey_walks_every_frame_or_just_the_one_asked_for(tmp_path):
-    path = _build(tmp_path, [3, 7, 11], [0, 1, 2], frames=3)
-    assert file_model.rekey_fitted_ids_to_detected(path, ENTRY, frame=1) == 1
-    assert _ids(path, "fitted", 0) == [0, 1, 2]
-    assert _ids(path, "fitted", 1) == [3, 7, 11]
-    assert file_model.rekey_fitted_ids_to_detected(path, ENTRY) == 2
-
-
-def test_the_rekey_leaves_matched_peak_lists_alone(tmp_path):
-    """``peak_list`` holds *positions* into fitted_peaks, not ids. The
-    re-key rewrites one column in place without touching row order, so
-    matched structures cannot be disturbed by it."""
-    path = _build(tmp_path, [3, 7, 11], [0, 1, 2], peak_list=[0, 2])
-    file_model.rekey_fitted_ids_to_detected(path, ENTRY)
-    with h5py.File(path, "r") as f:
-        row = f[f"{ENTRY}/data/analysis/frame00000/matched_segments_0000"][()][0]
-    assert [int(v) for v in row["peak_list"]] == [0, 2]
-
-
-@pytest.mark.parametrize("missing", ["detected_peaks", "fitted_peaks"])
-def test_the_rekey_tolerates_a_frame_without_both_tables(tmp_path, missing):
-    path = _build(tmp_path, [0, 1], [0, 1])
-    with h5py.File(path, "r+") as f:
-        del f[f"{ENTRY}/data/analysis/frame00000/{missing}"]
-    assert file_model.rekey_fitted_ids_to_detected(path, ENTRY) == 0
 
 
 # -- The two settings ---------------------------------------------------
@@ -377,11 +323,39 @@ def _select_detected(window, index: int, frame: int = 0) -> SelectedPeak:
 
 
 def _stub_fit(window, monkeypatch, row=None):
-    """Skip pygidfit; the link is about which id the row lands under."""
+    """Skip pygidfit; the link is about which id the row lands under.
+
+    Stubs both ways a 2D fit is obtained: the blocking one the quick
+    paths use (``_build_fitted_row_2d``) and the background one the
+    Add to fitted button and the live preview use
+    (``_prepare_pygidfit_fit``). The preview cache is cleared so a
+    second stub with other numbers is not answered from the first.
+    """
+    from types import SimpleNamespace
+
+    fit = SimpleNamespace(**dict(row or _FIT_ROW))
     monkeypatch.setattr(
         window, "_build_fitted_row_2d",
         lambda sel, entry, frame, **_kw: dict(row or _FIT_ROW),
     )
+    monkeypatch.setattr(
+        window, "_prepare_pygidfit_fit",
+        lambda sel, entry, frame: ((lambda: (fit, None)), None),
+    )
+    window._2d_preview_cache.clear()
+
+
+def _add_to_fitted(window, timeout: float = 15.0) -> None:
+    """Press Add to fitted and wait for the background fit to commit."""
+    import time
+    from PySide6.QtWidgets import QApplication
+
+    window._on_add_to_fitted()
+    deadline = time.time() + timeout
+    while window._add_fitted_wait is not None and time.time() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.005)
+    assert window._add_fitted_wait is None, "Add to fitted never finished"
 
 
 @pytest.mark.gui
@@ -391,7 +365,7 @@ def test_a_fit_is_stored_under_its_detected_peaks_id(
     path = _open(main_window, synthetic_nexus_with_peaks)
     _stub_fit(main_window, monkeypatch)
     _select_detected(main_window, 2)  # detected id 2, not yet fitted
-    main_window._on_add_to_fitted()
+    _add_to_fitted(main_window)
     assert _table_ids(path, "fitted") == [0, 1, 2]
 
 
@@ -404,15 +378,15 @@ def test_refitting_replaces_the_previous_fit(
     path = _open(main_window, synthetic_nexus_with_peaks)
     _stub_fit(main_window, monkeypatch)
     _select_detected(main_window, 0)  # detected id 0, already fitted
-    main_window._on_add_to_fitted()
+    _add_to_fitted(main_window)
     assert _table_ids(path, "fitted") == [1, 0]  # 0 rewritten at the end
     fit = _table(path, "fitted")
     row = {int(fit.ids[i]): float(fit.radius[i]) for i in range(len(fit))}
     assert row[0] == pytest.approx(_FIT_ROW["radius"])
     # And again, with different borders — still one row for peak 0.
-    _select_detected(main_window, 0)
     _stub_fit(main_window, monkeypatch, {**_FIT_ROW, "radius": 2.9})
-    main_window._on_add_to_fitted()
+    _select_detected(main_window, 0)
+    _add_to_fitted(main_window)
     assert sorted(_table_ids(path, "fitted")) == [0, 1]
     fit = _table(path, "fitted")
     row = {int(fit.ids[i]): float(fit.radius[i]) for i in range(len(fit))}
@@ -426,7 +400,7 @@ def test_with_the_link_off_a_refit_appends_as_before(
     path = _open(main_window, synthetic_nexus_with_peaks)
     _stub_fit(main_window, monkeypatch)
     _select_detected(main_window, 0)
-    main_window._on_add_to_fitted()
+    _add_to_fitted(main_window)
     assert _table_ids(path, "fitted") == [0, 1, 2]
 
 
@@ -439,7 +413,7 @@ def test_undoing_a_refit_brings_the_previous_fit_back(
     old_radius = float(before.radius[0])
     _stub_fit(main_window, monkeypatch)
     _select_detected(main_window, 0)
-    main_window._on_add_to_fitted()
+    _add_to_fitted(main_window)
 
     main_window.viewer.undo_last_action()
     fit = _table(path, "fitted")
@@ -461,7 +435,7 @@ def test_a_hand_drawn_box_gets_a_detected_partner(
     )
     main_window.viewer.add_manual_peak(0, manual)
     main_window.viewer._set_selected(SelectedPeak.from_manual(manual, 0))
-    main_window._on_add_to_fitted()
+    _add_to_fitted(main_window)
 
     assert _table_ids(path, "detected") == [0, 1, 2, 3]
     assert _table_ids(path, "fitted") == [0, 1, 3]
@@ -483,7 +457,7 @@ def test_with_the_link_off_a_hand_drawn_box_adds_no_detected_row(
     )
     main_window.viewer.add_manual_peak(0, manual)
     main_window.viewer._set_selected(SelectedPeak.from_manual(manual, 0))
-    main_window._on_add_to_fitted()
+    _add_to_fitted(main_window)
     assert _table_ids(path, "detected") == [0, 1, 2]
     assert _table_ids(path, "fitted") == [0, 1, 2]
 
@@ -633,8 +607,9 @@ def test_a_linked_delete_remaps_matched_the_way_a_fitted_delete_does(
 ):
     """The link gives matched no new semantics. Deleting a detected peak
     removes its fit, and that removal goes through the same
-    ``remap_matched_peak_lists`` a plain fitted delete has always used:
-    the structure loses exactly that peak and keeps the rest."""
+    ``prepare_fitted_delete`` / ``remap_matched_peak_lists`` pair a plain
+    fitted delete uses: the structure loses exactly that peak and keeps
+    the rest."""
     path = _open(main_window, synthetic_nexus_with_peaks)
     ds_path = f"{ENTRY}/data/analysis/frame00000/matched_segments_0000"
     with main_window._detached_silx_tree():
@@ -651,63 +626,685 @@ def test_a_linked_delete_remaps_matched_the_way_a_fitted_delete_does(
     assert _table_ids(path, "fitted") == [1]
     with h5py.File(path, "r") as f:
         row = f[ds_path][()][0]
-    # Position 0 dropped, position 1 shifted down into it. The structure
-    # itself survives with its remaining peak.
-    assert [int(v) for v in row["peak_list"]] == [0]
+    # The legacy positional list [0, 1] was put in id form (fitted ids 0
+    # and 1) and id 0 dropped. The structure itself survives with its
+    # remaining peak, now stored as id 1.
+    assert [int(v) for v in row["peak_list"]] == [1]
+    with h5py.File(path, "r") as f:
+        assert f[ds_path].attrs["peak_list_kind"] == "id"
+
+
+# -- Switching the selection between a detected peak and its fit ---------
+
+def _select_fitted(window, index: int, frame: int = 0) -> SelectedPeak:
+    fit = (window.viewer._frame_peaks.get(frame) or {})["fitted"]
+    sel = window.viewer._row_selection("fitted", fit, index, frame)
+    window.viewer._set_selected(sel)
+    return sel
 
 
 @pytest.mark.gui
-def test_a_fitting_run_relinks_the_fits_it_wrote(
+def test_t_moves_a_detected_selection_to_its_fitted_partner(
     main_window, synthetic_nexus_with_peaks, clean_link_settings,
 ):
-    """A pipeline run numbers fitted rows positionally. The completion
-    handler re-keys them onto their detected peaks so the pairing the
-    rest of the feature depends on survives the run."""
-    from mlgidlab.pipeline import PipelineCommand
+    _open(main_window, synthetic_nexus_with_peaks)
+    _select_detected(main_window, 1)
+    main_window.action_switch_detected_fitted.trigger()
+    sel = main_window.viewer.selected_peak
+    assert (sel.kind, sel.peak_id) == ("fitted", 1)
+    assert sel.radius == pytest.approx(2.5)          # the fitted row's geometry
 
-    path = _open(main_window, synthetic_nexus_with_peaks)
-    # Stand in for what a run leaves behind: three fits, ids 0..N-1,
-    # against detected ids with a gap.
-    with main_window._detached_silx_tree():
-        with h5py.File(path, "r+") as f:
-            g = f[f"{ENTRY}/data/analysis/frame00000"]
-            det = g["detected_peaks"][()]
-            det["id"] = [3, 7, 11]
-            g["detected_peaks"][...] = det
-            fit = np.zeros(3, dtype=g["fitted_peaks"].dtype)
-            fit["id"] = [0, 1, 2]
-            fit["radius"] = [1.0, 2.0, 3.0]
-            fit["angle"] = 45.0
-            fit["angle_width"] = 5.0
-            fit["radius_width"] = 0.2
-            del g["fitted_peaks"]
-            g.create_dataset("fitted_peaks", data=fit)
-
-    # The real caller runs while the silx tree is still detached (it
-    # reattaches only when the pipeline queue drains), so the helper
-    # writes without detaching itself.
-    with main_window._detached_silx_tree():
-        main_window._rekey_fitted_after_fit(
-            PipelineCommand("run_fitting", {"entry": ENTRY, "frame_num": 0})
-        )
-    assert _table_ids(path, "fitted") == [3, 7, 11]
+    main_window.action_switch_detected_fitted.trigger()
+    sel = main_window.viewer.selected_peak
+    assert (sel.kind, sel.peak_id) == ("detected", 1)
+    assert sel.radius == pytest.approx(2.0)
 
 
 @pytest.mark.gui
-def test_a_fitting_run_leaves_the_ids_alone_when_unlinked(
+def test_t_has_the_shortcut_and_a_menu_entry(main_window):
+    assert main_window.action_switch_detected_fitted.shortcut().toString() == "T"
+    assert main_window.action_switch_detected_fitted in (
+        main_window.menuBar().actions()[1].menu().actions()
+    )
+
+
+@pytest.mark.gui
+def test_t_without_a_partner_keeps_the_selection_and_says_why(
+    main_window, synthetic_nexus_with_peaks, clean_link_settings,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    _select_detected(main_window, 2)                  # detected 2 has no fit
+    main_window._on_switch_detected_fitted()
+    sel = main_window.viewer.selected_peak
+    assert (sel.kind, sel.peak_id) == ("detected", 2)
+    assert "No fitted partner" in main_window.statusBar().currentMessage()
+
+
+@pytest.mark.gui
+def test_t_does_nothing_with_the_link_off(
     main_window, synthetic_nexus_with_peaks, peak_link_off,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    _select_detected(main_window, 0)
+    main_window._on_switch_detected_fitted()
+    assert main_window.viewer.selected_peak.kind == "detected"
+    assert "peak link" in main_window.statusBar().currentMessage()
+
+
+@pytest.mark.gui
+def test_t_needs_a_detected_or_fitted_selection(
+    main_window, synthetic_nexus_with_peaks, clean_link_settings,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    main_window._on_switch_detected_fitted()          # nothing selected
+    assert main_window.viewer.selected_peak is None
+    assert "select a detected or fitted" in (
+        main_window.statusBar().currentMessage()
+    )
+
+
+@pytest.mark.gui
+def test_t_switches_every_selected_peak_that_has_a_partner(
+    main_window, synthetic_nexus_with_peaks, clean_link_settings,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    main_window.viewer._select_all_of_kind_on_frame("detected")  # ids 0, 1, 2
+    main_window._on_switch_detected_fitted()
+    sels = main_window.viewer.selected_peaks()
+    assert [(s.kind, s.peak_id) for s in sels] == [("fitted", 0), ("fitted", 1)]
+    assert "2 of 3" in main_window.statusBar().currentMessage()
+
+    main_window._on_switch_detected_fitted()          # and back
+    sels = main_window.viewer.selected_peaks()
+    assert [(s.kind, s.peak_id) for s in sels] == [
+        ("detected", 0), ("detected", 1),
+    ]
+
+
+
+# -- Ctrl+Return runs Add to fitted --------------------------------------
+
+@pytest.mark.gui
+def test_ctrl_return_is_bound_to_add_to_fitted(main_window):
+    keys = {
+        s.toString()
+        for s in main_window.action_add_to_fitted_shortcut.shortcuts()
+    }
+    assert keys == {"Ctrl+Return", "Ctrl+Enter"}
+
+
+@pytest.mark.gui
+def test_the_shortcut_adds_the_selected_detected_peak_to_fitted(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    from PySide6.QtCore import Qt
+
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    _stub_fit(main_window, monkeypatch)
+    main_window.show()
+    qtbot.waitExposed(main_window)
+    main_window.activateWindow()
+    qtbot.wait(50)
+    _select_detected(main_window, 2)                  # not yet fitted
+    main_window.viewer.setFocus()
+    qtbot.keyClick(
+        main_window, Qt.Key.Key_Return, Qt.KeyboardModifier.ControlModifier,
+    )
+    qtbot.waitUntil(lambda: _table_ids(path, "fitted") == [0, 1, 2], timeout=10000)
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("what", ["nothing", "fitted", "several"])
+def test_the_shortcut_writes_nothing_and_says_why_when_it_cannot_run(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    what,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    _stub_fit(main_window, monkeypatch)
+    if what == "fitted":
+        _select_fitted(main_window, 0)
+    elif what == "several":
+        main_window.viewer._select_all_of_kind_on_frame("detected")
+    main_window._on_add_to_fitted_shortcut()
+    assert _table_ids(path, "fitted") == [0, 1]
+    assert "Add to fitted" in main_window.statusBar().currentMessage()
+
+
+@pytest.mark.gui
+def test_the_shortcut_says_why_with_no_file_open(main_window):
+    main_window._on_add_to_fitted_shortcut()
+    assert "open a file" in main_window.statusBar().currentMessage()
+
+
+# -- An infinite angular width is a ring --------------------------------
+#
+# pygidfit reports a ring as angle_width = inf (angle NaN). Every path
+# that stores a 2D fit types such a row as a ring with the shared ring
+# angle, whatever the Save-as-ring checkbox said.
+
+_INF_ROW = {**_FIT_ROW, "angle": float("nan"), "angle_width": float("inf")}
+
+
+def test_ring_if_infinite_width_is_the_whole_rule():
+    inf, nan = float("inf"), float("nan")
+    assert file_model.ring_if_infinite_width(nan, inf, False) == (45.0, True)
+    assert file_model.ring_if_infinite_width(30.0, inf, False) == (45.0, True)
+    assert file_model.ring_if_infinite_width(30.0, 6.0, True) == (45.0, True)
+    assert file_model.ring_if_infinite_width(30.0, 6.0, False) == (30.0, False)
+    # -inf is not the ring sentinel
+    assert file_model.ring_if_infinite_width(30.0, -inf, False) == (30.0, False)
+
+
+def _write_fitted(path, rows):
+    """Replace frame 0's fitted table with ``rows``: (id, angle, aw, is_ring)."""
+    with h5py.File(path, "r+") as f:
+        ds = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"]
+        arr = np.zeros(len(rows), dtype=ds.dtype)
+        for i, (pid, ang, aw, ring) in enumerate(rows):
+            arr[i]["id"], arr[i]["angle"] = pid, ang
+            arr[i]["angle_width"], arr[i]["is_ring"] = aw, ring
+            arr[i]["radius"], arr[i]["radius_width"] = 1.0 + i, 0.2
+        del f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"]
+        f[f"{ENTRY}/data/analysis/frame00000"].create_dataset(
+            "fitted_peaks", data=arr,
+        )
+
+
+def test_the_file_pass_types_only_infinite_width_rows_as_rings(
+    synthetic_nexus_with_peaks,
+):
+    path = synthetic_nexus_with_peaks
+    inf = float("inf")
+    _write_fitted(path, [
+        (0, 20.0, 4.0, False),     # segment: untouched
+        (1, float("nan"), inf, False),   # the case: becomes a ring
+        (2, 45.0, inf, True),      # already a ring: untouched
+        (3, 70.0, 80.0, True),     # ring with a finite width: untouched
+    ])
+    assert file_model.flag_infinite_width_fitted_as_rings(path, ENTRY) == 1
+    fit = _table(path, "fitted")
+    assert [bool(v) for v in fit.is_ring] == [False, True, True, True]
+    assert float(fit.angle[0]) == pytest.approx(20.0)
+    assert float(fit.angle[1]) == pytest.approx(45.0)
+    assert float(fit.angle[3]) == pytest.approx(70.0)
+    assert file_model.flag_infinite_width_fitted_as_rings(path, ENTRY) == 0
+
+
+@pytest.mark.gui
+def test_a_run_fitting_pass_types_its_infinite_width_rows_as_rings(
+    main_window, synthetic_nexus_with_peaks,
 ):
     from mlgidlab.pipeline import PipelineCommand
 
     path = _open(main_window, synthetic_nexus_with_peaks)
     with main_window._detached_silx_tree():
-        with h5py.File(path, "r+") as f:
-            g = f[f"{ENTRY}/data/analysis/frame00000"]
-            det = g["detected_peaks"][()]
-            det["id"] = [3, 7, 11]
-            g["detected_peaks"][...] = det
-    with main_window._detached_silx_tree():
-        main_window._rekey_fitted_after_fit(
-            PipelineCommand("run_fitting", {"entry": ENTRY})
+        _write_fitted(path, [(0, float("nan"), float("inf"), False)])
+        main_window._flag_rings_after_fit(
+            PipelineCommand("run_fitting", {"entry": ENTRY, "frame_num": 0})
         )
-    assert _table_ids(path, "fitted") == [0, 1]
+    fit = _table(path, "fitted")
+    assert bool(fit.is_ring[0]) and float(fit.angle[0]) == pytest.approx(45.0)
+
+
+@pytest.mark.gui
+def test_add_to_fitted_2d_stores_an_infinite_width_fit_as_a_ring(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    _stub_fit(main_window, monkeypatch, _INF_ROW)
+    _select_detected(main_window, 2)
+    _add_to_fitted(main_window)
+    fit = _table(path, "fitted")
+    i = list(fit.ids).index(2)
+    assert bool(fit.is_ring[i])
+    assert float(fit.angle[i]) == pytest.approx(45.0)
+    assert not np.isfinite(float(fit.angle_width[i]))
+    sel = main_window.viewer.selected_peak          # auto-switched to the fit
+    assert sel.kind == "fitted" and sel.is_ring
+
+
+@pytest.mark.gui
+def test_add_to_fitted_2d_leaves_a_finite_fit_a_segment(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    _stub_fit(main_window, monkeypatch)
+    _select_detected(main_window, 2)
+    _add_to_fitted(main_window)
+    fit = _table(path, "fitted")
+    assert not bool(fit.is_ring[list(fit.ids).index(2)])
+
+
+@pytest.mark.gui
+def test_the_2d_batch_stores_an_infinite_width_fit_as_a_ring(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+):
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class _Stub:
+        radius: float = 2.75
+        radius_width: float = 0.11
+        angle: float = float("nan")
+        angle_width: float = float("inf")
+        amplitude: float = 42.0
+        A: float = 1.0
+        B: float = 0.0
+        C: float = 1.0
+        theta: float = 0.0
+
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    monkeypatch.setattr(
+        main_window, "_run_pygidfit_for_selection",
+        lambda sel, entry, frame: (_Stub(), None),
+    )
+    main_window.viewer._select_all_of_kind_on_frame("detected")
+    main_window._on_batch_fit_2d()
+    fit = _table(path, "fitted")
+    assert [bool(v) for v in fit.is_ring] == [True] * len(fit)
+    assert all(float(a) == pytest.approx(45.0) for a in fit.angle)
+
+
+# -- Add to fitted (2D) does not block the window -----------------------
+#
+# The click used to run the pygidfit fit inline, which for a peak in a
+# badly conditioned peak-on-ring cluster is tens of seconds with the
+# window frozen. It now runs in the background and commits on arrival.
+
+def _gated_fit(window, monkeypatch, row=None):
+    """A stubbed 2D fit that blocks until the returned event is set.
+    Returns ``(gate, calls)``; ``calls`` counts how many fits were
+    actually started."""
+    import threading
+    from types import SimpleNamespace
+
+    gate = threading.Event()
+    calls = []
+    fit = SimpleNamespace(**dict(row or _FIT_ROW))
+
+    def prepare(sel, entry, frame):
+        calls.append(sel.peak_id)
+
+        def job():
+            gate.wait(10)
+            return fit, None
+
+        return job, None
+
+    monkeypatch.setattr(window, "_prepare_pygidfit_fit", prepare)
+    window._2d_preview_cache.clear()
+    return gate, calls
+
+
+@pytest.mark.gui
+def test_add_to_fitted_2d_returns_at_once_and_commits_when_the_fit_lands(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    import time
+
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    gate, calls = _gated_fit(main_window, monkeypatch)
+    _select_detected(main_window, 2)                  # not yet fitted
+    t0 = time.time()
+    main_window._on_add_to_fitted()
+    assert time.time() - t0 < 1.0                     # the click returned
+    assert _table_ids(path, "fitted") == [0, 1]       # nothing written yet
+    assert not main_window.parameter_panel.btn_add_fitted.isEnabled()
+    assert "Add to fitted" in main_window.statusBar().currentMessage()
+
+    gate.set()                                        # the fit finishes
+    qtbot.waitUntil(lambda: main_window._add_fitted_wait is None, timeout=10000)
+    assert _table_ids(path, "fitted") == [0, 1, 2]
+    assert len(calls) == 1                            # preview and click shared one fit
+    _select_detected(main_window, 2)                  # the button is not left disabled
+    if main_window.parameter_panel._mlgidbase_available:   # else the panel keeps it off
+        assert main_window.parameter_panel.btn_add_fitted.isEnabled()
+
+
+@pytest.mark.gui
+def test_add_to_fitted_2d_reuses_the_finished_preview_without_refitting(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    gate, calls = _gated_fit(main_window, monkeypatch)
+    gate.set()
+    _select_detected(main_window, 2)
+    qtbot.waitUntil(lambda: main_window._preview_runner.pending_count() == 0, timeout=10000)
+    assert len(calls) == 1
+    main_window._on_add_to_fitted()                   # cache hit: instant
+    assert main_window._add_fitted_wait is None
+    assert _table_ids(path, "fitted") == [0, 1, 2]
+    assert len(calls) == 1                            # no second fit
+
+
+@pytest.mark.gui
+def test_a_changed_fit_setting_or_neighbour_is_not_answered_from_the_cache(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    gate, calls = _gated_fit(main_window, monkeypatch)
+    gate.set()
+    sel = _select_detected(main_window, 2)
+    qtbot.waitUntil(lambda: main_window._preview_runner.pending_count() == 0, timeout=10000)
+    entry = main_window.entry_combo.currentText()
+    before = main_window._preview_fingerprint(entry, sel)
+    panel = main_window.pipeline_panel
+    if hasattr(panel, "fit_dist_peaks"):     # the fit form needs the backend extra
+        panel.fit_dist_peaks.setValue(panel.fit_dist_peaks.value() + 3)
+        assert main_window._preview_fingerprint(entry, sel) != before
+        panel.fit_dist_peaks.setValue(panel.fit_dist_peaks.value() - 3)
+        assert main_window._preview_fingerprint(entry, sel) == before
+    main_window.viewer._frame_peaks[0]["detected"].radius[0] += 0.5   # an edited neighbour
+    assert main_window._preview_fingerprint(entry, sel) != before
+
+
+@pytest.mark.gui
+def test_add_to_fitted_2d_is_dropped_if_the_file_closes_while_it_fits(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    gate, _calls = _gated_fit(main_window, monkeypatch)
+    _select_detected(main_window, 2)
+    main_window._on_add_to_fitted()
+    assert main_window._add_fitted_wait is not None
+    main_window._add_fitted_wait["session"] = "somewhere/else.h5"   # as if the file changed
+    gate.set()
+    qtbot.waitUntil(lambda: main_window._add_fitted_wait is None, timeout=10000)
+    assert _table_ids(path, "fitted") == [0, 1]       # nothing was written
+
+
+@pytest.mark.gui
+def test_a_second_click_while_one_is_fitting_does_nothing(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    gate, calls = _gated_fit(main_window, monkeypatch)
+    _select_detected(main_window, 2)
+    main_window._on_add_to_fitted()
+    main_window._on_add_to_fitted()
+    assert "still fitting" in main_window.statusBar().currentMessage()
+    gate.set()
+    qtbot.waitUntil(lambda: main_window._add_fitted_wait is None, timeout=10000)
+    assert _table_ids(path, "fitted") == [0, 1, 2]    # one row, not two
+    assert len(calls) == 1
+
+
+@pytest.mark.gui
+def test_add_to_fitted_2d_does_not_yank_the_selection_if_the_user_moved_on(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+    qtbot,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    gate, _calls = _gated_fit(main_window, monkeypatch)
+    _select_detected(main_window, 2)
+    main_window._on_add_to_fitted()
+    _select_detected(main_window, 0)                  # moved to another peak
+    gate.set()
+    qtbot.waitUntil(lambda: main_window._add_fitted_wait is None, timeout=10000)
+    assert _table_ids(path, "fitted") == [0, 1, 2]    # the click still committed
+    sel = main_window.viewer.selected_peak
+    assert (sel.kind, sel.peak_id) == ("detected", 0)  # and the selection stayed
+
+
+# -- Detected boxes for fitted peaks that have none ------------------------
+
+def _frames(path, frame=0):
+    """Frame ``frame``'s detected table as a structured array."""
+    with h5py.File(path, "r") as f:
+        return f[f"{ENTRY}/data/analysis/frame{frame:05d}/detected_peaks"][()]
+
+
+def test_the_score_follows_the_visibility_grade():
+    score = file_model.detected_score_for_visibility
+    assert [score(v) for v in (3, 2, 1)] == [1.0, 0.5, 0.1]
+    assert score(0) == 1.0                    # no grade: nothing to carry over
+
+
+def test_each_fitted_id_gets_a_detected_box_of_the_same_size(tmp_path):
+    path = _build(tmp_path, [0, 1], [0, 1, 5, 6])
+    added, unusable = file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    assert added == {0: [5, 6]} and unusable == 0
+    assert _ids(path, "detected") == [0, 1, 5, 6]
+    det, fit = _frames(path), None
+    with h5py.File(path, "r") as f:
+        fit = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"][()]
+    for pid in (5, 6):
+        d = det[det["id"] == pid][0]
+        t = fit[fit["id"] == pid][0]
+        for col in ("angle", "angle_width", "radius", "radius_width"):
+            assert d[col] == pytest.approx(t[col])
+        assert not d["is_ring"]
+        assert d["q_xy"] == pytest.approx(d["radius"] * np.cos(np.deg2rad(d["angle"])))
+
+
+def test_the_new_box_carries_only_geometry_id_ring_flag_and_score(tmp_path):
+    path = _build(tmp_path, [0], [0, 3])
+    with h5py.File(path, "r+") as f:
+        ds = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"]
+        arr = ds[()]
+        arr["amplitude"], arr["theta"] = 9.0, 0.3
+        arr["A"], arr["is_cut_qz"] = 1.0, True
+        arr["visibility"] = [0, 2]
+        ds[...] = arr
+    file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    d = _frames(path)
+    d = d[d["id"] == 3][0]
+    assert d["score"] == pytest.approx(0.5)          # visibility 2
+    for col in ("amplitude", "theta", "A", "B", "C", "visibility"):
+        assert d[col] == 0
+    assert not d["is_cut_qz"] and not d["is_cut_qxy"]
+
+
+def test_a_fitted_ring_gets_a_finite_quadrant_spanning_box(tmp_path):
+    path = _build(tmp_path, [0], [0, 4])
+    with h5py.File(path, "r+") as f:
+        ds = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"]
+        arr = ds[()]
+        arr["angle"], arr["angle_width"] = [45.0, float("nan")], [5.0, float("inf")]
+        ds[...] = arr
+    file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    d = _frames(path)
+    d = d[d["id"] == 4][0]
+    assert (d["angle"], d["angle_width"], d["is_ring"]) == (45.0, 90.0, True)
+
+
+def test_a_fitted_ring_with_a_finite_width_is_copied_as_it_is(tmp_path):
+    path = _build(tmp_path, [0], [0, 4])
+    with h5py.File(path, "r+") as f:
+        ds = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"]
+        arr = ds[()]
+        arr["angle"], arr["angle_width"], arr["is_ring"] = 40.0, 70.0, True
+        ds[...] = arr
+    file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    d = _frames(path)
+    d = d[d["id"] == 4][0]
+    assert (d["angle"], d["angle_width"], d["is_ring"]) == (40.0, 70.0, True)
+
+
+def test_every_frame_of_the_entry_is_covered_and_complete_ones_are_left_alone(
+    tmp_path,
+):
+    path = _build(tmp_path, [0, 1], [0, 1], frames=3)
+    with h5py.File(path, "r+") as f:           # frame 1 gets an unpaired fit
+        g = f[f"{ENTRY}/data/analysis/frame00001"]
+        del g["fitted_peaks"]
+        g.create_dataset("fitted_peaks", data=_rows([0, 1, 8]))
+        # frame 2 has no detected table at all
+        del f[f"{ENTRY}/data/analysis/frame00002/detected_peaks"]
+    added, _ = file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    assert added == {1: [8], 2: [0, 1]}
+    assert _ids(path, "detected", 0) == [0, 1]
+    assert _ids(path, "detected", 1) == [0, 1, 8]
+    assert _ids(path, "detected", 2) == [0, 1]
+
+
+def test_afterwards_every_fitted_id_has_a_detected_partner_and_a_rerun_adds_nothing(
+    tmp_path,
+):
+    path = _build(tmp_path, [2], [0, 1, 2, 3, 3], frames=2)
+    file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    for fr in (0, 1):
+        assert set(_ids(path, "fitted", fr)) <= set(_ids(path, "detected", fr))
+        assert len(_ids(path, "detected", fr)) == len(set(_ids(path, "detected", fr)))
+    again, _ = file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    assert again == {}
+
+
+def test_a_fitted_row_with_no_radius_is_skipped_and_counted(tmp_path):
+    path = _build(tmp_path, [0], [0, 1, 2])
+    with h5py.File(path, "r+") as f:
+        ds = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"]
+        arr = ds[()]
+        arr["radius"][1] = float("nan")
+        ds[...] = arr
+    added, unusable = file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    assert added == {0: [2]} and unusable == 1
+
+
+def test_delete_detected_rows_undoes_the_batch(tmp_path):
+    path = _build(tmp_path, [0], [0, 1, 2], frames=2)
+    added, _ = file_model.add_missing_detected_for_fitted(
+        path, ENTRY, ring_angle=45.0, ring_width=90.0,
+    )
+    assert file_model.delete_detected_rows(path, ENTRY, added) == 4
+    assert _ids(path, "detected", 0) == [0] and _ids(path, "detected", 1) == [0]
+
+
+@pytest.mark.gui
+def test_the_edit_menu_adds_detected_boxes_and_one_undo_removes_them(
+    main_window, synthetic_nexus_with_peaks, clean_link_settings, qtbot,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    with main_window._detached_silx_tree():
+        file_model.add_fitted_peak_row(
+            path, ENTRY, 0, angle=30.0, angle_width=6.0, radius=1.2,
+            radius_width=0.1, amplitude=3.0, peak_id=9,
+        )
+    main_window._load_entry_into_viewer(ENTRY, preserve_view=True)
+    main_window.action_add_detected_for_fitted.trigger()
+    assert _table_ids(path, "detected") == [0, 1, 2, 9]
+    det = _table(path, "detected")
+    i = list(det.ids).index(9)
+    assert float(det.angle[i]) == pytest.approx(30.0)
+    assert "Added 1 detected box" in main_window.statusBar().currentMessage()
+    main_window._action_undo()
+    assert _table_ids(path, "detected") == [0, 1, 2]
+    main_window._action_redo()
+    assert _table_ids(path, "detected") == [0, 1, 2, 9]
+
+
+@pytest.mark.gui
+def test_the_menu_item_says_so_when_nothing_is_missing(
+    main_window, synthetic_nexus_with_peaks, clean_link_settings,
+):
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    main_window.action_add_detected_for_fitted.trigger()
+    assert "already has a detected partner" in main_window.statusBar().currentMessage()
+    assert _table_ids(path, "detected") == [0, 1, 2]
+
+
+@pytest.mark.gui
+def test_the_menu_item_is_a_no_op_without_a_file(main_window):
+    main_window.action_add_detected_for_fitted.trigger()
+    assert "open a file" in main_window.statusBar().currentMessage()
+
+
+@pytest.mark.gui
+def test_a_fitted_delete_takes_its_fit_errors_and_undo_brings_them_back(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+):
+    """fitted_peaks_errors is paired with fitted_peaks by id. Deleting the
+    fit drops its errors row with it (no ghost row for a peak that is
+    gone), and undo restores the errors with the fit."""
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    err_path = f"{ENTRY}/data/analysis/frame00000/fitted_peaks_errors"
+    with main_window._detached_silx_tree():
+        with h5py.File(path, "r+") as f:
+            fit = f[f"{ENTRY}/data/analysis/frame00000/fitted_peaks"][()]
+            err = np.zeros(len(fit), dtype=fit.dtype)
+            err["id"] = fit["id"]
+            err["radius"] = [0.01 * (int(i) + 1) for i in fit["id"]]
+            if "fitted_peaks_errors" in f[f"{ENTRY}/data/analysis/frame00000"]:
+                del f[err_path]
+            f[f"{ENTRY}/data/analysis/frame00000"].create_dataset(
+                "fitted_peaks_errors", data=err,
+            )
+
+    _confirm(monkeypatch)
+    main_window._on_delete_peak_requested(_select_fitted(main_window, 1))
+    assert _table_ids(path, "fitted") == [0]
+    with h5py.File(path, "r") as f:
+        assert f[err_path][()]["id"].tolist() == [0]
+
+    main_window.viewer.undo_last_action()
+    assert sorted(_table_ids(path, "fitted")) == [0, 1]
+    with h5py.File(path, "r") as f:
+        errs = f[err_path][()]
+    assert sorted(errs["id"].tolist()) == [0, 1]
+    assert errs["radius"][errs["id"] == 1][0] == pytest.approx(0.02)
+
+
+@pytest.mark.gui
+def test_deleting_a_matched_peak_leaves_detected_and_fitted_alone(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, clean_link_settings,
+):
+    """mlgidbase.delete_peak removed the id from all three tables whatever
+    the dialog said. The matched delete is matched-only now, and undoable."""
+    path = _open(main_window, synthetic_nexus_with_peaks)
+    ds_path = f"{ENTRY}/data/analysis/frame00000/matched_segments_0000"
+    with main_window._detached_silx_tree():
+        with h5py.File(path, "r+") as f:
+            m = np.zeros(2, dtype=_MATCHED_DTYPE)
+            m["CIF"] = [b"a.cif", b"b.cif"]
+            m["probability"] = [0.9, 0.8]
+            m["peak_list"][0] = np.asarray([0, 1], dtype=np.int32)
+            m["peak_list"][1] = np.asarray([1], dtype=np.int32)
+            f.create_dataset(ds_path, data=m)
+    before_det = _table_ids(path, "detected")
+    before_fit = _table_ids(path, "fitted")
+
+    def _lists():
+        with h5py.File(path, "r") as f:
+            return [[int(v) for v in r] for r in f[ds_path][()]["peak_list"]]
+
+    _confirm(monkeypatch)
+    sel = SelectedPeak(
+        kind="matched", frame=0, peak_id=1, radius=1.0, angle=45.0,
+        radius_width=0.2, angle_width=5.0, is_ring=False,
+        score=0.9, amplitude=1.0,
+    )
+    main_window._on_delete_peak_requested(sel)
+    assert _lists() == [[0], []]
+    assert _table_ids(path, "detected") == before_det
+    assert _table_ids(path, "fitted") == before_fit
+
+    main_window.viewer.undo_last_action()
+    assert _lists() == [[0, 1], [1]]
+    with h5py.File(path, "r") as f:
+        assert "peak_list_kind" not in f[ds_path].attrs   # back to verbatim
+
+    main_window.viewer.redo_last_action()
+    assert _lists() == [[0], []]
+    assert _table_ids(path, "fitted") == before_fit

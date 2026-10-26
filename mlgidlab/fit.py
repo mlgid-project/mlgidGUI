@@ -3,7 +3,10 @@
 This module's output paints the live preview curves on the profile
 viewer for the active manual / detected box. It is not pygidFIT:
 
-  * ``fit.py``        — fast 1D scipy fit, profile overlay
+  * ``fit.py``        — fast 1D scipy fit, profile overlay for a
+                        manual / detected selection (a forecast);
+                        ``gaussian_at_stored_shape`` draws a saved
+                        fitted / matched row as stored, no fit
   * ``manual_fit.py`` — slow 2D pygidfit fit, the default persisted
                         truth (physics-audit finding F-06)
 
@@ -147,6 +150,119 @@ def gaussian_from_stored_params(
         x=x_fine, y=y_fine,
         amplitude=float(amplitude), center=float(center), sigma=sigma,
         slope=0.0, intercept=intercept,
+    )
+
+
+def gaussian_at_stored_shape(
+    axis: np.ndarray,
+    data: np.ndarray,
+    center: float,
+    width_2sigma: float,
+    *,
+    render_range: tuple[float, float] | None = None,
+) -> GaussianFit | None:
+    """Render the Gaussian a persisted row describes, over the profile.
+
+    Nothing about the *shape* is fitted: ``center`` and ``width_2sigma``
+    are the stored ``radius``/``radius_width`` (or ``angle``/
+    ``angle_width``) verbatim, with ``sigma = width_2sigma / 2``
+    (the stored width is pygidfit's ``2σ``, for 1D and 2D rows alike;
+    the curve's FWHM is therefore ``2 sqrt(2 ln 2) * sigma``). Whatever
+    fit made the row, the curve is centred where that fit put it and as
+    wide as that fit said.
+
+    Only the *height* comes from the profile, by a sample-aware rule:
+    the curve's maximum sits at ``center`` and equals the mean profile
+    over ``center ± max(one sample spacing, sigma / 2)`` above the
+    background, divided by the Gaussian's own mean over that window.
+    A single sample at the centre is noisy; a window narrower than a
+    sample would be the same thing. The
+    profile is the image averaged over the other axis' band, so the
+    stored amplitude (the 2D peak height, or one axis' amplitude for a
+    1D row) does not map onto it. The background line is read off the
+    flanks exactly as in ``fit_gaussian_on_axis`` (window = peak region
+    ``center ± width_2sigma`` padded by ``BG_WINDOW_FACTOR`` of its
+    width each side, background from the padding only). The height is
+    floored at zero. A stored centre that does not sit on the profile's
+    peak therefore shows as a curve whose maximum is lower than the
+    profile's own maximum nearby, not as a refit that hides it.
+
+    Non-finite profile samples (masked pixels) are ignored: they are not
+    bridged and they do not enter the height. Returns None for
+    non-finite or non-positive inputs, when the window holds too few
+    samples, or when fewer than two finite samples lie around the
+    centre.
+    """
+    axis = np.asarray(axis, dtype=float)
+    data = np.asarray(data, dtype=float)
+    if len(axis) < 8 or len(data) != len(axis):
+        return None
+    if not (np.isfinite(center) and np.isfinite(width_2sigma)) or width_2sigma <= 0:
+        return None
+    sigma = float(width_2sigma) / 2.0
+
+    peak_lo, peak_hi = center - width_2sigma, center + width_2sigma
+    pad = BG_WINDOW_FACTOR * (peak_hi - peak_lo)
+    win_lo, win_hi = peak_lo - pad, peak_hi + pad
+    lo_idx = max(0, int(np.searchsorted(axis, win_lo, side="left")))
+    hi_idx = min(len(axis), int(np.searchsorted(axis, win_hi, side="right")))
+    if hi_idx - lo_idx < MIN_WINDOW_SAMPLES:
+        return None
+    x = axis[lo_idx:hi_idx]
+    y = data[lo_idx:hi_idx]
+    # The sample spacing is a property of the axis, so it is read before
+    # the non-finite samples are dropped: measured after, a masked stretch
+    # would look like a very coarse grid.
+    step = float(np.median(np.diff(x))) if len(x) > 1 else 0.0
+    finite = np.isfinite(y) & np.isfinite(x)
+    x, y = x[finite], y[finite]
+    if len(x) < MIN_WINDOW_SAMPLES:
+        return None
+    if not (x[0] <= center <= x[-1]):
+        return None
+
+    slope, intercept = _flank_baseline(x, y, peak_lo, peak_hi)
+
+    # Height: the mean background-subtracted profile over a window
+    # around the stored centre, not the single sample there. The window
+    # is at least one sample spacing each side (so it spans real samples
+    # even on a coarse grid) and at least half a sigma. Averaging a
+    # Gaussian over +-h lowers it, so the mean is divided by the
+    # Gaussian's own mean over the same samples: a peak that matches the
+    # stored shape reads its true height, not a window-dependent one.
+    #
+    # Only real, finite samples enter. A masked (NaN) stretch near the
+    # centre, e.g. a neighbour masked out of the profile, is skipped, not
+    # bridged by a line through the samples either side of it (which would
+    # invent values the data never had), and the Gaussian's mean is taken
+    # at the samples actually used, so the gap cannot bias the height. A
+    # window left with fewer than two finite samples carries no
+    # information about this peak, so there is no curve.
+    half = max(abs(step), 0.5 * sigma)
+    in_window = np.abs(x - center) <= half
+    if int(in_window.sum()) < 2:
+        return None
+    xw = x[in_window]
+    residual = y[in_window] - (slope * xw + intercept)
+    g = float(np.mean(np.exp(-((xw - center) ** 2) / (2.0 * sigma ** 2))))
+    amplitude = max(float(np.mean(residual)) / g, 0.0) if g > 0 else 0.0
+    if not np.isfinite(amplitude):
+        return None
+
+    rlo, rhi = float(x[0]), float(x[-1])
+    if render_range is not None:
+        want_lo = max(float(render_range[0]), rlo)
+        want_hi = min(float(render_range[1]), rhi)
+        if np.isfinite(want_lo) and np.isfinite(want_hi) and want_hi > want_lo:
+            rlo, rhi = want_lo, want_hi
+    x_fine = np.linspace(rlo, rhi, FIT_RENDER_SAMPLES)
+    y_fine = gaussian_with_linear_bg(
+        x_fine, amplitude, float(center), sigma, slope, intercept,
+    )
+    return GaussianFit(
+        x=x_fine, y=y_fine,
+        amplitude=amplitude, center=float(center), sigma=sigma,
+        slope=slope, intercept=intercept,
     )
 
 

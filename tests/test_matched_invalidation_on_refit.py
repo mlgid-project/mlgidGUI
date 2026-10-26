@@ -243,3 +243,161 @@ def test_run_matching_does_not_touch_matched(tmp_path, monkeypatch):
     # run_matching's own write would replace matched_*; here we
     # stubbed it out, so the seeded rows should be untouched.
     assert _matched_row_count(path, "entry_0000", 0) == 3
+
+
+# -- matched peak_list kinds around a matching run --------------------------
+
+
+_FIT_DTYPE = np.dtype([
+    ("amplitude", "f4"), ("angle", "f4"), ("angle_width", "f4"),
+    ("radius", "f4"), ("radius_width", "f4"), ("q_z", "f4"), ("q_xy", "f4"),
+    ("is_ring", "bool"), ("id", "i4"),
+])
+_MATCHED_DTYPE = np.dtype([
+    ("CIF", "S64"), ("h", "i4"), ("k", "i4"), ("l", "i4"),
+    ("probability", "f4"), ("peak_list", h5py.vlen_dtype(np.int32)),
+])
+
+
+def _matched_rows(plists, cif=b"A"):
+    rows = np.empty(len(plists), dtype=_MATCHED_DTYPE)
+    for i, plist in enumerate(plists):
+        rows["CIF"][i], rows["h"][i], rows["k"][i], rows["l"][i] = cif, i, 0, 0
+        rows["probability"][i] = 0.5
+        rows["peak_list"][i] = np.asarray(plist, dtype=np.int32)
+    return rows
+
+
+def _seed_fitted_with_old_rings(path: Path) -> Path:
+    """One frame, fitted ids [5, 2, 9, 7], and an OLD positional, unstamped
+    ``matched_rings_0000`` (positions 0 and 3 = ids 5 and 7)."""
+    with h5py.File(path, "w", track_order=True) as f:
+        d = f.create_group("entry_0000/data", track_order=True)
+        d.attrs["signal"] = "img_gid_q"
+        d.create_dataset("img_gid_q", data=np.zeros((1, 8, 8), np.float32))
+        d.create_dataset("q_xy", data=np.linspace(-1, 1, 8, dtype=np.float32))
+        d.create_dataset("q_z", data=np.linspace(0, 1, 8, dtype=np.float32))
+        g = d.create_group("analysis/frame00000", track_order=True)
+        fit = np.zeros(4, dtype=_FIT_DTYPE)
+        fit["id"] = [5, 2, 9, 7]
+        g.create_dataset("fitted_peaks", data=fit)
+        g.create_dataset("matched_rings_0000", data=_matched_rows([[0, 3]]))
+    return path
+
+
+def _group(path: Path):
+    return h5py.File(path, "r")
+
+
+def _install_matching_stub(monkeypatch, writes):
+    """Stand in for mlgidbase's run_matching: ``writes`` is a list of
+    ``(dataset name, plists)`` it creates (fresh, so unstamped) on frame 0,
+    the way pygid's saver does."""
+    mlgidbase = pytest.importorskip("mlgidbase")
+
+    class _StubAnalysis:
+        def __init__(self, filename):
+            self.filename = filename
+
+        def run_matching(self, **kwargs):
+            with h5py.File(self.filename, "r+") as f:
+                g = f["entry_0000/data/analysis/frame00000"]
+                for name, plists in writes:
+                    if name in g:
+                        del g[name]
+                    g.create_dataset(name, data=_matched_rows(plists))
+
+    monkeypatch.setattr(mlgidbase, "mlgidBASE", _StubAnalysis)
+
+
+def test_run_matching_stamps_new_datasets_and_migrates_old_ones(
+    tmp_path, monkeypatch,
+):
+    """A segments run next to old positional rings: the new segments
+    (ids, as mlgidbase 0.1.11 writes them) get the id stamp unchanged,
+    and the old rings are translated to ids BEFORE the run so the stamp
+    cannot mislabel them."""
+    path = _seed_fitted_with_old_rings(tmp_path / "match_stamp.h5")
+    _install_matching_stub(monkeypatch, [("matched_segments_0000", [[9, 2]])])
+    monkeypatch.setattr(
+        "mlgidlab.pipeline.backend_peak_list_kind", lambda: "id",
+    )
+    execute(path, PipelineCommand(
+        "run_matching", {"entry": "entry_0000", "frame_num": 0},
+    ))
+    with _group(path) as f:
+        g = f["entry_0000/data/analysis/frame00000"]
+        seg, rings = g["matched_segments_0000"], g["matched_rings_0000"]
+        assert seg.attrs["peak_list_kind"] == "id"
+        assert [int(v) for v in seg[()]["peak_list"][0]] == [9, 2]
+        assert rings.attrs["peak_list_kind"] == "id"
+        assert [int(v) for v in rings[()]["peak_list"][0]] == [5, 7]
+
+
+def test_run_matching_that_finds_nothing_still_stamps_the_old_data(
+    tmp_path, monkeypatch,
+):
+    path = _seed_fitted_with_old_rings(tmp_path / "match_nothing.h5")
+    _install_matching_stub(monkeypatch, [])
+    monkeypatch.setattr(
+        "mlgidlab.pipeline.backend_peak_list_kind", lambda: "id",
+    )
+    execute(path, PipelineCommand("run_matching", {"entry": "entry_0000"}))
+    with _group(path) as f:
+        rings = f["entry_0000/data/analysis/frame00000/matched_rings_0000"]
+        assert rings.attrs["peak_list_kind"] == "id"
+        assert [int(v) for v in rings[()]["peak_list"][0]] == [5, 7]
+
+
+def test_run_matching_with_an_older_backend_stamps_positions(
+    tmp_path, monkeypatch,
+):
+    path = _seed_fitted_with_old_rings(tmp_path / "match_old_backend.h5")
+    _install_matching_stub(monkeypatch, [("matched_segments_0000", [[0, 1]])])
+    monkeypatch.setattr(
+        "mlgidlab.pipeline.backend_peak_list_kind", lambda: "position",
+    )
+    execute(path, PipelineCommand("run_matching", {"entry": "entry_0000"}))
+    with _group(path) as f:
+        g = f["entry_0000/data/analysis/frame00000"]
+        assert g["matched_segments_0000"].attrs["peak_list_kind"] == "position"
+        # The old dataset is left exactly as it was; the reader decides.
+        assert [int(v) for v in g["matched_rings_0000"][()]["peak_list"][0]] == [0, 3]
+
+
+def test_backend_peak_list_kind_follows_the_installed_mlgidbase(monkeypatch):
+    from importlib import metadata
+
+    from mlgidlab.pipeline import backend_peak_list_kind
+
+    real = metadata.version
+    for installed, expected in (
+        ("0.1.8", "position"), ("0.1.10", "position"),
+        ("0.1.11", "id"), ("0.2.0", "id"), ("0.1.12.dev3", "id"),
+    ):
+        monkeypatch.setattr(
+            metadata, "version",
+            lambda name, _v=installed: _v if name == "mlgidbase" else real(name),
+        )
+        assert backend_peak_list_kind() == expected, installed
+
+
+def test_run_fitting_also_drops_the_saved_tracking_table(tmp_path, monkeypatch):
+    """A tracking table describes the fits a refit replaces."""
+    mlgidbase = pytest.importorskip("mlgidbase")
+
+    class _StubAnalysis:
+        def __init__(self, filename):
+            pass
+
+        def run_fitting(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(mlgidbase, "mlgidBASE", _StubAnalysis)
+    path = _seed_file_with_matched(tmp_path / "fit_clears_tracks.h5")
+    with h5py.File(path, "r+") as f:
+        g = f.require_group("entry_0000/data/analysis/general")
+        g.create_dataset("tracked_peaks", data=np.zeros(1))
+    execute(path, PipelineCommand("run_fitting", {"entry": "entry_0000"}))
+    with h5py.File(path, "r") as f:
+        assert "general" not in f["entry_0000/data/analysis"]

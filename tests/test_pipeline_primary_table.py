@@ -335,29 +335,13 @@ def test_only_a_redirected_fitted_table_answers_the_invalidation_question():
     assert peak_lists.redirects_dataset(None, "fitted_peaks") is False
 
 
-def test_the_rekey_pass_follows_the_tables_the_run_used():
+def test_post_run_passes_follow_the_tables_the_run_used():
     plan = peak_lists.swap_plan(
         "run_fitting", _specs(detected=True, fitted=True)
     )
     assert peak_lists.swapped_name(plan, "detected_peaks") == DET
     assert peak_lists.swapped_name(plan, "fitted_peaks") == FIT
     assert peak_lists.swapped_name(None, "fitted_peaks") == "fitted_peaks"
-
-
-def test_rekey_can_work_on_the_custom_pair(synthetic_nexus_with_peaks):
-    path = synthetic_nexus_with_peaks
-    _seed(path, DET, 3, first_id=900)
-    _seed(path, FIT, 3, first_id=0)
-    standard_fitted_before = _read(path, "fitted_peaks")
-
-    changed = file_model.rekey_fitted_ids_to_detected(
-        path, ENTRY, frame=0,
-        detected_dataset=DET, fitted_dataset=FIT,
-    )
-
-    assert changed == 1
-    assert list(_rows(path, FIT)["id"]) == [900, 901, 902]
-    assert _read(path, "fitted_peaks") == standard_fitted_before
 
 
 # --- the registry -----------------------------------------------------

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mlgidLAB v0.1.0a20 — manual test plan</title>
+<title>mlgidLAB v0.1.0a21 — manual test plan</title>
 <style>
   :root { --fg:#1b1b1b; --muted:#666; --line:#ddd; --accent:#1763b6; --warn:#b35a00; --pass:#1a7f37; --fail:#c0392b; }
   * { box-sizing: border-box; }
@@ -59,7 +59,7 @@
   <span class="count">Progress autosaves in this browser.</span>
 </div>
 
-<h1>mlgidLAB v0.1.0a20 — manual test plan</h1>
+<h1>mlgidLAB v0.1.0a21 — manual test plan</h1>
 <p class="sub">Mark each step <b>pass</b> or <b>fail</b> as you go (leave it
 blank if you didn't test it), and set an overall result per section. At
 the end, click <b>Copy results</b> and email the summary to me — it lists
@@ -71,7 +71,7 @@ every failed step by name. About 30-45 min for a full pass.</p>
   terminal output is the most useful thing to send me).
   <pre>conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a20"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a21"
 mlgidlab</pre>
   <b>The test files are hosted once</b> on the
   <a href="https://github.com/mlgid-project/mlgidLAB/releases/tag/v0.1.0a9">v0.1.0a9
@@ -81,7 +81,7 @@ mlgidlab</pre>
   <code>example/</code> folder sits alongside it — you don't need to hunt
   anything down. You're welcome to try your own files too, but nothing
   else is required. Full install detail:
-  <a href="https://github.com/mlgid-project/mlgidLAB/blob/v0.1.0a20/docs/getting_started.md">docs/getting_started.md</a>.
+  <a href="https://github.com/mlgid-project/mlgidLAB/blob/v0.1.0a21/docs/getting_started.md">docs/getting_started.md</a>.
 </div>
 
 <h2>Reference files (in <code>example/</code>)</h2>
@@ -143,6 +143,13 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c2_3"> File &rarr; Open recent lists the file</label></li>
     <li><label><input type="checkbox" id="c2_4"> Opening eiger4m_0000.h5 (raw) switches the right dock to Conversion</label></li>
     <li><label><input type="checkbox" id="c2_5"> Two files open; clicking between them in the tree switches the active session</label></li>
+    <li><label><input type="checkbox" id="c2_6"> On launch the right dock column shows Pipeline in front; bring Logs forward, then open or switch files: Logs stays in front (a raw file still brings Conversion forward, and going back to a converted file shows Pipeline)</label></li>
+    <li><label><input type="checkbox" id="c2_7"> Drag raw files into the window one at a time (HDF5 or TIFF): each new file adds a row to the Conversion panel's Selection list below the earlier ones, ticks you already set stay, and the viewer shows the file just dropped; dropping a file twice adds nothing</label></li>
+    <li><label><input type="checkbox" id="c2_8"> With three raw files open in the Conversion panel (tick one of them), select the middle one in the file browser and press Delete: only that file leaves the browser, the entry dropdown and the Selection list; the other two keep their rows and the tick, and the viewer shows a remaining file</label></li>
+    <li><label><input type="checkbox" id="c2_9"> Press Ctrl+W while the viewer shows one of the raw files: that file (and only that one) disappears from the file browser and the Selection list; close the last raw file and the Selection list empties and Convert turns off; dropping a raw file afterwards starts a fresh list, and dropping back a file you closed adds it again</label></li>
+    <li><label><input type="checkbox" id="c2_11"> In the file browser, click one row, then Shift-click another (a range) and Ctrl-click a third: all picked rows are highlighted and the viewer stays on the file it showed; press Delete: every picked file closes together (raw files leave Selection too) and the rest stay; Ctrl+A then Delete closes everything</label></li>
+    <li><label><input type="checkbox" id="c2_12"> Open two converted files, change something in one without saving, pick both in the file browser and press Delete: you are asked about the unsaved one; Cancel closes neither, Discard closes both</label></li>
+    <li><label><input type="checkbox" id="c2_10"> With a converted file in front and raw files open behind it, select a raw file's row in the file browser and press Delete: it leaves the browser; click one of the remaining raw rows so Conversion comes forward, and its Selection list matches the files still in the browser</label></li>
   </ul>
   <textarea id="n2" placeholder="Notes for area 2"></textarea>
 </div>
@@ -156,6 +163,7 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c3_3"> Colormap change, histogram levels, Log/linear contrast work</label></li>
     <li><label><input type="checkbox" id="c3_5"> Contrast sticks: drag the histogram slider, then add a peak / run the pipeline / scrub frames &mdash; the contrast stays put (does not snap back to default). Opening a file, switching entries, or toggling Log/linear re-auto-contrasts; Cartesian/Polar keeps it.</label></li>
     <li><label><input type="checkbox" id="c3_4"> Status bar shows file / entry / frame / live cursor readout</label></li>
+    <li><label><input type="checkbox" id="c3_6"> organic_labeled.h5 has one frame per entry: the Scan tracking tab and the strip's Track stage are gone and View &rarr; Scan tracking is greyed out; open MAPbI3_MAPbBr3_0001_scan0006.h5 (multi-frame) and both come back</label></li>
   </ul>
   <textarea id="n3" placeholder="Notes for area 3"></textarea>
 </div>
@@ -172,6 +180,7 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c4_5"> Open Manual overrides and enable both "Flip horizontally (fliplr)" and "Flip vertically (flipud)" so the converted polar image comes out in the correct orientation</label></li>
     <li><label><input type="checkbox" id="c4_3"> Convert runs; progress streams in Logs; converted file opens automatically</label></li>
     <li><label><input type="checkbox" id="c4_4"> Both output modes work; "Overwrite off" appends entries</label></li>
+    <li><label><input type="checkbox" id="c4_6"> Output sits right under Selection and starts open; with Directory left empty, Convert is enabled, the empty field names the raw file's folder, and the converted file lands there (Logs says where)</label></li>
   </ul>
   <textarea id="n4" placeholder="Notes for area 4"></textarea>
 </div>
@@ -201,6 +210,8 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c6_4"> A non-default run scope (all entries / a frame) works with per-entry log lines</label></li>
     <li><label><input type="checkbox" id="c6_5"> Window stays responsive during a run</label></li>
     <li><label><input type="checkbox" id="c6_6"> Detection &rarr; Model: on faster_rcnn the Score threshold, NMS IoU and (under Advanced) Class-aware NMS, both per-class NMS IoU, Ensemble and ONNX ensemble rows vanish with no stray gap; dino and (default) bring them back with the values you typed</label></li>
+    <li><label><input type="checkbox" id="c6_7"> Close the Pipeline dock, then press the small play button next to Detect on the workflow strip: the dock comes back in front and detection runs; with Settings &rarr; Settings&hellip; &rarr; Workflow strip unticked it runs without opening the dock</label></li>
+    <li><label><input type="checkbox" id="c6_8"> Expected pattern, user-specified orientation: typing 001 or -110 is accepted like 0 0 1 or -1 1 0; 0001 and 000 are refused with a message</label></li>
   </ul>
   <textarea id="n6" placeholder="Notes for area 6"></textarea>
 </div>
@@ -288,6 +299,10 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c13_1"> Cancel a Conversion or batch fit mid-run: app stays usable</label></li>
     <li><label><input type="checkbox" id="c13_2"> Large multi-frame file (MAPbI3…): scrubbing stays responsive, memory stays bounded</label></li>
     <li><label><input type="checkbox" id="c13_3"> Anything that crashes/freezes/shows a traceback is captured (see below)</label></li>
+    <li><label><input type="checkbox" id="c13_4"> After an in-app update (Help &rarr; Update now&hellip; or the banner's Update now), update_install.log in the log folder (see below) holds a started and a finished block for that run, and crash.log is there too</label></li>
+    <li><label><input type="checkbox" id="c13_5"> Start with a fresh settings profile (Linux: <code>XDG_CONFIG_HOME=$(mktemp -d) mlgidlab</code>): a box "mlgidLAB is becoming mlgidGUI" appears once, says nothing has to be done now, and OK closes it; start again with the same profile: it does not come back</label></li>
+    <li><label><input type="checkbox" id="c13_6"> Help &rarr; mlgidLAB is becoming mlgidGUI&hellip; shows the same box again; "More information" opens the releases page in the browser, OK does not</label></li>
+    <li><label><input type="checkbox" id="c13_7"> After an in-app update, answering Yes to the "Restart now?" prompt relaunches the app (it raised an error and stayed open before a21)</label></li>
   </ul>
   <textarea id="n13" placeholder="Notes for area 13"></textarea>
 </div>
@@ -312,8 +327,9 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
 </div>
 
 <h2>Collecting and sending logs</h2>
-<p>There is no log file on disk — logs live in the app and the terminal.
-Three ways to capture them, easiest first:</p>
+<p>Logs live in the app and the terminal; only crashes and in-app
+updates are also written to disk (the last item below).
+Ways to capture them, easiest first:</p>
 <ol>
   <li><b>Copy diagnostics (quickest):</b> <code>Help &rarr; Copy diagnostics</code>
       copies versions + active session + the last 50 log lines to your
@@ -324,6 +340,11 @@ Three ways to capture them, easiest first:</p>
   <li><b>Terminal output (crashes/freezes):</b> copy everything the
       terminal you launched <code>mlgidlab</code> from printed, especially
       any <code>Traceback (most recent call last)</code> block.</li>
+  <li><b>Crash and update logs:</b> attach <code>crash.log</code> and, after
+      an in-app update, <code>update_install.log</code> from the log folder:
+      <code>~/.local/state/mlgidlab</code> on Linux,
+      <code>%LOCALAPPDATA%\mlgidlab\Logs</code> on Windows,
+      <code>~/Library/Logs/mlgidlab</code> on macOS.</li>
 </ol>
 <p>Then click <b>Copy results to clipboard</b> above, paste it into an
 email together with the logs, and send to
@@ -441,7 +462,7 @@ email together with the logs, and send to
 
   document.getElementById("copyBtn").addEventListener("click", function () {
     var L = [];
-    L.push("mlgidLAB v0.1.0a20 — manual test results");
+    L.push("mlgidLAB v0.1.0a21 — manual test results");
     L.push("Name: " + (val("t_name") || "(none)"));
     L.push("OS: " + (val("t_os") || "(none)") +
            "   Python: " + (val("t_py") || "(none)"));

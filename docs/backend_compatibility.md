@@ -18,24 +18,24 @@ tests un-skip and run, not just the pure-h5py ones):
 
 | Package | Baseline version | Reached how |
 |-|-|-|
-| `mlgidbase` | 0.1.8 | declared in `[pipeline]` |
-| `pygid` | 0.2.17 | declared in `[pipeline]` |
-| `pygidfit` | 0.1.4 | declared in `[pipeline]` (GUI imports it directly) |
+| `mlgidbase` | 0.1.11 | declared in `[pipeline]` |
+| `pygid` | 0.2.20 | declared in `[pipeline]` |
+| `pygidfit` | 0.1.8 | declared in `[pipeline]` (GUI imports it directly) |
 | `mlgidmatch` | 0.1.3 | declared in `[pipeline]` (GUI imports it directly) |
 | `pygidsim` | 0.1.7 | declared in `[pipeline]` (GUI imports it directly) |
 | `mlgiddetect` | 0.2.8 | transitive via `mlgidbase` (GUI never imports it) |
-| `networkx` | any | declared in `[pipeline]` (mlgidbase needs it, doesn't declare it) |
+| `networkx` | any | declared in `[pipeline]` (pygidfit imports and declares it; mlgidbase 0.1.11 no longer imports it, so the line is a harmless leftover) |
 
 **Pinning policy — exact `==`, not floors.** Each in-house backend
 release can shift the detection/fitting/matching numerics or the
 on-disk schema, so a bump must be a deliberate, test-rechecked change
 rather than something pip picks up silently. The `[pipeline]` extra
 therefore pins every directly-imported backend to an exact version
-(the baseline above). `mlgidbase 0.1.8` pins `mlgiddetect==0.2.8`,
-`pygidfit==0.1.4` and `mlgidmatch==0.1.3` with `==` too, but takes
-`pygid` on a floor (`pygid>=0.2.17`) rather than an exact pin, which is
-why the GUI's own exact `pygid==0.2.17` matters: without it pip would
-follow that floor forward on its own. `pygidsim==0.1.7` is
+(the baseline above). `mlgidbase 0.1.11` pins `mlgiddetect==0.2.8` and
+`mlgidmatch==0.1.3` with `==`, but takes `pygid` (`>=0.2.20`) and
+`pygidfit` (`>=0.1.8`) on floors, which is why the GUI's own exact
+`pygid==0.2.20` and `pygidfit==0.1.8` matter: without them pip would
+follow those floors forward on its own. `pygidsim==0.1.7` is
 exact here for the same reason: `mlgidmatch` and `pygid` both take it
 on a floor. The GUI still declares `pygidfit`/`mlgidmatch`/`pygidsim`
 explicitly — rather than leaning on `mlgidbase`'s transitive closure —
@@ -57,6 +57,14 @@ exposed is handled at the source in `tests/conftest.py` (`gc.disable()`
 for the session) plus an idempotent `closeEvent`, not by pinning the
 GUI stack down — verified green with PySide6 6.11.1 + pyqtgraph 0.14.0
 on both Python 3.12 and 3.14.
+
+**One exclusion: PySide6 6.12.0 on Python 3.11.** That release loses one
+reference to `None` per void method call (`w.update()`, `w.setText(...)`)
+on 3.11, where `None` is not immortal, so the interpreter dies with
+`Fatal Python error: none_dealloc` once the count runs out; the suite
+aborted partway through on every 3.11 shard (exit code 134), on `main`
+as well. 3.12 and later are unaffected. `pyproject.toml` therefore
+excludes exactly that version on 3.11 and leaves later releases allowed.
 
 ## Step 1 — Is mlgidbase installable from your index?
 
@@ -190,33 +198,26 @@ these. Verbatim call sites are in the code; this is the contract.
   Regression tripwire: `test_imported_geometry_loads_through_pygid`
   plus the empirical fitting run recorded 2026-07-30.
 
-**Tracking memory routing** (`phase_tracking.estimate_tracking_memory`
-/ `track_peaks_blocked`)
-- `mlgidbase.peak_operations._track_peaks` builds a DENSE
-  all-against-all IoU matrix over the scan's total fitted-peak count
-  N (`calculate_iou_matrix(box_all, box_all)`), and as of mlgidbase
-  0.1.8 that call keeps eight (N, N) float64 arrays alive at once —
-  measured 64 bytes per peak pair. When `64 * N**2` exceeds
-  `TRACKING_DENSE_MEM_FRACTION` of `MemAvailable`, `pipeline.execute`
-  routes track_peaks to `phase_tracking.track_peaks_blocked` — a
-  GUI-side reimplementation pinned to upstream's exact semantics
-  (member order = numeric frames with missing `fitted_peaks` skipped,
-  inf `angle_width` clamped to 45, the IoU formula's `+1e-6` union
-  regularizer, `>=` threshold edges, strictly-greater `length` cut,
-  components ordered by smallest member index) that streams the IoU
-  in row blocks and uses scipy sparse connected components. The
-  kernel OOM-killed the app on a 602-frame / 43645-peak scan that
-  priced at ~122 GB; the blocked path tracks it in ~80 s / ~1.3 GB.
-  **On any mlgidbase bump: re-verify the pinned semantics AND
-  re-measure the factor** (`TRACKING_BYTES_PER_PEAK_PAIR`) — the
-  equivalence tests in `tests/test_blocked_tracking.py` compare
-  edge-for-edge against `calculate_iou_matrix` and
-  payload-for-payload against a real `track_peaks` run, so a
-  semantic drift upstream fails loudly there. The official
-  figure-export path (`_on_save_official_figures`) still runs the
-  dense upstream code and refuses on oversized scans. Candidate for
-  an upstream contribution: the same blocked+sparse approach inside
-  `mlgidbase.peak_operations` would fix every consumer.
+**Peak tracking** (`pipeline.execute` -> `phase_tracking`)
+- mlgidbase >= 0.1.11: `Analysis.track_peaks(entry, threshold, length,
+  window_size=None)` computes the IoU graph in bounded-memory row blocks
+  (scipy sparse connected components; this is the approach the GUI
+  carried itself from the 0.1.5 stack until the 0.1.11 bump, as
+  `track_peaks_blocked`), saves the table to
+  `<entry>/data/analysis/general/tracked_peaks` (+ metadata under
+  `<entry>/process/peak_tracking`) and returns it. `plot_tracked_peaks`
+  draws the saved table. The GUI reads the table via
+  `phase_tracking.payload_from_tracked_table` (fields `frame_list`,
+  `peak_list` = fitted ids). Older tables (`frames` / `peak_ids`, or
+  per-frame columns) are rejected with a named error.
+- **A `general` group under `analysis` is not a frame**, but pygid's
+  `fill_analysis_group` counts every group there when it numbers
+  appended frames (checked in 0.2.20). The GUI therefore deletes the
+  table and the then-empty group before an append-frames conversion
+  (`conversion._drop_stale_tracking`), and on a refit.
+- **On any mlgidbase bump:** re-run `tests/test_phase_tracking.py` and
+  `tests/test_blocked_tracking.py`; they run the real backend and
+  compare the payload with upstream's own return value.
 
 **`pygidsim.experiment.ExpParameters`** (`pipeline.py`)
 - `ExpParameters(q_xy_max=..., q_z_max=..., ai=..., en=...)` — `en` in
@@ -244,6 +245,26 @@ these. Verbatim call sites are in the code; this is the contract.
 - `matched_peaks` per-solution fields: `CIF, h, k, l, peak_list,
   probability` (`peak_list` recast to int32; rows deduped by max
   `probability`).
+- `matched_*` `peak_list` KIND. mlgidbase <= 0.1.10 stores row
+  POSITIONS into the frame's `fitted_peaks`; 0.1.11 stores the
+  `fitted_peaks['id']` VALUES. There is no marker in the file, and one
+  frame can hold both (rings and segments are replaced independently).
+  The GUI stamps each dataset it writes or migrates with the HDF5
+  attribute `peak_list_kind` (`"id"` / `"position"`;
+  `file_model.MATCHED_KIND_ATTR`). An unstamped dataset is classified
+  from its values (`classify_peak_list_kind`): values outside
+  `0..n-1` can only be ids, values that are no fitted id can only be
+  positions; when every value is valid both ways (always so when the
+  fitted ids are `0..n-1`, where the readings coincide) it takes the
+  majority kind of the frame's other datasets, else "position". The
+  reader (`read_matched_peaks`) translates to positions, so
+  `MatchedStructure.peak_list` stays positional for the viewer; a
+  fitted delete first puts the frame's datasets in id form
+  (`prepare_fitted_delete`) and then only drops ids
+  (`remap_matched_peak_lists`). `pipeline.execute` normalises the
+  scope's existing datasets before a `run_matching` and stamps what the
+  run wrote with the kind of the installed mlgidbase
+  (`backend_peak_list_kind`).
 
 ## Step 4 — Record the result
 
@@ -280,7 +301,9 @@ pip install --force-reinstall --no-deps project_repos/mlgidBASE
     declared** in mlgidbase's dependencies (upstream packaging gap).
     It is present in the GUI_project env; a fresh env needs
     `pip install networkx` until upstream declares it.
-  - Upstream `_track_peaks` **returns None** (docstring claims
+  - (Superseded by the 2026-10-22 entry: mlgidbase 0.1.11 saves a
+    table and the capture hook is gone.) Upstream `_track_peaks`
+    **returns None** (docstring claims
     otherwise); the GUI recovers the data via a capture hook on
     `mlgidbase.peak_operations._plot_tracked_peaks` (positional
     8-arg contract, validated at call time —
@@ -654,3 +677,100 @@ import (the CI profile).
   and revert the pin here and in `pyproject.toml`. The GUI-side
   error-message wrap is harmless against 0.1.4 (the `ValueError` it
   catches simply never arrives).
+
+### 2026-10-22 — mlgidbase 0.1.11, pygidfit 0.1.8, pygid 0.2.20
+
+The whole in-house set moved on 2026-10-21/22. `pip install --dry-run`
+of `mlgidbase==0.1.11 mlgiddetect==0.2.8 pygid==0.2.20 pygidfit==0.1.8
+mlgidmatch==0.1.3 pygidsim==0.1.7` resolves to exactly three changes
+(mlgidbase, pygid, pygidfit). `mlgidbase 0.1.11` requires
+`pygid>=0.2.20`, `pygidfit>=0.1.8`, `mlgiddetect==0.2.8`,
+`mlgidmatch==0.1.3`. Everything below was checked by diffing the
+unpacked wheels (0.1.8 -> 0.1.11, 0.1.4 -> 0.1.8, 0.2.17 -> 0.2.20),
+not taken from the upstream changelog alone. This entry is extended
+stage by stage as the GUI adapts; the status of each item is at the
+end.
+
+- **Fitted ids come from the detected ids (pygidfit 0.1.8).**
+  `ProcessDataFromFile.process_single_frame` now does
+  `img_container_fit.id = detected_peaks['id'][img_container_fit.id]`.
+  Before, `fitted_peaks['id']` was `0..N-1` by position. Fitted ids
+  therefore carry gaps whenever the detected ids do. Only the
+  pipeline path does this; `fit_data` (what `manual_fit.fit_one_peak`
+  calls) still returns box indices and the GUI assigns the id itself.
+  `file_model.rekey_fitted_ids_to_detected` becomes a no-op on files
+  fitted by 0.1.8.
+- **Polar-grid N-1 fix (pygidfit 0.1.8).** `boxes_preprocessing` and
+  `_data2container` use `polar_shape - 1`, matching the
+  `np.linspace(.., N)` grid. 2D fits are no longer biased low by
+  r/1024 and a/512. Fits stored by earlier versions stay biased until
+  refit.
+- **Hot-pixel mask (pygidfit 0.1.8, new default).** `fit_data(...,
+  hot_pixel_percentile=99.9)`; `fit_peak_cluster` and
+  `fit_peak_on_ring_cluster` set every ROI pixel above the ROI's own
+  99.9th percentile to NaN (ring-only clusters are not masked).
+  `mlgidbase` never passes the argument, so the pipeline and the
+  GUI's manual fit both get 99.9; `manual_fit` now passes it
+  explicitly so the parity cannot drift silently. Narrow peaks in small
+  ROIs lose their apex pixel to this.
+- **`_data2container` / `compute_qzqxy_with_error` lost their q-max
+  arguments and the clamp** (pygidfit 0.1.8). The GUI calls neither;
+  `fit_data` keeps `q_xy_max`/`q_z_max`.
+- **Matched `peak_list` holds fitted ids (mlgidbase 0.1.11).**
+  `solution2container(..., fitted_ids=)` translates positions through
+  `fitted_peaks['id']`. Files matched by 0.1.8 / 0.1.10 hold row
+  positions. Nothing on disk distinguishes the two, and one frame can
+  hold both, because 0.1.11 replaces `matched_rings_*` and
+  `matched_segments_*` independently (`_merge_matched_containers`).
+  The GUI therefore stamps a `peak_list_kind` attribute per dataset
+  (`file_model.MATCHED_KIND_ATTR`, see the Step 3 `matched_peaks` contract).
+- **`delete_peak` no longer renumbers; `add_peak` uses `max(id)+1`;
+  matched and tracked entries are dropped by id** (mlgidbase 0.1.11).
+  This is the convention the GUI already used.
+- **`track_peaks` is a different function.** 0.1.8:
+  `track_peaks(entry, threshold, length, axis, plot_params)` computed
+  and plotted. 0.1.11: `track_peaks(entry, threshold, length,
+  window_size=None)` computes with bounded memory (blocked IoU, scipy
+  connected components), saves the table to
+  `{entry}/data/analysis/general/tracked_peaks` (+ metadata under
+  `{entry}/process/peak_tracking`) and returns it; `get_tracked_peaks`
+  and `plot_tracked_peaks(entry, axis, ...)` are new. Table fields are
+  `id, CIF, h, k, l, frame_list, peak_list` (vlen int32; `peak_list` =
+  fitted ids; was `frames` / `peak_ids`, and per-frame columns in
+  0.1.10). The capture hook on `_plot_tracked_peaks` the GUI used is no
+  longer reached.
+- **`run_fitting` clustering defaults 10 -> 2** (distance peaks,
+  distance rings; `clustering_extend` stays 2). The GUI always sends
+  the panel value, whose default now follows the new 2/2.
+- **`mlgidmatch` results are merged per frame** (mlgidbase 0.1.11):
+  running 'rings' then 'segments' keeps both. In-memory matching passes
+  the q diagonal for both q maxima. `run_mlgidmatch_from_file` returns
+  `(solutions, fitted_ids)`; the GUI does not call it.
+- **pygid 0.2.20:** `plot_*` methods return the image object instead of
+  `(fig, ax)` (the GUI never uses them); `px_size` is read as a float
+  and falls back to the `detector_config` JSON; new
+  `_save_tracked_peaks_data`. A tracked table adds a `general` group
+  under `data/analysis`; pygid's `fill_analysis_group` counts every
+  group there as a frame (checked in the tracking stage).
+
+**Status of the items above, as adapted in this bump:**
+- Fitted ids = detected ids: verified with a real `run_fitting` on a
+  dataset with unordered, gapped detected ids (fitted and errors ids
+  came out equal to the detected ids, in order); the GUI's re-key pass
+  after a run was removed.
+- Matched `peak_list` kinds: per-dataset `peak_list_kind` stamp,
+  classified when absent, normalised to ids before a delete, a matching
+  run and a tracking run (Step 3 `matched_*` contract).
+- Tracking: `track_peaks(entry, threshold, length, window_size)` +
+  `payload_from_tracked_table`; the memory routing, the capture hook and
+  the amplitude recovery are gone; the table is dropped on refit and on
+  appending frames, and a fitted delete removes the id from it.
+  pygidfit 0.1.8 stores a ring with angle 45 (not NaN) and an infinite
+  width, so upstream links rings natively; the GUI still drops those
+  native ring components and tracks rings itself (radial IoU), so every
+  ring is one track (`test_rings_stored_the_0_1_8_way_yield_one_ring_track_beside_the_spots`).
+  Reported upstream earlier: ring tracking wants radial IoU for
+  `is_ring` rows, not an angle clamp.
+- Still open for the next stage: clustering defaults 2/2 in the panel,
+  the explicit `hot_pixel_percentile` in the manual fit, and the
+  `(n-1)` neighbour-box scale.

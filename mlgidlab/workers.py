@@ -424,6 +424,33 @@ class EntryLoadWorker(QObject):
         self.raw_loaded.emit(request_id, raw_entry.label, stack)
 
 
+class TrackingLoadWorker(QObject):
+    """Build the Scan-tracking state from the table an entry carries in
+    the file, off the GUI thread.
+
+    Reading every frame's fitted and matched peaks to resolve a saved
+    table's members is per-scan I/O, which on a long scan (or a slow
+    share) must not run when an entry opens. Persistent, driven by a
+    queued ``load`` slot; each request carries a ``request_id`` and the
+    GUI drops results that a later request has superseded.
+    """
+
+    # request_id, entry, TrackingState | None, info dict
+    # (see ``phase_tracking.load_saved_tracking_state``)
+    loaded = Signal(int, str, object, object)
+
+    @Slot(str, str, int, bool)
+    def load(
+        self, file_path: str, entry: str, request_id: int, force: bool,
+    ) -> None:
+        from mlgidlab import phase_tracking  # lazy: h5py/scipy only when used
+
+        state, info = phase_tracking.load_saved_tracking_state(
+            Path(file_path), entry, force=bool(force),
+        )
+        self.loaded.emit(request_id, entry, state, info)
+
+
 class _SignalLogHandler(logging.Handler):
     """Forwards log records to a Qt signal for cross-thread display."""
 

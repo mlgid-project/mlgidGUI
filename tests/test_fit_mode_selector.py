@@ -268,3 +268,153 @@ def test_preview_cleared_when_selection_is_not_candidate(main_window, monkeypatc
     assert cr is None and wr is None and ca is None and wa is None
 
 
+
+
+# -- The live 2D preview runs off the GUI thread ------------------------
+#
+# A pygidfit preview fit can take tens of seconds for a peak in a badly
+# conditioned peak-on-ring cluster. It runs on ``PreviewFitRunner`` so
+# selecting such a peak (by click, by T, by Down / Up) never blocks.
+
+
+def _runner_wait(qtbot, runner, timeout=5000):
+    qtbot.waitUntil(lambda: runner.pending_count() == 0, timeout=timeout)
+
+
+def test_runner_delivers_a_result_and_skips_unwanted_jobs(qtbot):
+    import threading
+    from mlgidlab.preview_fit import PreviewFitRunner
+
+    runner = PreviewFitRunner()
+    got = []
+    runner.done.connect(lambda k, r, e, ran: got.append((k, r, e, ran)))
+    gate = threading.Event()
+    runner.want({"a", "c"})                      # "b" is not wanted
+    runner.submit("a", lambda: (gate.wait(5) and "ra", None))
+    runner.submit("b", lambda: ("rb", None))
+    runner.submit("c", lambda: ("rc", None))
+    assert runner.pending_count() == 3
+    gate.set()
+    qtbot.waitUntil(lambda: len(got) == 3, timeout=5000)
+    assert got == [
+        ("a", "ra", None, True),
+        ("b", None, None, False),                # skipped, not run
+        ("c", "rc", None, True),                 # jobs run in order
+    ]
+    for k, *_ in got:
+        runner.forget(k)
+    assert runner.pending_count() == 0
+    runner.shutdown()
+
+
+def test_runner_reports_a_job_that_raises(qtbot):
+    from mlgidlab.preview_fit import PreviewFitRunner
+
+    runner = PreviewFitRunner()
+    got = []
+    runner.done.connect(lambda k, r, e, ran: got.append((k, r, e, ran)))
+    runner.want({"x"})
+
+    def boom():
+        raise ValueError("no")
+
+    runner.submit("x", boom)
+    qtbot.waitUntil(lambda: len(got) == 1, timeout=5000)
+    assert got[0][1] is None and "ValueError" in got[0][2] and got[0][3]
+    runner.shutdown()
+
+
+@pytest.mark.gui
+def test_selecting_a_slow_peak_does_not_block_and_fills_in_later(
+    main_window, synthetic_nexus_with_peaks, qtbot, monkeypatch,
+):
+    import threading
+    import time
+    from types import SimpleNamespace
+    from mlgidlab.session import NexusSession
+
+    w = main_window
+    w._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
+    qtbot.wait(300)
+    gate = threading.Event()
+    fit = SimpleNamespace(
+        radius=2.0, radius_width=0.2, angle=45.0, angle_width=5.0,
+        amplitude=1.0, theta=0.0, A=1.0, B=0.0, C=1.0,
+    )
+
+    def prepare(sel, entry, frame):
+        return (lambda: (gate.wait(10) and fit, None)), None
+
+    monkeypatch.setattr(w, "_prepare_pygidfit_fit", prepare)
+    det = (w.viewer._frame_peaks.get(0) or {})["detected"]
+    sel = w.viewer._row_selection("detected", det, 1, 0)
+
+    t0 = time.time()
+    w.viewer._set_selected(sel)                  # the fit is gated shut
+    assert time.time() - t0 < 1.0                # selecting returned at once
+    assert w._preview_runner.pending_count() == 1
+    assert "2D preview" in w.statusBar().currentMessage()
+    assert w._current_pygidfit_box_for_selection(w.viewer.selected_peak) is None
+
+    gate.set()                                    # the fit finishes
+    _runner_wait(qtbot, w._preview_runner)
+    box = w._current_pygidfit_box_for_selection(w.viewer.selected_peak)
+    assert box == pytest.approx((2.0, 0.2, 45.0, 5.0))
+    assert "2D preview" not in w.statusBar().currentMessage()
+
+
+@pytest.mark.gui
+def test_a_result_for_a_peak_no_longer_selected_is_cached_not_painted(
+    main_window, synthetic_nexus_with_peaks, qtbot, monkeypatch,
+):
+    import threading
+    from types import SimpleNamespace
+    from mlgidlab.session import NexusSession
+
+    w = main_window
+    w._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
+    qtbot.wait(300)
+    gate = threading.Event()
+    fit = SimpleNamespace(
+        radius=9.0, radius_width=0.9, angle=9.0, angle_width=9.0,
+        amplitude=1.0, theta=0.0, A=1.0, B=0.0, C=1.0,
+    )
+    monkeypatch.setattr(
+        w, "_prepare_pygidfit_fit",
+        lambda sel, entry, frame: ((lambda: (gate.wait(10) and fit, None)), None),
+    )
+    painted = []
+    monkeypatch.setattr(w, "_repaint_fitted_preview", lambda: painted.append(1))
+    det = (w.viewer._frame_peaks.get(0) or {})["detected"]
+    w.viewer._set_selected(w.viewer._row_selection("detected", det, 0, 0))
+    first_key = next(iter(w._preview_runner._pending))
+    w.viewer._set_selected(None)                  # selection moved on
+    painted.clear()
+    gate.set()
+    _runner_wait(qtbot, w._preview_runner)
+    assert w._2d_preview_cache[first_key] is fit  # kept for a re-selection
+    assert painted == []                          # but not painted
+
+
+@pytest.mark.gui
+def test_closing_the_window_does_not_wait_for_a_running_fit(
+    main_window, synthetic_nexus_with_peaks, qtbot, monkeypatch,
+):
+    import threading
+    import time
+    from mlgidlab.session import NexusSession
+
+    w = main_window
+    w._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
+    qtbot.wait(300)
+    never = threading.Event()
+    monkeypatch.setattr(
+        w, "_prepare_pygidfit_fit",
+        lambda sel, entry, frame: ((lambda: (never.wait(30), None)), None),
+    )
+    det = (w.viewer._frame_peaks.get(0) or {})["detected"]
+    w.viewer._set_selected(w.viewer._row_selection("detected", det, 0, 0))
+    t0 = time.time()
+    w._preview_runner.shutdown()
+    assert time.time() - t0 < 1.0
+    never.set()

@@ -4,6 +4,270 @@ All notable changes to mlgidLAB are recorded here. Versions follow
 [PEP 440](https://peps.python.org/pep-0440/); `aN` suffixes are alpha
 pre-releases.
 
+## 0.1.0a21 — twenty-first alpha (2026-10-26)
+
+### Added
+
+- **mlgidLAB is becoming mlgidGUI.** The app will be renamed mlgidGUI
+  with release 1.0.0. You do not have to do anything now. This release
+  prepares the move: a one-time notice explains it (also under **Help →
+  mlgidLAB is becoming mlgidGUI…**), and when 1.0.0 is published the
+  **Update now** button moves the environment instead of upgrading it. It
+  installs mlgidGUI from PyPI first and removes mlgidLAB only once that
+  worked, so a failed install leaves mlgidLAB as it was. The package and
+  command are then called `mlgidgui`; scripts that `import mlgidlab` have
+  to be changed, there is no compatibility layer. Your data files keep
+  working. Until a 1.0.0 release exists nothing changes in how updating
+  behaves. Installs older than this release cannot move themselves:
+  update to this release first.
+- **Crash and update logs that survive a reboot.** The crash log moved
+  out of the system temp folder, which a reboot empties, into a
+  per-user log folder: `~/.local/state/mlgidlab` on Linux,
+  `%LOCALAPPDATA%\mlgidlab\Logs` on Windows and `~/Library/Logs/mlgidlab`
+  on macOS. It is called `crash.log` and starts a fresh file past 1 MiB.
+  Installing an update from inside the app now writes
+  `update_install.log` in the same folder: the mlgidLAB and Python
+  versions, the platform and the pip command before pip starts, and
+  pip's full output and return code after it. The "Update failed" dialog
+  names that file.
+- **The workflow strip's play button opens its dock.** Pressing the
+  small play button next to a stage now also brings the dock that owns
+  the stage forward, so the run's settings and progress are in view.
+  Settings has a new **Workflow strip** group to turn this off.
+- **Ctrl+Return runs Add to fitted.** With one manual or detected peak
+  selected, Ctrl+Return (or the keypad Ctrl+Enter) does what the Add to
+  fitted button does, with the current fit mode. It is a chord because
+  it writes to the file. With nothing selected, a fitted or matched
+  peak, several peaks, no file or a running step, nothing is written
+  and the status bar says why. Use Fit selected (2D) for several peaks.
+- **Down and Up step through the peaks.** With one detected or fitted
+  peak selected, Down selects the next peak of the same kind on the
+  frame and Up the previous one, by id (a gap left by a deleted peak is
+  skipped, and fitted peaks hidden by the tracked-peaks filter are
+  passed over). The view zooms exactly as after a click. At the first or
+  last peak nothing happens, and so with no selection or several peaks
+  selected. Spin boxes, combo boxes, sliders, lists, tables and text
+  fields keep Up and Down for themselves.
+- **`T` switches between a detected peak and its fitted peak.** With a
+  detected peak selected, `T` selects the fitted peak with the same id,
+  and the other way round (also in Edit, Switch detected / fitted). With
+  several peaks selected, every one that has a partner is switched and
+  the rest are dropped from the selection. Pairing is by id, so it needs
+  the peak link in Settings; with the link off, or with no partner, the
+  selection stays and the status bar says why.
+
+- **Edit > Add detected boxes for fitted peaks.** Older datasets can
+  hold fitted peaks that no detected peak produced. This adds, on every
+  frame of the active entry, one detected box for each fitted peak that
+  has no detected peak with the same id, so each fitted peak has a
+  partner afterwards. The new box has the fitted box's position and
+  size, so it lies exactly over it; a fitted ring (infinite angular
+  width) gets a ring box spanning the entry's angular range instead. The
+  score follows the fitted peak's visibility (3, 2, 1 become 1.0, 0.5,
+  0.1; a peak with no visibility gets 1.0); everything else a detection
+  does not know stays zero. A fitted peak with no usable radius is
+  skipped and counted in the status bar. One Ctrl+Z removes the whole
+  batch.
+
+### Changed
+
+- **Matched peaks read the new mlgidbase 0.1.11 format and still read
+  the old one.** mlgidbase 0.1.11 stores fitted peak ids in each matched
+  structure's `peak_list`; earlier versions stored row positions, and a
+  file can hold both. The viewer, the simulation overlay, tracking and
+  the CSV export now work out which one each matched dataset holds (a
+  `peak_list_kind` attribute that mlgidLAB writes, or the stored values
+  when there is none) and show the right peaks, including after ids have
+  gaps. Deleting a fitted peak now just drops its id from the matched
+  structures instead of shifting numbers, and the first delete or
+  matching run converts an older dataset in place. Files matched by an
+  older version open exactly as before.
+- **Deleting a matched peak only touches the matched structures.** The
+  Delete button on a matched peak used to run mlgidbase's delete, which
+  also removed the detected and fitted peaks with that id although the
+  dialog said it left them alone. It now takes the peak out of the
+  matched structures on the frame and nothing else, and Ctrl+Z puts it
+  back.
+- **A fitted delete takes the fit errors with it.** The errors table
+  (`fitted_peaks_errors`) is paired with the fitted peaks by id. Deleting
+  a fit now removes its errors row too and undo restores it, so the
+  table no longer keeps a row for a peak that is gone or hands those
+  errors to a later peak that reuses the id. The fitted CSV export
+  pairs the error columns by id as well.
+- **Fitting runs keep the detected ids.** With pygidfit 0.1.8 a run
+  writes each fit under the id of its detected peak, so the pairing no
+  longer needs the re-key pass that followed every run. The pass is gone.
+- **Peak tracking runs through mlgidbase 0.1.11 and works at any scan
+  size.** The tracking itself is upstream's now (it no longer builds an
+  all-against-all matrix, so the memory check and the GUI's own blocked
+  tracker are gone) and the exact peak ids come straight from the table
+  it saves, instead of being matched back from coordinates. The result
+  is the same tracks as before. The table is saved in the file under
+  the entry's analysis group; a refit or appending frames removes it, and
+  deleting a fitted peak takes the peak out of it.
+- **Max frame gap.** The scan-tracking panel has a new control that
+  stops two peaks being linked when they are more than that many frames
+  apart, however much their boxes overlap (off by default). Useful on
+  long scans where a peak position comes back later.
+- **Save official figures writes mlgidbase's tracking figure.** It reruns
+  the tracking with the panel's settings and saves one figure with the
+  q_xy-q_z map beside the chosen axis against frame number, to exactly
+  the file you pick. The amplitude axis does not exist upstream and is
+  drawn as radius.
+- **Tracks saved in the file show up when the entry opens.** A tracking
+  table saved by mlgidbase 0.1.11 (or by an earlier mlgidLAB session) is
+  now read when you open the file or switch entries, so the Scan-tracking
+  panel, the phase views and the structure column fill in without running
+  tracking again. IoU, minimum members and the frame gap are set to the
+  values the table was made with, and a line under the status says where
+  the tracks came from. It works without the pipeline backend installed.
+  A table that no longer matches the fitted peaks is not loaded on its
+  own: the panel says how many members are gone and offers **Load saved
+  tracks**. A table from before mlgidbase 0.1.11 is named but not read.
+- **Track edits are saved to the file.** Deleting a track and
+  Interpolate track now also rewrite the tracking table saved in the
+  entry, so the file matches what the Scan-tracking panel shows and the
+  edit survives Save and reopening. Tracks are renumbered the way
+  mlgidbase numbers them and the phase columns are filled by its own
+  rule. A new Track peaks run also replaces the table in the working file
+  with the result as shown (the GUI's ring tracks included), so Save keeps
+  what you see. Loading a table never changes the file; only a run or an
+  edit does. A track cannot be deleted while a pipeline step is running.
+- **Fitting starts from mlgidbase's new clustering defaults.** The
+  Fitting form's "Cluster dist (peaks)" and "(rings)" now start at 2 (they
+  were 10), as in mlgidbase 0.1.11, so an unedited form fits like a bare
+  `run_fitting()`. Peaks are grouped into a joint fit less eagerly than
+  before; set 10 to get the old behaviour. The 2D fit of a single peak,
+  the fits of injected boxes and the profile neighbour mask follow the
+  form's value (the mask used a fixed 10 before).
+- **The manual 2D fit stays identical to the pipeline fit on pygidfit
+  0.1.8.** pygidfit now ignores each peak region's brightest pixels
+  (above the 99.9th percentile of the region) when it fits, in both the
+  pipeline and the single-peak fit; the single-peak fit passes the value
+  explicitly so the two cannot drift apart. The neighbour-box helper
+  uses pygidfit's corrected pixel scale.
+- **Boxes are drawn in full.** A detected, fitted or manual box whose
+  angular width reaches past the image edge (below 0 degrees, say) used
+  to be cut off at the edge. It is now drawn from its position and
+  angular width, however far that reaches. Rings, which have no finite
+  width, still span the image.
+- **The live 2D preview no longer freezes the window.** Selecting a
+  detected or manual peak starts a pygidfit fit to preview what Add to
+  fitted would save. That fit ran on the main thread, and for a peak in
+  a badly conditioned peak-on-ring cluster it took tens of seconds
+  (38 s for one peak in the validation set), during which the window did
+  not respond, for example after pressing T onto it. The fit now runs
+  in the background: selecting returns at once, the status bar says the
+  preview is being fitted, and the cyan box and the parameter readout
+  fill in when it finishes. Moving to another peak skips fits that have
+  not started. A fit already running cannot be stopped, but closing the
+  window does not wait for it.
+- **Add to fitted (2D) no longer freezes the window either.** Clicking
+  it (or Ctrl+Return) after selecting a slow peak started a second fit
+  on the main thread beside the preview's, so the window froze for the
+  length of both. The click now returns at once, the button greys out
+  and the status bar says the peak is being fitted; the row is written
+  when the fit lands. It reuses the preview's result when the same fit
+  is already done, or waits for the preview fit that is running, so the
+  peak is fitted once. A result is only reused if the peak, the Pipeline
+  panel's fit settings and the neighbouring peaks are unchanged. If you
+  move to another peak meanwhile, the row is still written but your
+  selection stays where it is; if the file or entry changed, nothing is
+  written and the log says so. The batch fit and quick select still fit
+  directly.
+- **A 2D fit with an infinite angular width is stored as a ring.**
+  pygidfit reports a ring as an infinite angular width, but the row was
+  saved as a segment unless Save fitted as ring was ticked. Add to
+  fitted (2D), Fit selected (2D) and the pipeline Run fitting now type
+  such a fit as a ring and store the usual ring angle of 45 degrees (the
+  fit gives none). Fits with a finite width are unchanged, and so are
+  tracking gap-fill fits.
+- **Selecting a ring zooms back out.** Selecting a ring with a click or
+  from the Peaks table now returns the image to the full view, the same
+  as Reset zoom, instead of leaving it zoomed in on the box you had
+  selected before. It follows the same Settings switch as zooming in on
+  a box.
+- **Pipeline is in front at startup.** The right-hand dock column opens
+  on Pipeline instead of Display, and whichever tab you bring forward
+  stays in front when you open, switch or close files.
+- **No Scan tracking for single-frame data.** Tracking follows peaks
+  across frames, so for a converted file whose entry has a single frame
+  the Scan tracking dock and the strip's Track stage are hidden, and
+  View menu's Scan tracking entry is greyed out. They come back when a
+  multi-frame entry is shown, unless you had closed the dock yourself.
+- **Miller indices without spaces.** The Expected pattern orientation
+  field accepts three single digits written together, such as `001`,
+  `-110` or `1-10`, as well as the spaced forms.
+- **Conversion: Output moved up, and the directory is optional.** The
+  Output section now sits right under Selection and starts open. Leave
+  the directory empty to write next to the raw data, in the folder of
+  the first checked raw file; the empty field shows which folder that
+  is, and the Logs dock says where the files went. If that folder is not
+  writable, Convert asks you to choose a directory. With raw files from
+  several folders, all outputs go to the first file's folder.
+- **The profile curve for a saved peak is the fit you made.** Selecting
+  a fitted or matched peak used to draw a fresh Gaussian fitted to the
+  profile, so the curve followed the data and could hide a bad stored
+  value. It now draws the stored row as saved: the stored centre and
+  width (`radius`, `radius_width`, `angle`, `angle_width`), for 1D and
+  2D fits alike. A stored value that does not match the data now shows
+  as a curve off the profile peak. Only the curve's height and
+  background are read from the profile, because the profile is an
+  average over the other axis. Manual and detected peaks keep the live
+  fit, which previews what Add-to-fitted would save. A fitted ring
+  shows its radial curve only.
+- **A saved peak's profile no longer depends on the box it came from.**
+  The profiles of a fitted or matched peak averaged over only the
+  central ±σ of the other axis, so the peak height changed when you
+  clicked from the detected box to the fitted peak made from it. They
+  now average over the stored centre ± the full stored width (±2σ).
+  Manual and detected peaks are unchanged.
+
+### Fixed
+
+- **In-app updates can replace the launcher on Windows.** Started from
+  `Scripts\mlgidlab.exe`, the app kept that exe open for as long as it ran
+  (Python puts the launcher on its import path, and the package-metadata
+  lookups the app and its dependencies make at startup keep such an
+  archive open). Windows refuses to rename or delete an open file, so the
+  update's step that moves the launcher aside never worked and pip failed
+  with `[WinError 32]`. The app now takes the launcher off its import path
+  at startup and releases any handle before an update. Found by running the
+  updater against a live app on a Windows runner.
+- **"Restart now" after an in-app update works again.** Since the
+  a16 source split, answering Yes to the restart prompt that follows
+  an update raised a `NameError` (`sys` was not imported in the update
+  code) and the app never relaunched. It now relaunches. The test that
+  covered the prompt expected any exception, so it hid the error.
+- **Closed raw files leave the Selection list.** Closing a raw file
+  (Ctrl+W, or Delete on its row in the file browser) used to leave it in
+  the Conversion panel's Selection list, with Convert still enabled,
+  until the next raw load. Closing now removes exactly that file from
+  the file browser, the entry dropdown and the Selection list; the other
+  raw files stay open with their ticks. Ctrl+W closes the file the viewer
+  is showing, and closing the last raw file closes the raw batch and
+  empties the list.
+- **Select several files in the file browser and close them together.**
+  Shift-click, Ctrl-click and Ctrl+A now pick several rows, and Delete
+  closes every selected file, raw or converted. Converted files with
+  unsaved changes are asked about first, and Cancel closes nothing.
+  Picking several rows leaves the viewer where it is.
+- **Python 3.11 installs no longer pick PySide6 6.12.0.** That release
+  drops a reference to `None` on every Qt method call that returns
+  nothing, and Python 3.11 then aborts the whole process with
+  `Fatal Python error: none_dealloc` after enough calls. Python 3.12 and
+  later are unaffected. The dependency now excludes exactly that version
+  on 3.11, so a fresh install resolves to 6.11.2 there; later releases
+  are allowed again. If you installed on Python 3.11 in the last few
+  days and the app closed by itself, `pip install "PySide6!=6.12.0"`
+  fixes it.
+- **Raw files dropped one at a time all appear in Selection.** Each drop
+  used to start its own raw batch, so the Conversion panel's Selection
+  list showed only the newest file. A raw file dropped or opened while a
+  raw batch exists now joins that batch: the Selection list gains a row
+  below the ones already there, with your ticks kept, and the viewer
+  shows the new file. A file already in the batch is skipped.
+
 ## 0.1.0a20 — twentieth alpha (2026-10-07)
 
 Two independent pieces of work. Detection becomes configurable from the

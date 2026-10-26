@@ -47,6 +47,11 @@ from PySide6.QtWidgets import (
 from mlgidlab import file_dialogs
 from mlgidlab.detection_config import build_config_detect, flatten_defaults
 from mlgidlab.frame_range import parse_frame_range
+from mlgidlab.manual_fit import (
+    DEFAULT_CLUSTERING_DISTANCE_PEAKS,
+    DEFAULT_CLUSTERING_DISTANCE_RINGS,
+    DEFAULT_CLUSTERING_EXTEND,
+)
 from mlgidlab.pipeline import PipelineCommand, is_mlgidbase_available
 
 
@@ -742,7 +747,9 @@ class PipelinePanel(QWidget):
         form.addRow("Frames:", fit_frames_row)
 
         # Match mlgidbase defaults exactly so an unedited form yields the
-        # same behaviour as a bare ``analysis.run_fitting()`` call.
+        # same behaviour as a bare ``analysis.run_fitting()`` call (the
+        # clustering distances are 2 since mlgidbase 0.1.11, they were 10;
+        # the numbers live in ``manual_fit`` so every fallback agrees).
         self.fit_crit_angle = QDoubleSpinBox()
         self.fit_crit_angle.setDecimals(3)
         self.fit_crit_angle.setRange(0.0, 90.0)
@@ -760,9 +767,13 @@ class PipelinePanel(QWidget):
         self.fit_dist_peaks.setDecimals(2)
         self.fit_dist_peaks.setRange(0.0, 1000.0)
         self.fit_dist_peaks.setSingleStep(1.0)
-        self.fit_dist_peaks.setValue(10.0)
+        self.fit_dist_peaks.setValue(DEFAULT_CLUSTERING_DISTANCE_PEAKS)
         self.fit_dist_peaks.setToolTip(
-            "Distance threshold for peak clustering (px in detector frame)."
+            "Distance threshold for peak clustering, in pixels of "
+            "pygidfit's polar grid: peaks closer than this are fitted "
+            "together. Default 2 (mlgidbase 0.1.11; it was 10 before). "
+            "The 2D fit of a single peak and the profile neighbour "
+            "mask use the same value."
         )
         form.addRow("Cluster dist (peaks):", self.fit_dist_peaks)
 
@@ -770,13 +781,17 @@ class PipelinePanel(QWidget):
         self.fit_dist_rings.setDecimals(2)
         self.fit_dist_rings.setRange(0.0, 1000.0)
         self.fit_dist_rings.setSingleStep(1.0)
-        self.fit_dist_rings.setValue(10.0)
-        self.fit_dist_rings.setToolTip("Distance threshold for ring clustering.")
+        self.fit_dist_rings.setValue(DEFAULT_CLUSTERING_DISTANCE_RINGS)
+        self.fit_dist_rings.setToolTip(
+            "Distance threshold for ring clustering, in pixels of "
+            "pygidfit's polar grid. Default 2 (mlgidbase 0.1.11; it was "
+            "10 before)."
+        )
         form.addRow("Cluster dist (rings):", self.fit_dist_rings)
 
         self.fit_cluster_extend = QSpinBox()
         self.fit_cluster_extend.setRange(0, 100)
-        self.fit_cluster_extend.setValue(2)
+        self.fit_cluster_extend.setValue(DEFAULT_CLUSTERING_EXTEND)
         self.fit_cluster_extend.setToolTip(
             "Number of neighboring peaks to include in cluster expansion."
         )

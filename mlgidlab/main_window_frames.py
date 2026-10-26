@@ -113,19 +113,54 @@ class FramesMixin:
         # handler can resolve a click without re-walking the HDF5 file.
         self._raw_entries: dict[str, file_model.RawEntry] = {}
         self._raw_entry_label_by_path = {}
-        labels: list[str] = []
-        panel_inputs: list[tuple[Path, list[file_model.RawEntry]]] = []
         # Per-file entry lists are cached on the session: CopyWorker fills
         # the cache when the file is opened, and a GUI-thread fallback walk
         # fills it once for sessions that arrived without one. Activation
         # is on the GUI thread, so this must not re-walk a big beamtime
         # file's metadata every time the user switches back to the session.
+        labels, panel_inputs = self._collect_raw_inputs(self.session.raw_paths)
+        # Push the same data into the Conversion panel for its selection
+        # tree. Done before populating the combo so the panel paint
+        # happens once on activation.
+        self.conversion_panel.set_raw_inputs(panel_inputs)
+        self.entry_combo.blockSignals(True)
+        self.entry_combo.clear()
+        self.entry_combo.addItems(labels)
+        self.entry_combo.blockSignals(False)
+        self.pipeline_panel.set_available_entries([])
+        if labels:
+            # Auto-load the first candidate so the user sees something
+            # immediately. The change handler handles further picks.
+            self._load_raw_entry_into_viewer(labels[0])
+        else:
+            QMessageBox.information(
+                self,
+                "No raw datasets found",
+                "None of the selected raw files contain a 3D detector "
+                "dataset (shape (N, H, W) with H, W ≥ 32). Check the "
+                "files in the tree on the left to see their structure.",
+            )
+
+    def _collect_raw_inputs(
+        self, paths: list[Path]
+    ) -> tuple[list[str], list[tuple[Path, list[file_model.RawEntry]]]]:
+        """Entry labels and Conversion-panel rows for ``paths``.
+
+        Registers each entry in ``self._raw_entries`` (label → RawEntry)
+        and, for standalone images, in ``self._raw_entry_label_by_path``;
+        existing registrations are left alone, so this serves both the
+        full populate and the append path. HDF5 entry lists come from the
+        session's cache, with a one-off walk for files that have none.
+        """
+        assert isinstance(self.session, RawSession)
+        labels: list[str] = []
+        panel_inputs: list[tuple[Path, list[file_model.RawEntry]]] = []
         cache: dict[str, list] = getattr(self.session, "_raw_entries_cache", None) or {}
         # Standalone image files (TIFF/CBF/EDF) are read via fabio, not the
         # h5 detector walk; they become one 1-frame entry per file below.
         # Keep the HDF5 raw-walk path exactly as before for the rest.
-        fabio_paths = [p for p in self.session.raw_paths if file_model.is_fabio_image(p)]
-        h5_paths = [p for p in self.session.raw_paths if not file_model.is_fabio_image(p)]
+        fabio_paths = [p for p in paths if file_model.is_fabio_image(p)]
+        h5_paths = [p for p in paths if not file_model.is_fabio_image(p)]
         for raw_path in h5_paths:
             entries = cache.get(str(raw_path))
             if entries is None:
@@ -162,27 +197,25 @@ class FramesMixin:
                     self._raw_entry_label_by_path[str(entry.file_path)] = (
                         entry.label
                     )
-        # Push the same data into the Conversion panel for its selection
-        # tree. Done before populating the combo so the panel paint
-        # happens once on activation.
-        self.conversion_panel.set_raw_inputs(panel_inputs)
+        return labels, panel_inputs
+
+    def _append_raw_entries(self, paths: list[Path]) -> None:
+        """Add newly dropped raw files to the active raw session's views.
+
+        The Conversion panel keeps its rows and their check state, the
+        entry combo gains the new labels, and the viewer jumps to the
+        first new entry, as it does when a first file is opened.
+        """
+        assert isinstance(self.session, RawSession)
+        labels, panel_inputs = self._collect_raw_inputs(paths)
+        self.conversion_panel.add_raw_inputs(panel_inputs)
+        if not labels:
+            return
         self.entry_combo.blockSignals(True)
-        self.entry_combo.clear()
         self.entry_combo.addItems(labels)
         self.entry_combo.blockSignals(False)
-        self.pipeline_panel.set_available_entries([])
-        if labels:
-            # Auto-load the first candidate so the user sees something
-            # immediately. The change handler handles further picks.
-            self._load_raw_entry_into_viewer(labels[0])
-        else:
-            QMessageBox.information(
-                self,
-                "No raw datasets found",
-                "None of the selected raw files contain a 3D detector "
-                "dataset (shape (N, H, W) with H, W ≥ 32). Check the "
-                "files in the tree on the left to see their structure.",
-            )
+        # Signals are live again, so this selects and loads the entry.
+        self.entry_combo.setCurrentText(labels[0])
 
     def _on_raw_flips_changed(
         self, flip_lr: bool, flip_ud: bool, transp: bool = False,
@@ -661,6 +694,7 @@ class FramesMixin:
         self.frame_label.setText(self._frame_label_text(cur))
         self._set_frame_slider_visible(n > 1)
         self._refresh_frame_nav_enabled()
+        self._sync_scan_tracking_visibility()
 
     def _set_frame_slider_visible(self, visible: bool) -> None:
         """Show or hide the toolbar's frame-navigation cluster.
@@ -879,6 +913,13 @@ class FramesMixin:
         # the caller holding an index into a model that no longer has
         # one. See ``_restore_tree_state``.
         if getattr(self, "_restoring_tree_selection", False):
+            return
+        # Several rows picked (Shift/Ctrl-click, Ctrl+A) is a batch for
+        # Delete, not a click: leave the viewer where it is.
+        picked = sum(
+            1 for i in self.tree.selectedIndexes() if i.column() == 0
+        )
+        if picked > 1:
             return
         image_node = self._selected_image_node()
         if image_node is not None:
@@ -1166,32 +1207,77 @@ class FramesMixin:
         if s is not None and s is not self._active_session:
             self._set_active_session(s)
 
+    def _selected_file_targets(
+        self,
+    ) -> tuple[dict[RawSession, list[str]], list[BaseSession]]:
+        """What the selected browser rows stand for.
+
+        Returns the raw files to close, grouped by their raw session, and
+        the converted (NeXus) sessions whose file a selected row belongs
+        to. Several rows of one converted file count once.
+        """
+        raw_paths: list[str] = []
+        try:
+            for index in self.tree.selectedIndexes():
+                if index.column() != 0:
+                    continue
+                item = self.tree.model().data(
+                    index, Hdf5TreeModel.H5PY_ITEM_ROLE
+                )
+                if isinstance(item, _ImageFileNode):
+                    raw_paths.append(item.image_path)
+        except Exception:
+            logger.debug(
+                "suppressed exception in _selected_file_targets", exc_info=True
+            )
+        nexus: list[BaseSession] = []
+        for node in self._safe_selected_h5_nodes():
+            fname = self._node_filename(node)
+            if fname is None:
+                continue
+            try:
+                fname = fname.resolve()
+            except OSError:
+                pass
+            session = self._session_for_path(str(fname))
+            if isinstance(session, RawSession):
+                raw_paths.append(str(fname))
+            elif session is not None and session not in nexus:
+                nexus.append(session)
+        raw: dict[RawSession, list[str]] = {}
+        for p in raw_paths:
+            session = self._session_for_path(p)
+            if isinstance(session, RawSession):
+                paths = raw.setdefault(session, [])
+                if p not in paths:
+                    paths.append(p)
+        return raw, nexus
+
     def _remove_selected_file_from_browser(self) -> None:
-        """Close the file the current tree selection belongs to.
+        """Close the file(s) the current tree selection belongs to.
 
         Wired to the file browser's Delete key (``deleteFileRequested``).
-        Resolves the selected node back to its session and routes through
-        the same discard-confirm + ``_close_session`` path as File →
-        Close (Ctrl+W), so unsaved-change handling and tree teardown are
-        identical no matter which entry point removes the file. No-ops if
-        the selection can't be mapped to a live session (e.g. a stale or
+        Every selected file closes: a raw row closes just its own file and
+        leaves the rest of the raw batch (and its Selection rows) in place;
+        any row of a converted file closes that file. Unsaved work in the
+        converted files is asked about first, through the same
+        discard-confirm as File → Close (Ctrl+W), and Cancel on any of
+        them closes nothing. The active session is closed last so the
+        window does not switch through sessions about to go. No-ops if the
+        selection can't be mapped to a live session (e.g. a stale or
         orphan node), mirroring how a no-active-session Close no-ops.
         """
-        image_node = self._selected_image_node()
-        if image_node is not None:
-            # An image row belongs to its whole raw batch — same as
-            # deleting any other raw file row of that session.
-            session = self._session_for_path(image_node.image_path)
-        else:
-            nodes = self._safe_selected_h5_nodes()
-            if not nodes:
+        raw, nexus = self._selected_file_targets()
+        if not raw and not nexus:
+            return
+        for session in nexus:
+            if not self._confirm_discard_changes(session):
                 return
-            session = self._session_for_node(nodes[0])
-        if session is None:
-            return
-        if not self._confirm_discard_changes(session):
-            return
-        self._close_session(session)
+        for session, paths in raw.items():
+            self._remove_raw_files(session, paths)
+        active = self._active_session
+        for session in sorted(nexus, key=lambda s: s is active):
+            self._close_session(session)
 
     @staticmethod
     def _node_filename(node) -> Path | None:
@@ -1371,6 +1457,9 @@ class FramesMixin:
             self._phase_views_window.set_context(
                 self.session.temp_path, entry, self.viewer.n_frames
             )
+        # Tracking the file already carries (saved by mlgidbase) shows up
+        # without running anything; read off the GUI thread.
+        self._maybe_autoload_saved_tracking(entry)
         cur = self.viewer.current_frame
         if (
             overlays is not None and overlays[0] == cur

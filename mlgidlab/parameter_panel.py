@@ -275,7 +275,8 @@ class ParameterPanel(Card):
         self.btn_add_fitted = QPushButton("Add to fitted")
         self.btn_add_fitted.setToolTip(
             "Append a row to fitted_peaks using the 1D Gaussian fit "
-            "parameters from the radial / angular profile."
+            "parameters from the radial / angular profile. "
+            "Shortcut: Ctrl+Return."
         )
         self.btn_add_fitted.clicked.connect(self.addToFittedRequested)
         # Batch 2D fit: run pygidfit on every selected detected peak in

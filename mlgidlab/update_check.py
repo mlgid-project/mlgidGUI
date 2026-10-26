@@ -18,6 +18,7 @@ testable without a QApplication; the host (``main_window``) runs
 from __future__ import annotations
 
 import contextlib
+import gc
 import json
 import logging
 import os
@@ -223,9 +224,143 @@ def build_upgrade_command(
 
 
 # --------------------------------------------------------------------- #
+# Handoff to the renamed app (mlgidLAB -> mlgidGUI, release 1.0.0)
+# --------------------------------------------------------------------- #
+# From 1.0.0 the app ships as the distribution ``mlgidgui`` on PyPI. The
+# command above cannot reach it: pip refuses a requirement named ``mlgidlab``
+# whose metadata says ``mlgidgui`` ("inconsistent name"), exits 1 and leaves
+# this install untouched. So a release with major version >= 1 is installed
+# as the successor instead: install it FIRST, uninstall this distribution
+# only once that worked. The two have different import packages and can sit
+# side by side, so a failed install leaves a working ``mlgidlab`` behind.
+# Until such a release exists none of this runs.
+SUCCESSOR_DIST = "mlgidgui"
+#: Module the restart relaunches once the successor is installed.
+SUCCESSOR_MODULE = "mlgidgui"
+_SUCCESSOR_FIRST_MAJOR = 1
+
+
+def is_successor_release(tag: str | None) -> bool:
+    """True when ``tag`` names a release of the renamed app (major >= 1)."""
+    version = parse_version(tag)
+    return version is not None and version.major >= _SUCCESSOR_FIRST_MAJOR
+
+
+def restart_module(tag: str | None) -> str:
+    """The module ``python -m`` should relaunch after installing ``tag``."""
+    return SUCCESSOR_MODULE if is_successor_release(tag) else DIST_NAME
+
+
+def display_version(tag: str | None) -> str:
+    """``tag`` as shown to people: ``v1.0.0`` -> ``1.0.0`` (unparsable input
+    comes back unchanged)."""
+    version = parse_version(tag)
+    return str(version) if version is not None else str(tag or "")
+
+
+def build_migration_commands(
+    tag: str,
+    *,
+    executable: str | None = None,
+    with_pipeline: bool | None = None,
+) -> list[list[str]]:
+    """The ``pip`` argv sequence that moves this install to the successor.
+
+    1. ``pip install "mlgidgui[pipeline]==<version>"`` from PyPI. The exact
+       version, not a floor: a plain upgrade skips the pre-release a banner
+       may announce, while an exact pin installs it without ``--pre``.
+    2. ``pip uninstall -y mlgidlab``, to be run only if step 1 succeeded.
+
+    ``with_pipeline`` defaults to whether the ``[pipeline]`` extra is
+    installed now, like :func:`build_upgrade_command`.
+    """
+    version = parse_version(tag)
+    if version is None:
+        raise ValueError(f"not a release tag: {tag!r}")
+    if executable is None:
+        executable = sys.executable
+    if with_pipeline is None:
+        with_pipeline = pipeline_extra_installed()
+    extra = "[pipeline]" if with_pipeline else ""
+    return [
+        [executable, "-m", "pip", "install", f"{SUCCESSOR_DIST}{extra}=={version}"],
+        [executable, "-m", "pip", "uninstall", "-y", DIST_NAME],
+    ]
+
+
+def build_update_commands(
+    tag: str,
+    *,
+    executable: str | None = None,
+    with_pipeline: bool | None = None,
+) -> list[list[str]]:
+    """Every ``pip`` argv, in order, that installing ``tag`` takes.
+
+    One in-place upgrade for the alphas; the install-then-uninstall pair of
+    :func:`build_migration_commands` once ``tag`` is the renamed app. Run in
+    order and stop at the first non-zero exit.
+    """
+    if is_successor_release(tag):
+        return build_migration_commands(
+            tag, executable=executable, with_pipeline=with_pipeline
+        )
+    return [
+        build_upgrade_command(
+            tag, executable=executable, with_pipeline=with_pipeline
+        )
+    ]
+
+
+# --------------------------------------------------------------------- #
 # Windows: free the running launcher exe before pip touches it
 # --------------------------------------------------------------------- #
 LAUNCHER_BACKUP_SUFFIX = ".old"
+
+
+def _launcher_entries() -> list[str]:
+    """``sys.path`` entries that are launcher executables.
+
+    Started as ``Scripts\\mlgidlab.exe``, the interpreter runs that exe as a
+    zip archive, so its path becomes ``sys.path[0]``.
+    """
+    return [
+        entry for entry in sys.path
+        if isinstance(entry, str) and entry.lower().endswith(".exe")
+    ]
+
+
+def drop_launcher_from_sys_path() -> list[str]:
+    """Take launcher executables off ``sys.path``; return the entries removed.
+
+    ``importlib.metadata`` scans every ``sys.path`` entry, and for a zip
+    (the launcher) it opens the archive and keeps it open for the life of
+    the process. An open file cannot be renamed or deleted on Windows, so
+    the exe could never be moved aside for an update and pip failed with
+    ``[WinError 32]``. The zip only holds the ``__main__`` that already
+    ran, so nothing needs it on the path afterwards.
+    """
+    removed = _launcher_entries()
+    for entry in removed:
+        while entry in sys.path:
+            sys.path.remove(entry)
+        sys.path_importer_cache.pop(entry, None)
+    return removed
+
+
+def release_launcher_handles() -> None:
+    """Close the handle on the launcher that this process may already hold.
+
+    Companion to :func:`drop_launcher_from_sys_path` for what was opened
+    before it ran: take the entry off the path and drop the
+    ``importlib.metadata`` caches that keep the archive open, so the file
+    is closed by the time the launcher is renamed aside.
+    """
+    drop_launcher_from_sys_path()
+    with contextlib.suppress(Exception):
+        from importlib.metadata import FastPath
+
+        FastPath.__new__.cache_clear()
+    gc.collect()
 
 
 def _scripts_dir() -> Path:
@@ -256,6 +391,8 @@ def free_locked_launchers(
         platform = os.name
     if platform != "nt":
         return []
+    # Our own open handle on the launcher would block the rename below.
+    release_launcher_handles()
     if scripts_dir is None:
         scripts_dir = _scripts_dir()
     exe = scripts_dir / f"{DIST_NAME}.exe"

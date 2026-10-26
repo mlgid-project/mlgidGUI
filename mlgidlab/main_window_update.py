@@ -6,8 +6,8 @@ source split.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QProcess, QSettings, QThread, Qt, Slot
-from PySide6.QtGui import QAction, QKeySequence, QPixmap
+from PySide6.QtCore import QProcess, QSettings, QThread, QUrl, Qt, Slot
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
-from mlgidlab import update_check
+from mlgidlab import diagnostics, update_check
 from mlgidlab.controls_help import ControlsDialog
 from mlgidlab.widgets import make_progress_dialog
 from mlgidlab.update_ui import (
@@ -26,6 +26,7 @@ from mlgidlab.update_ui import (
 )
 
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,12 @@ class UpdateMixin:
     def _build_help_menu(self) -> None:
         """Build the rightmost top-level Help menu.
 
-        Three entries:
+        Entries:
         - **Controls & shortcuts…** — modeless, filterable reference of
           every keyboard shortcut and mouse interaction.
         - **About mlgidLAB…** — modal "About" dialog with versions.
+        - **mlgidLAB is becoming mlgidGUI…** — the rename notice, which
+          also opens once on first launch.
         - **Copy diagnostics** — clipboard-friendly env/session/log
           dump for bug reports.
         """
@@ -57,6 +60,12 @@ class UpdateMixin:
         self.action_about = QAction("&About mlgidLAB…", self)
         self.action_about.triggered.connect(self._show_about)
         help_menu.addAction(self.action_about)
+        # The one-time startup notice, kept reachable so it can be re-read.
+        self.action_rename_notice = QAction(
+            "mlgidLAB is becoming mlgidGUI…", self
+        )
+        self.action_rename_notice.triggered.connect(self._show_rename_notice)
+        help_menu.addAction(self.action_rename_notice)
         self.action_copy_diagnostics = QAction("&Copy diagnostics", self)
         self.action_copy_diagnostics.setToolTip(
             "Copy environment info + active session details + recent "
@@ -303,6 +312,7 @@ class UpdateMixin:
         best-effort and silent on failure.
         """
         self._maybe_show_changelog()
+        self._maybe_show_rename_notice()
         self._start_update_check(notify_uptodate=False)
 
     def _start_update_check(
@@ -384,12 +394,30 @@ class UpdateMixin:
         tag = getattr(self, "_latest_tag", None)
         if not tag:
             return
+        if update_check.is_successor_release(tag):
+            # The renamed app: a different distribution, so this is a move
+            # rather than an upgrade. Spell that out before anything runs.
+            title = "Move to mlgidGUI"
+            version = update_check.display_version(tag)
+            text = (
+                "mlgidLAB is now called mlgidGUI.\n\n"
+                f"Install mlgidGUI {version} into the current "
+                "environment and remove mlgidLAB?\n\n"
+                "mlgidGUI is installed first; mlgidLAB is only removed once "
+                "that worked. Your data files are not touched. You can then "
+                "restart into mlgidGUI."
+            )
+        else:
+            title = "Update mlgidLAB"
+            text = (
+                f"Install {tag} into the current environment?\n\n"
+                "mlgidLAB will download and pip-install the new version, "
+                "then offer to restart."
+            )
         reply = QMessageBox.question(
             self,
-            "Update mlgidLAB",
-            f"Install {tag} into the current environment?\n\n"
-            "mlgidLAB will download and pip-install the new version, then "
-            "offer to restart.",
+            title,
+            text,
             QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Ok,
         )
@@ -404,14 +432,20 @@ class UpdateMixin:
         """
         if getattr(self, "_install_thread", None) is not None:
             return  # an install is already in flight
-        command = update_check.build_upgrade_command(tag)
+        commands = update_check.build_update_commands(tag)
+        if update_check.is_successor_release(tag):
+            version = update_check.display_version(tag)
+            progress_text = f"Installing mlgidGUI {version}…"
+            progress_title = "Moving to mlgidGUI"
+        else:
+            progress_text = f"Updating mlgidLAB to {tag}…"
+            progress_title = "Updating mlgidLAB"
         self._install_progress = make_progress_dialog(
-            self, f"Updating mlgidLAB to {tag}…",
-            title="Updating mlgidLAB",
+            self, progress_text, title=progress_title,
         )
 
         self._install_thread = QThread(self)
-        self._install_worker = _UpdateInstallWorker(command)
+        self._install_worker = _UpdateInstallWorker(commands)
         self._install_worker.moveToThread(self._install_thread)
         self._install_thread.started.connect(self._install_worker.run)
         self._install_worker.finished.connect(self._on_update_install_finished)
@@ -440,7 +474,10 @@ class UpdateMixin:
         # Failure: surface the tail of pip's output plus the manual fallback.
         tail = "\n".join(output.strip().splitlines()[-15:]) or "(no output)"
         tag = getattr(self, "_latest_tag", "") or ""
-        command = " ".join(update_check.build_upgrade_command(tag))
+        # One line per pip call, so the manual fallback is the whole update.
+        command = "\n".join(
+            " ".join(argv) for argv in update_check.build_update_commands(tag)
+        )
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Update failed")
@@ -448,30 +485,83 @@ class UpdateMixin:
             "The update could not be installed. You can try again, or "
             "update manually from a terminal:"
         )
-        box.setInformativeText(command)
+        log_path = diagnostics.update_log_path()
+        box.setInformativeText(
+            f"{command}\n\nFull log: {log_path}" if log_path else command
+        )
         box.setDetailedText(tail)
         box.exec()
 
-    def _prompt_restart(self) -> None:
+    def _prompt_restart(self, tag: str | None = None) -> None:
         """Offer to relaunch so the freshly installed version loads.
 
         The upgrade landed on disk but the running interpreter still holds the
-        old modules; only a restart picks up the new code.
+        old modules; only a restart picks up the new code. After the move to
+        mlgidGUI the relaunch starts the new app's module, not this one.
         """
+        if tag is None:
+            tag = getattr(self, "_latest_tag", None)
+        module = update_check.restart_module(tag)
+        if update_check.is_successor_release(tag):
+            version = update_check.display_version(tag)
+            text = f"mlgidGUI {version} was installed. Restart now to start it?"
+        else:
+            text = "mlgidLAB was updated. Restart now to use the new version?"
         reply = QMessageBox.question(
             self,
             "Update installed",
-            "mlgidLAB was updated. Restart now to use the new version?",
+            text,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        diagnostics.log_restart_requested(module)
         # Relaunch the module entry point with the same interpreter, then quit
         # this instance. startDetached returns before we exit so the new
         # process survives our shutdown.
-        QProcess.startDetached(sys.executable, ["-m", "mlgidlab"])
+        QProcess.startDetached(sys.executable, ["-m", module])
         QApplication.quit()
+
+    def _maybe_show_rename_notice(self) -> None:
+        """Once per profile: tell the user mlgidLAB is becoming mlgidGUI.
+
+        Recorded as seen however the dialog is closed, so it never nags.
+        The Help menu entry shows it again on request.
+        """
+        settings = QSettings()
+        seen = str(settings.value(self._RENAME_NOTICE_KEY, "false")).lower()
+        if seen == "true":
+            return
+        try:
+            self._show_rename_notice()
+        finally:
+            settings.setValue(self._RENAME_NOTICE_KEY, True)
+
+    def _show_rename_notice(self) -> None:
+        """Explain the coming rename (release 1.0.0) and what to do."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("mlgidLAB is becoming mlgidGUI")
+        box.setText(
+            "mlgidLAB will be renamed mlgidGUI with its next major release, "
+            "1.0.0. It is the same application under a new name."
+        )
+        box.setInformativeText(
+            "What you need to do: nothing now. When 1.0.0 is out, the "
+            "update banner (or Help, Update now) installs mlgidGUI and "
+            "removes mlgidLAB. Your files and settings carry over.\n\n"
+            "What changes: the Python package and the command are called "
+            "mlgidgui instead of mlgidlab. Scripts that import mlgidlab "
+            "have to be updated; there is no compatibility layer."
+        )
+        more = box.addButton(
+            "More information", QMessageBox.ButtonRole.ActionRole
+        )
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is more:
+            QDesktopServices.openUrl(QUrl(update_check.RELEASES_PAGE))
 
     def _maybe_show_changelog(self) -> None:
         """First launch after an update: show what changed since the last

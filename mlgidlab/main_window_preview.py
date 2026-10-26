@@ -121,11 +121,12 @@ class PreviewMixin:
         self.profile_viewer.set_fit_curves_visible(visible)
 
     def _refresh_2d_preview(self) -> None:
-        """Run pygidfit on every fittable selected peak (primary +
-        Ctrl+click extras) and cache the results so
-        ``_update_fitted_preview`` (primary) and
-        ``set_fitted_preview_extras`` (extras) paint a cyan box for
-        each.
+        """Start pygidfit, in the background, on every fittable selected
+        peak (primary + Ctrl+click extras) that has no result yet, and
+        cache the results as they arrive so ``_update_fitted_preview``
+        (primary) and ``set_fitted_preview_extras`` (extras) paint a
+        cyan box for each. Returns at once; ``_on_preview_fit_done``
+        repaints when a fit finishes.
 
         The profile viewer is intentionally NOT updated from here
         anymore: in 2D mode the pink fit curves are hidden (see
@@ -152,37 +153,88 @@ class PreviewMixin:
             and self.session is not None
             and self._pipe_thread is None
         )
-        if not applies:
-            self._repaint_fitted_preview()
-            return
         entry = self.entry_combo.currentText()
-        if not entry:
+        if not applies or not entry:
+            # Nothing is wanted any more: queued fits are skipped.
+            self._preview_runner.want(())
+            self._update_preview_status()
             self._repaint_fitted_preview()
             return
 
-        # Compute pygidfit for every fittable selection that isn't
-        # already in the cache. The cache is preserved across calls
-        # so unchanged peaks (e.g. extras whose ROI hasn't moved)
-        # don't re-fit.
-        for s in self.viewer.selected_peaks():
-            if s.kind not in ("manual", "detected"):
+        # Every fittable selection that has no result yet is handed to
+        # the background runner. The fit is not waited for: it can take
+        # seconds (tens, for a peak in a badly conditioned peak-on-ring
+        # cluster), and on the GUI thread that froze the window. The
+        # cache is preserved across calls so unchanged peaks (e.g.
+        # extras whose ROI hasn't moved) don't re-fit.
+        fittable = [
+            s for s in self.viewer.selected_peaks()
+            if s.kind in ("manual", "detected")
+        ]
+        keys = {self._preview_fingerprint(entry, s): s for s in fittable}
+        self._preview_runner.want(keys)
+        for fp, s in keys.items():
+            if fp in self._2d_preview_cache or self._preview_runner.is_pending(fp):
                 continue
-            fp = self._preview_fingerprint(entry, s)
-            if fp in self._2d_preview_cache:
+            job, _err = self._prepare_pygidfit_fit(s, entry, int(s.frame))
+            if job is None:
+                # Inputs unavailable: cache the failure (None) so it is
+                # not retried on every selection tick.
+                self._2d_preview_cache[fp] = None
                 continue
-            fit_2d, _err = self._run_pygidfit_for_selection(
-                s, entry, int(s.frame),
-            )
-            # Cache the result either way (None on failure) so we
-            # don't retry a failed fit on every selectionsChanged
-            # tick.
-            self._2d_preview_cache[fp] = fit_2d
+            self._preview_runner.submit(fp, job)
+        self._update_preview_status()
         self._repaint_fitted_preview()
+
+    def _on_preview_fit_done(self, key, fit_2d, _err, ran: bool) -> None:
+        """A background preview fit finished (GUI thread).
+
+        The result is kept either way (None on failure, so a failed fit
+        is not retried on every tick) unless the job was skipped. It is
+        painted only if it belongs to a peak that is still selected.
+        """
+        self._preview_runner.forget(key)
+        if getattr(self, "_closed", False):
+            return
+        if ran and self.session is not None and key[0] == self.session.temp_path:
+            self._2d_preview_cache[key] = fit_2d
+            entry = self.entry_combo.currentText()
+            current = {
+                self._preview_fingerprint(entry, s)
+                for s in self.viewer.selected_peaks()
+                if s.kind in ("manual", "detected")
+            }
+            if key in current:
+                self._repaint_fitted_preview()
+        self._update_preview_status()
+        # An Add to fitted click may be waiting on exactly this fit.
+        self._finish_add_to_fitted(key, fit_2d, _err, ran)
+
+    def _update_preview_status(self) -> None:
+        """Status-bar note while a preview fit is still running, so a
+        blank cyan box and parameter readout read as "working"."""
+        busy = self._preview_runner.pending_count() > 0
+        if busy:
+            self.statusBar().showMessage(
+                "Fitting the 2D preview (the window stays usable)…"
+            )
+            self._preview_status_shown = True
+        elif getattr(self, "_preview_status_shown", False):
+            self._preview_status_shown = False
+            self.statusBar().clearMessage()
 
     def _preview_fingerprint(
         self, entry: str, sel: SelectedPeak,
     ) -> tuple:
-        """Build the cache key for ``sel``'s pygidfit preview."""
+        """Build the cache key for ``sel``'s pygidfit fit.
+
+        The first five fields are the peak's identity (file, entry,
+        frame, kind, id), then its geometry, then a digest of the other
+        inputs the fit reads: the Pipeline panel's fit settings and the
+        neighbouring boxes. Those last two are why a result can be
+        reused by Add to fitted: a changed setting or an edited
+        neighbour gives a different key instead of a stale hit.
+        """
         return (
             self.session.temp_path if self.session is not None else None,
             entry,
@@ -191,7 +243,30 @@ class PreviewMixin:
             int(sel.peak_id) if sel.peak_id is not None else -1,
             float(sel.radius), float(sel.radius_width),
             float(sel.angle), float(sel.angle_width),
+            self._pygidfit_context_key(entry, sel),
         )
+
+    def _pygidfit_context_key(self, entry: str, sel: SelectedPeak) -> int:
+        """Digest of the fit inputs that are not the peak itself."""
+        panel = self.pipeline_panel
+        try:
+            settings = (
+                float(panel.fit_crit_angle.value()),
+                float(panel.fit_dist_peaks.value()),
+                float(panel.fit_dist_rings.value()),
+                int(panel.fit_cluster_extend.value()),
+                bool(panel.fit_theta_fixed.isChecked()),
+            )
+        except Exception:
+            settings = None
+        try:
+            boxes = tuple(
+                (b.radius, b.radius_width, b.angle, b.angle_width)
+                for b in self._neighbour_boxes(entry, int(sel.frame), sel)
+            )
+        except Exception:
+            boxes = None
+        return hash((settings, boxes))
 
     def _schedule_drag_2d_preview(self, _sel) -> None:
         """Debounced ``_refresh_2d_preview`` while a manual / detected
@@ -443,14 +518,8 @@ class PreviewMixin:
         entry = self.entry_combo.currentText()
         if not entry:
             return None
-        peak_id = int(sel.peak_id) if sel.peak_id is not None else -1
-        identity = (
-            self.session.temp_path, entry, int(sel.frame), sel.kind, peak_id,
-        )
-        full_fp = identity + (
-            float(sel.radius), float(sel.radius_width),
-            float(sel.angle), float(sel.angle_width),
-        )
+        full_fp = self._preview_fingerprint(entry, sel)
+        identity = full_fp[:5]
         if self.viewer.is_dragging:
             # During drag: match on identity only so the last
             # cached refined box survives geometry mismatches.

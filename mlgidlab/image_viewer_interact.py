@@ -6,6 +6,7 @@ source split.
 """
 from __future__ import annotations
 
+import logging
 import math
 import time
 
@@ -22,6 +23,12 @@ from mlgidlab.peak_picking import (
     RING_EDGE_TOL_FALLBACK,
     RING_EDGE_TOL_PX,
 )
+from mlgidlab.main_window_constants import (
+    DEFAULT_ZOOM_TO_SELECTED_PEAK,
+    ZOOM_TO_SELECTED_PEAK_KEY,
+)
+from mlgidlab.peak_link import read_bool
+from mlgidlab.peak_zoom import peak_view_range
 from mlgidlab.polar import polar_to_qxyz
 from mlgidlab import peak_lists
 from mlgidlab.viewer_items import (
@@ -75,6 +82,9 @@ def _boxes_overlap(a: ManualPeak, b: ManualPeak) -> bool:
             and abs(inner.angle - outer.angle) <= abs(outer.angle_width) / 2.0
         )
     return inside(a, b) or inside(b, a)
+
+
+logger = logging.getLogger(__name__)
 
 
 class ViewerInteractMixin:
@@ -722,7 +732,9 @@ class ViewerInteractMixin:
 
     def _refresh_matched_for(self, frame: int) -> None:
         """Re-slice the frame's fitted PeakTable into each MatchedStructure
-        using its cached ``peak_list`` indices. Cheap (numpy fancy index).
+        using its cached ``peak_list`` POSITIONS (``read_matched_peaks``
+        translates the file's ids to positions). Cheap (numpy fancy
+        index).
         """
         peaks_for_frame = self._frame_peaks.get(frame) or {}
         fitted = peaks_for_frame.get("fitted")
@@ -1360,8 +1372,62 @@ class ViewerInteractMixin:
         self._selected_extras = []
         self._sync_roi()
         self._render_overlays(self.current_frame)
+        # A newly selected detected / fitted peak is brought into view,
+        # or the view zooms out for a ring (not when the same peak is
+        # re-selected, e.g. collapsing a
+        # multi-selection onto the primary, and not for manual boxes the
+        # user is still drawing).
+        if (
+            sel is not None
+            and not primary_unchanged
+            and sel.kind in ("detected", "fitted")
+        ):
+            self.zoom_to_peak(sel)
         self.selectionChanged.emit(sel)
         self.selectionsChanged.emit(self.selected_peaks())
+
+    def zoom_to_peak(self, sel: SelectedPeak) -> bool:
+        """Zoom the image onto ``sel``'s box. True if the view moved.
+
+        Works in the polar and Cartesian displays (see
+        ``peak_zoom.peak_view_range``); raw mode, a viewer with no
+        polar stack yet, and a Settings switch that is off are left
+        alone. A ring spans the whole angular axis, so there is no box
+        to bring closer: selecting one zooms back out instead
+        (``reset_zoom``), so a ring is never left behind a close-up of
+        the previous peak. The Reset-zoom action undoes the zoom-in.
+        """
+        if self._mode not in (MODE_POLAR, MODE_CARTESIAN):
+            return False
+        if not read_bool(
+            ZOOM_TO_SELECTED_PEAK_KEY, DEFAULT_ZOOM_TO_SELECTED_PEAK,
+        ):
+            return False
+        if sel.is_ring or not math.isfinite(float(sel.angle_width)):
+            self.reset_zoom()
+            return True
+        cache = self._polar_cache
+        if cache is None:
+            return False
+        _, radius_axis, angle_axis = cache
+        if len(radius_axis) == 0 or len(angle_axis) == 0:
+            return False
+        view = peak_view_range(
+            "polar" if self._mode == MODE_POLAR else "cartesian",
+            sel.radius, sel.radius_width, sel.angle, sel.angle_width,
+            radius_max=float(radius_axis[-1]),
+            angle_extent=(float(angle_axis[0]), float(angle_axis[-1])),
+        )
+        if view is None:
+            return False
+        try:
+            self._plot.getViewBox().setRange(
+                xRange=view[0], yRange=view[1], padding=0,
+            )
+        except Exception:
+            logger.debug("suppressed exception in zoom_to_peak", exc_info=True)
+            return False
+        return True
 
     def _toggle_selected(self, sel: SelectedPeak) -> None:
         """Add / remove ``sel`` to/from the multi-selection (Ctrl+click).
@@ -1440,8 +1506,9 @@ class ViewerInteractMixin:
             if sel.kind == "manual" and sel.manual_ref is not None:
                 self.remove_manual_peak(self.current_frame, sel.manual_ref)
             else:
-                # File-resident peaks go through MainWindow → mlgidbase
-                # delete_peak (cascading + with confirmation).
+                # File-resident peaks go through MainWindow (kind-scoped,
+                # confirmed and undoable; matched peaks only leave the
+                # matched structures).
                 self.deletePeakRequested.emit(sel)
             ev.accept()
             return
@@ -1550,6 +1617,88 @@ class ViewerInteractMixin:
         self._render_overlays(self.current_frame)
         self.selectionChanged.emit(self._selected)
         self.selectionsChanged.emit(self.selected_peaks())
+
+    def partner_selections(self) -> tuple[list[SelectedPeak], int] | None:
+        """The other-kind partners of the current detected / fitted selection.
+
+        A detected peak's partner is the fitted peak with the same id on
+        the current frame, and the other way round: the pairing the
+        peak link keeps (``mlgidlab.peak_link``). A fitted row hidden by
+        the "show only tracked peaks" filter is not a partner, since
+        what is not drawn cannot be selected.
+
+        Returns None when the selection is not made of detected / fitted
+        peaks (nothing, manual, matched, a registered extra list).
+        Otherwise ``(partners, missing)``: the partners in selection
+        order (primary first) and how many selected peaks had none.
+        """
+        sels = self.selected_peaks()
+        if not sels or any(s.kind not in ("detected", "fitted") for s in sels):
+            return None
+        other = "fitted" if sels[0].kind == "detected" else "detected"
+        frame = self.current_frame
+        table = (self._frame_peaks.get(frame) or {}).get(other)
+        partners: list[SelectedPeak] = []
+        if table is not None and len(table):
+            ids = np.asarray(table.ids)
+            for s in sels:
+                hits = np.flatnonzero(ids == int(s.peak_id))
+                if hits.size == 0:
+                    continue
+                if other == "fitted" and self._fitted_row_hidden(
+                    frame, int(s.peak_id),
+                ):
+                    continue
+                partners.append(
+                    self._row_selection(other, table, int(hits[0]), frame)
+                )
+        return partners, len(sels) - len(partners)
+
+    def select_partners(self, partners: list[SelectedPeak]) -> None:
+        """Replace the selection with ``partners`` (see ``partner_selections``).
+
+        One partner goes through ``_set_selected`` like any single
+        select, so the view follows it; several go through
+        ``set_selected_peaks``, which keeps the multi-selection.
+        """
+        if len(partners) == 1:
+            self._set_selected(partners[0])
+        elif partners:
+            self.set_selected_peaks(partners)
+
+    def step_selection(self, delta: int) -> bool:
+        """Select the next (``delta`` > 0) or previous peak of the same kind.
+
+        Works on a single detected or fitted selection and walks the
+        peaks of the current frame in id order, so a gap left by a
+        deleted peak is skipped. At the first / last peak nothing
+        happens. A fitted row hidden by the "show only tracked peaks"
+        filter is skipped, since it cannot be selected on screen. The
+        neighbour is selected through ``_set_selected``, so the view
+        follows it exactly as after a click. True if the selection moved.
+        """
+        sels = self.selected_peaks()
+        if len(sels) != 1 or sels[0].kind not in ("detected", "fitted"):
+            return False
+        cur = sels[0]
+        frame = self.current_frame
+        table = (self._frame_peaks.get(frame) or {}).get(cur.kind)
+        if table is None or len(table) == 0:
+            return False
+        ids = np.asarray(table.ids)
+        rows = [
+            i for i in range(len(ids))
+            if not (cur.kind == "fitted"
+                    and self._fitted_row_hidden(frame, int(ids[i])))
+            and (int(ids[i]) > cur.peak_id if delta > 0
+                 else int(ids[i]) < cur.peak_id)
+        ]
+        if not rows:
+            return False
+        pick = min if delta > 0 else max
+        row = pick(rows, key=lambda i: int(ids[i]))
+        self._set_selected(self._row_selection(cur.kind, table, row, frame))
+        return True
 
     # -- Resizable ROI on the selected peak --
 

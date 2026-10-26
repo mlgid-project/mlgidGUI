@@ -150,6 +150,80 @@ def test_build_upgrade_command_defaults_to_running_interpreter(monkeypatch):
     assert cmd[-1].endswith("@v1.2.3")
 
 
+# ------------------- handoff to the renamed app (1.0.0) ------------------- #
+def test_is_successor_release_only_for_major_one_and_up():
+    # The alphas keep the in-place upgrade; the handoff stays dormant until
+    # a 1.x release exists.
+    for tag in ("v0.1.0a20", "v0.1.0a21", "0.9.9", "v0.6.2"):
+        assert not uc.is_successor_release(tag), tag
+    for tag in ("v1.0.0", "1.0.0", "v1.0.0rc1", "v1.2.3", "v2.0.0"):
+        assert uc.is_successor_release(tag), tag
+    # Unparsable input never triggers a migration.
+    for bad in ("", None, "not-a-version"):
+        assert not uc.is_successor_release(bad)
+
+
+def test_restart_module_follows_the_installed_release():
+    assert uc.restart_module("v0.1.0a21") == "mlgidlab"
+    assert uc.restart_module("v1.0.0") == "mlgidgui"
+    assert uc.restart_module(None) == "mlgidlab"
+
+
+def test_build_migration_commands_install_first_then_uninstall():
+    exe = "/some/python"
+    plain, drop = uc.build_migration_commands(
+        "v1.0.0", executable=exe, with_pipeline=False
+    )
+    # Exact pin from PyPI, no git URL and no repo name anywhere.
+    assert plain == [exe, "-m", "pip", "install", "mlgidgui==1.0.0"]
+    # The old distribution goes only after the install, non-interactively.
+    assert drop == [exe, "-m", "pip", "uninstall", "-y", "mlgidlab"]
+
+    full, _ = uc.build_migration_commands(
+        "v1.0.0", executable=exe, with_pipeline=True
+    )
+    assert full[-1] == "mlgidgui[pipeline]==1.0.0"
+
+
+def test_build_migration_commands_pins_prereleases_exactly():
+    # `pip install mlgidgui==1.0.0rc1` needs no --pre; a plain upgrade would
+    # skip it. The tag's `v` is stripped and the version normalised.
+    install, _ = uc.build_migration_commands(
+        "v1.0.0rc1", executable="py", with_pipeline=False
+    )
+    assert install[-1] == "mlgidgui==1.0.0rc1"
+    assert "--pre" not in install and "--upgrade" not in install
+
+
+def test_build_migration_commands_defaults(monkeypatch):
+    import sys
+    monkeypatch.setattr(uc, "pipeline_extra_installed", lambda: True)
+    install, drop = uc.build_migration_commands("v1.0.0")
+    assert install[0] == drop[0] == sys.executable
+    assert install[-1] == "mlgidgui[pipeline]==1.0.0"
+    with pytest.raises(ValueError):
+        uc.build_migration_commands("not-a-version")
+
+
+def test_build_update_commands_picks_upgrade_or_migration():
+    exe = "py"
+    # An alpha target: exactly the old single in-place upgrade.
+    alpha = uc.build_update_commands(
+        "v0.1.0a22", executable=exe, with_pipeline=False
+    )
+    assert alpha == [
+        uc.build_upgrade_command(
+            "v0.1.0a22", executable=exe, with_pipeline=False
+        )
+    ]
+    # A 1.x target: install the successor, then drop this distribution.
+    migrated = uc.build_update_commands(
+        "v1.0.0", executable=exe, with_pipeline=False
+    )
+    assert [c[3] for c in migrated] == ["install", "uninstall"]
+    assert migrated[0][-1] == "mlgidgui==1.0.0"
+
+
 def test_is_editable_install(monkeypatch):
     monkeypatch.setattr(
         uc, "_read_direct_url",
@@ -315,6 +389,105 @@ def test_install_worker_frees_launchers_and_restores_on_failure(
     assert calls == [("restore", renames)]
 
 
+def _worker_with_fake_pip(monkeypatch, returncodes, *, raise_on=None):
+    """An ``_UpdateInstallWorker`` whose ``subprocess.run`` answers from
+    ``returncodes`` (one per call) and records the commands it was given.
+    ``raise_on`` is a call index that raises instead of returning."""
+    import subprocess
+    import types
+
+    ran: list = []
+    restored: list = []
+    renames = [("orig", "backup")]
+    monkeypatch.setattr(uc, "free_locked_launchers", lambda: renames)
+    monkeypatch.setattr(uc, "restore_launchers", restored.append)
+
+    def _fake_run(cmd, **kwargs):
+        n = len(ran)
+        ran.append(cmd)
+        if raise_on == n:
+            raise OSError("cannot launch")
+        return types.SimpleNamespace(
+            returncode=returncodes[n], stdout=f"out{n}\n", stderr=""
+        )
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    return ran, restored, renames
+
+
+def _run_install_worker(commands):
+    from mlgidlab.update_ui import _UpdateInstallWorker
+
+    results: list = []
+    worker = _UpdateInstallWorker(commands)
+    worker.finished.connect(lambda rc, out: results.append((rc, out)))
+    worker.run()
+    return results
+
+
+def test_install_worker_runs_the_commands_in_order(qapp, monkeypatch):
+    ran, restored, _ = _worker_with_fake_pip(monkeypatch, [0, 0])
+    results = _run_install_worker([["pip", "install", "new"], ["pip", "uninstall"]])
+    assert ran == [["pip", "install", "new"], ["pip", "uninstall"]]
+    # One result for the whole update, pip's output from both steps, and
+    # nothing to put back: both steps worked.
+    assert results == [(0, "out0\nout1\n")]
+    assert restored == []
+
+
+def test_install_worker_stops_when_the_install_fails(qapp, monkeypatch):
+    ran, restored, renames = _worker_with_fake_pip(monkeypatch, [1, 0])
+    results = _run_install_worker([["pip", "install", "new"], ["pip", "uninstall"]])
+    # The uninstall must never run after a failed install: the old app is
+    # the only working copy left.
+    assert ran == [["pip", "install", "new"]]
+    assert results == [(1, "out0\n")]
+    assert restored == [renames]
+
+
+def test_install_worker_failed_cleanup_does_not_fail_the_update(
+    qapp, monkeypatch, tmp_path
+):
+    from mlgidlab import diagnostics
+
+    monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(tmp_path))
+    ran, restored, renames = _worker_with_fake_pip(monkeypatch, [0, 1])
+    results = _run_install_worker([["pip", "install", "new"], ["pip", "uninstall"]])
+    assert len(ran) == 2
+    # The new app is installed, so the update succeeded; the leftover is
+    # reported, and the old launcher is put back because it still belongs
+    # to a distribution that is still installed.
+    (rc, out), = results
+    assert rc == 0
+    assert out.startswith("out0\nout1\n")
+    assert "mlgidlab could not be removed (exit 1)" in out
+    assert restored == [renames]
+    # Each pip call gets its own started/finished block in the update log.
+    text = (tmp_path / diagnostics.UPDATE_LOG_NAME).read_text(encoding="utf-8")
+    assert text.count("=== update started") == 2
+    assert text.count("=== update finished") == 2
+    assert "return code 1 ===" in text
+
+
+def test_install_worker_cleanup_that_cannot_launch_is_not_fatal(
+    qapp, monkeypatch
+):
+    ran, _, _ = _worker_with_fake_pip(monkeypatch, [0, 0], raise_on=1)
+    results = _run_install_worker([["pip", "install", "new"], ["pip", "uninstall"]])
+    (rc, out), = results
+    assert rc == 0 and "could not be removed" in out
+    assert len(ran) == 2
+
+
+def test_install_worker_install_that_cannot_launch_fails(qapp, monkeypatch):
+    ran, restored, renames = _worker_with_fake_pip(
+        monkeypatch, [0, 0], raise_on=0
+    )
+    results = _run_install_worker([["pip", "install", "new"], ["pip", "uninstall"]])
+    assert results == [(1, "Failed to launch pip: cannot launch")]
+    assert len(ran) == 1 and restored == [renames]
+
+
 # --------------------------- MainWindow wiring --------------------------- #
 def test_banner_shown_only_when_outdated(main_window):
     from mlgidlab import __version__ as current
@@ -435,3 +608,395 @@ def test_auto_update_ignored_for_unsupported_install(main_window, monkeypatch):
     assert not main_window._update_banner.isHidden()
     assert main_window._update_banner._update_btn.isHidden()
     QSettings().setValue(main_window._AUTO_UPDATE_KEY, False)
+
+
+# --------------- MainWindow wiring: the move to the renamed app --------------- #
+def test_display_version_strips_the_tag_prefix():
+    assert uc.display_version("v1.0.0") == "1.0.0"
+    assert uc.display_version("v1.0.0rc1") == "1.0.0rc1"
+    assert uc.display_version("garbage") == "garbage"
+    assert uc.display_version(None) == ""
+
+
+def test_banner_names_the_rename_only_for_the_renamed_release(main_window):
+    banner = main_window._update_banner
+    banner.show_update("0.1.0a21", "v0.1.0a22", "http://x", can_install=True)
+    assert "A newer version of mlgidLAB" in banner._label.text()
+    banner.show_update("0.1.0a21", "v1.0.0", "http://x", can_install=True)
+    text = banner._label.text()
+    assert "mlgidLAB is now called mlgidGUI" in text and "mlgidGUI 1.0.0" in text
+    assert "remove mlgidLAB" in banner._update_btn.toolTip()
+    # Back to an alpha: the plain tooltip returns.
+    banner.show_update("0.1.0a21", "v0.1.0a22", "http://x", can_install=True)
+    assert "remove mlgidLAB" not in banner._update_btn.toolTip()
+
+
+def _confirm_texts(main_window, monkeypatch, tag):
+    """Open the confirm dialog for ``tag`` (answering Cancel); return the
+    ``(title, text)`` it showed."""
+    from PySide6.QtWidgets import QMessageBox
+
+    shown: list = []
+
+    def _question(parent, title, text, *args, **kwargs):
+        shown.append((title, text))
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(QMessageBox, "question", _question)
+    main_window._latest_tag = tag
+    main_window._on_install_update_requested()
+    return shown[0]
+
+
+def test_confirm_dialog_explains_the_move_for_the_renamed_release(
+    main_window, monkeypatch
+):
+    title, text = _confirm_texts(main_window, monkeypatch, "v1.0.0")
+    assert title == "Move to mlgidGUI"
+    assert "mlgidGUI 1.0.0" in text and "remove mlgidLAB" in text
+    assert "installed first" in text and "data files are not touched" in text
+    # An alpha keeps the old wording.
+    title, text = _confirm_texts(main_window, monkeypatch, "v0.1.0a22")
+    assert title == "Update mlgidLAB"
+    assert "v0.1.0a22" in text and "pip-install" in text
+
+
+def _start_install_with_stubs(main_window, monkeypatch, tag):
+    """Run ``_start_update_install(tag)`` with a stub thread and worker, so
+    nothing actually runs (and no real ``QThread`` is involved: an instant
+    worker plus real thread teardown crashed intermittently, 1 run in 8).
+    Returns ``(commands_seen, progress_calls)``."""
+    import mlgidlab.main_window_update as mwu
+
+    seen: list = []
+    progress: list = []
+
+    class _Signal:
+        def connect(self, slot):
+            pass
+
+    class _StubThread:
+        def __init__(self, parent=None):
+            self.started = _Signal()
+            self.finished = _Signal()
+
+        def start(self):
+            pass
+
+        def quit(self):
+            pass
+
+        def deleteLater(self):
+            pass
+
+    class _StubWorker:
+        def __init__(self, commands):
+            seen.append(commands)
+            self.finished = _Signal()
+
+        def moveToThread(self, thread):
+            pass
+
+        def run(self):
+            pass
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(mwu, "QThread", _StubThread)
+    monkeypatch.setattr(mwu, "_UpdateInstallWorker", _StubWorker)
+    monkeypatch.setattr(
+        mwu, "make_progress_dialog",
+        lambda parent, text, title="": progress.append((title, text)),
+    )
+    main_window._install_thread = None
+    main_window._latest_tag = tag
+    main_window._start_update_install(tag)
+    return seen, progress
+
+
+def test_start_install_hands_the_worker_the_whole_command_list(
+    main_window, monkeypatch
+):
+    monkeypatch.setattr(uc, "pipeline_extra_installed", lambda: False)
+    seen, progress = _start_install_with_stubs(main_window, monkeypatch, "v1.0.0")
+    (commands,) = seen
+    assert [c[3] for c in commands] == ["install", "uninstall"]
+    assert commands[0][-1] == "mlgidgui==1.0.0"
+    assert progress == [("Moving to mlgidGUI", "Installing mlgidGUI 1.0.0…")]
+
+    seen, progress = _start_install_with_stubs(
+        main_window, monkeypatch, "v0.1.0a22"
+    )
+    (commands,) = seen
+    assert len(commands) == 1 and commands[0][-1].endswith("@v0.1.0a22")
+    assert progress == [("Updating mlgidLAB", "Updating mlgidLAB to v0.1.0a22…")]
+
+
+def test_failure_dialog_lists_every_manual_command(main_window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(uc, "pipeline_extra_installed", lambda: False)
+    shown: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "exec", lambda self: shown.append(self.informativeText())
+    )
+    main_window._latest_tag = "v1.0.0"
+    main_window._on_update_install_finished(1, "pip exploded")
+    lines = shown[0].splitlines()
+    assert any(line.endswith("pip install mlgidgui==1.0.0") for line in lines)
+    assert any(line.endswith("pip uninstall -y mlgidlab") for line in lines)
+
+
+@pytest.mark.parametrize(
+    "tag, module, wording",
+    [
+        ("v1.0.0", "mlgidgui", "mlgidGUI 1.0.0 was installed"),
+        ("v0.1.0a22", "mlgidlab", "mlgidLAB was updated"),
+    ],
+)
+def test_restart_relaunches_the_installed_apps_module(
+    main_window, monkeypatch, tmp_path, tag, module, wording
+):
+    import sys
+
+    from PySide6.QtWidgets import QMessageBox
+
+    import mlgidlab.main_window_update as mwu
+    from mlgidlab import diagnostics
+
+    monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(tmp_path))
+    asked: list = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda parent, title, text, *a, **k: (
+            asked.append(text) or QMessageBox.StandardButton.Yes
+        ),
+    )
+    launched: list = []
+    monkeypatch.setattr(
+        mwu.QProcess, "startDetached",
+        lambda exe, args: launched.append((exe, args)),
+    )
+    monkeypatch.setattr(mwu.QApplication, "quit", lambda: None)
+    main_window._latest_tag = tag
+    main_window._prompt_restart()
+    assert wording in asked[0]
+    assert launched == [(sys.executable, ["-m", module])]
+    text = (tmp_path / diagnostics.UPDATE_LOG_NAME).read_text("utf-8")
+    assert f"-m {module} ===" in text
+
+
+# ------------- one-time notice: mlgidLAB is becoming mlgidGUI ------------- #
+@pytest.fixture
+def rename_notice_unseen(main_window):
+    """A profile that has not seen the notice, and one that is left clean."""
+    from PySide6.QtCore import QSettings
+
+    QSettings().remove(main_window._RENAME_NOTICE_KEY)
+    yield
+    QSettings().remove(main_window._RENAME_NOTICE_KEY)
+
+
+def _record_notice_dialogs(monkeypatch, press=None):
+    """Replace ``QMessageBox.exec``: record the box's texts and, when
+    ``press`` names a button, click it. Returns the list of records."""
+    from PySide6.QtWidgets import QMessageBox
+
+    shown: list = []
+
+    def _exec(self):
+        shown.append((self.windowTitle(), self.text(), self.informativeText()))
+        if press is not None:
+            next(b for b in self.buttons() if b.text() == press).click()
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", _exec)
+    return shown
+
+
+def test_rename_notice_shows_once_per_profile(
+    main_window, rename_notice_unseen, monkeypatch
+):
+    from PySide6.QtCore import QSettings
+
+    shown = _record_notice_dialogs(monkeypatch)
+    main_window._maybe_show_rename_notice()
+    assert len(shown) == 1
+    assert str(QSettings().value(main_window._RENAME_NOTICE_KEY)).lower() == "true"
+    # Never again on later launches.
+    main_window._maybe_show_rename_notice()
+    assert len(shown) == 1
+
+
+def test_rename_notice_is_recorded_even_if_the_dialog_fails(
+    main_window, rename_notice_unseen, monkeypatch
+):
+    from PySide6.QtCore import QSettings
+
+    def _boom():
+        raise RuntimeError("dialog failed")
+
+    monkeypatch.setattr(main_window, "_show_rename_notice", _boom)
+    with pytest.raises(RuntimeError):
+        main_window._maybe_show_rename_notice()
+    # A failing dialog must not come back on every launch.
+    assert str(QSettings().value(main_window._RENAME_NOTICE_KEY)).lower() == "true"
+
+
+def test_rename_notice_says_what_to_do_and_what_changes(
+    main_window, monkeypatch
+):
+    shown = _record_notice_dialogs(monkeypatch)
+    main_window._show_rename_notice()
+    (title, text, info), = shown
+    assert title == "mlgidLAB is becoming mlgidGUI"
+    assert "1.0.0" in text and "same application" in text
+    assert "nothing now" in info and "Update now" in info
+    assert "mlgidgui instead of mlgidlab" in info
+    assert "no compatibility layer" in info
+
+
+def test_rename_notice_more_information_opens_the_releases_page(
+    main_window, monkeypatch
+):
+    import mlgidlab.main_window_update as mwu
+
+    opened: list = []
+    monkeypatch.setattr(
+        mwu.QDesktopServices, "openUrl", lambda url: opened.append(url.toString())
+    )
+    _record_notice_dialogs(monkeypatch, press="More information")
+    main_window._show_rename_notice()
+    assert opened == [uc.RELEASES_PAGE]
+    # OK just closes it.
+    opened.clear()
+    _record_notice_dialogs(monkeypatch, press="OK")
+    main_window._show_rename_notice()
+    assert opened == []
+
+
+def test_rename_notice_is_reachable_from_the_help_menu(
+    main_window, monkeypatch
+):
+    shown = _record_notice_dialogs(monkeypatch)
+    action = main_window.action_rename_notice
+    assert "mlgidGUI" in action.text()
+    action.trigger()
+    assert len(shown) == 1
+
+
+def test_startup_checks_show_the_notice_before_the_network_check(
+    main_window, monkeypatch
+):
+    order: list[str] = []
+    monkeypatch.setattr(
+        main_window, "_maybe_show_changelog", lambda: order.append("changelog")
+    )
+    monkeypatch.setattr(
+        main_window, "_maybe_show_rename_notice", lambda: order.append("notice")
+    )
+    monkeypatch.setattr(
+        main_window, "_start_update_check", lambda **k: order.append("check")
+    )
+    main_window._run_startup_update_checks()
+    assert order == ["changelog", "notice", "check"]
+
+
+# ------- the app must not hold its own launcher open (Windows updates) ------- #
+def _fds_open_on(path) -> bool:
+    """Linux only: does this process hold ``path`` open?"""
+    import os
+
+    target = os.path.realpath(path)
+    for name in os.listdir("/proc/self/fd"):
+        try:
+            if os.path.realpath(os.readlink(f"/proc/self/fd/{name}")) == target:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+@pytest.fixture
+def launcher_zip(tmp_path, monkeypatch):
+    """A zip named like a pip launcher, first on ``sys.path`` as it is when
+    the interpreter runs ``Scripts\\mlgidlab.exe``; ``sys.path`` and the
+    metadata caches are restored afterwards."""
+    import importlib.metadata
+    import sys
+    import zipfile
+
+    exe = tmp_path / "mlgidlab.exe"
+    with zipfile.ZipFile(exe, "w") as z:
+        z.writestr("__main__.py", "")
+    monkeypatch.setattr(sys, "path", [str(exe)] + list(sys.path))
+    yield exe
+    importlib.metadata.FastPath.__new__.cache_clear()
+
+
+def test_drop_launcher_from_sys_path_only_removes_executables(monkeypatch):
+    import sys
+
+    keep = ["/a/site-packages", "/b/lib.zip", "", "/c/tools"]
+    monkeypatch.setattr(
+        sys, "path", ["C:\\v\\Scripts\\mlgidlab.exe"] + keep + ["D:\\x\\Y.EXE"]
+    )
+    removed = uc.drop_launcher_from_sys_path()
+    assert removed == ["C:\\v\\Scripts\\mlgidlab.exe", "D:\\x\\Y.EXE"]
+    assert sys.path == keep
+    assert uc.drop_launcher_from_sys_path() == []
+
+
+@pytest.mark.skipif(
+    not __import__("os").path.isdir("/proc/self/fd"), reason="needs /proc"
+)
+def test_release_launcher_handles_closes_the_archive(launcher_zip):
+    import importlib.metadata
+
+    # What the app does on startup: any importlib.metadata lookup scans the
+    # whole sys.path, including the launcher zip.
+    list(importlib.metadata.distributions())
+    if not _fds_open_on(launcher_zip):
+        pytest.skip("this Python does not keep the archive open")
+    uc.release_launcher_handles()
+    assert not _fds_open_on(launcher_zip)
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows file locking")
+def test_launcher_can_be_renamed_after_the_handles_are_released(launcher_zip):
+    import importlib.metadata
+
+    list(importlib.metadata.distributions())
+    uc.release_launcher_handles()
+    aside = launcher_zip.with_name("mlgidlab.exe.old")
+    launcher_zip.rename(aside)  # a held handle makes this a PermissionError
+    assert aside.exists() and not launcher_zip.exists()
+
+
+def test_free_locked_launchers_releases_our_own_handle_first(
+    tmp_path, monkeypatch
+):
+    order: list[str] = []
+    monkeypatch.setattr(
+        uc, "release_launcher_handles", lambda: order.append("release")
+    )
+    exe = tmp_path / "mlgidlab.exe"
+    exe.write_bytes(b"x")
+    renames = uc.free_locked_launchers(platform="nt", scripts_dir=tmp_path)
+    order.append("renamed" if renames else "not renamed")
+    assert order == ["release", "renamed"]
+    # Off Windows there is nothing to release.
+    order.clear()
+    uc.free_locked_launchers(platform="posix", scripts_dir=tmp_path)
+    assert order == []
+
+
+def test_main_drops_the_launcher_before_importing_qt():
+    import inspect
+
+    import mlgidlab
+
+    source = inspect.getsource(mlgidlab.main)
+    drop = source.index("drop_launcher_from_sys_path")
+    assert drop < source.index("from PySide6")

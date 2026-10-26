@@ -128,6 +128,40 @@ class MenusMixin:
         self.action_find_peak.triggered.connect(self._action_find_peak)
         edit_menu.addAction(self.action_find_peak)
 
+        # T: flip the selection between a detected peak and its fitted
+        # peak (same id, needs the peak link). A bare letter, like the
+        # J/K frame keys, so text fields consume it before the window.
+        self.action_switch_detected_fitted = QAction(
+            "&Switch detected / fitted", self,
+        )
+        self.action_switch_detected_fitted.setShortcut(QKeySequence("T"))
+        self.action_switch_detected_fitted.setToolTip(
+            "Switch the selection from a detected peak to its fitted "
+            "peak, or back. Pairs by id, so it needs the peak link."
+        )
+        self.action_switch_detected_fitted.triggered.connect(
+            self._on_switch_detected_fitted
+        )
+        edit_menu.addAction(self.action_switch_detected_fitted)
+
+        # One-off repair for older datasets: fitted peaks with no
+        # detected peak of the same id. No shortcut, it rewrites many
+        # frames at once.
+        edit_menu.addSeparator()
+        self.action_add_detected_for_fitted = QAction(
+            "Add &detected boxes for fitted peaks", self,
+        )
+        self.action_add_detected_for_fitted.setToolTip(
+            "For every fitted peak of the active entry that has no "
+            "detected peak with the same id, add a detected box of the "
+            "same size, so each fitted peak has a detected partner. "
+            "Undoable."
+        )
+        self.action_add_detected_for_fitted.triggered.connect(
+            self._on_add_detected_for_fitted
+        )
+        edit_menu.addAction(self.action_add_detected_for_fitted)
+
     def _build_tools_menu(self, bar) -> None:
         """Bulk-edit operations that don't fit the per-peak ROI workflow.
 
@@ -924,6 +958,9 @@ class MenusMixin:
         # have to move together, and a newly registered list has never
         # been read from the file.
         self._apply_peak_list_specs()
+        # The profile-masking option is read when the profiles are
+        # drawn, so redraw them now for the change to show.
+        self.profile_viewer.refresh()
         # If playback is currently running, push the new schedule onto
         # the timer right away. The next tick will use it.
         if self._play_timer.isActive():

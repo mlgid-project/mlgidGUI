@@ -13,7 +13,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
-from mlgidlab.fit import GaussianFit, fit_gaussian_on_axis
+from mlgidlab.fit import (
+    GaussianFit,
+    fit_gaussian_on_axis,
+    gaussian_at_stored_shape,
+)
+from mlgidlab.manual_fit import PeakBox
+from mlgidlab.profile_masking import neighbour_mask
 from mlgidlab.image_viewer import (
     OVERLAY_STYLE,
     ManualPeak,
@@ -27,13 +33,17 @@ from mlgidlab.image_viewer import (
 # nearly empty axis.
 FIT_RENDER_PAD_FACTOR = 3.0
 
-# Fit interval for fitted / matched peaks, expressed as a multiple of the
+# Interval for fitted / matched peaks, expressed as a multiple of the
 # stored width around the peak center. Stored widths are pygidfit's ``2σ``
 # on both axes (shared by Add-to-fitted 1D + 2D + pipeline; see
-# ``manual_fit.fit_one_peak``). The stored ``2σ`` window is generally
-# tighter than the region we want to fit over, so we expand it to give
-# the Gaussian's tails room to settle into the baseline.
+# ``manual_fit.fit_one_peak``). Nothing is fitted over this interval any
+# more (a saved peak is drawn as stored, see ``_update_fit_curves``); it
+# only sizes the span the curve is rendered over.
 FITTED_FIT_REGION_FACTOR = 3.0
+# Half-extent, in stored widths, of the band a saved (fitted / matched)
+# peak's profile averages over on the other axis. The stored width is
+# pygidfit's 2σ, so 1.0 means ±2σ.
+STORED_BAND_HALF_FACTOR = 1.0
 
 PROFILE_PEN_COLOR = "#e8e8e8"
 PROFILE_PEN_WIDTH = 1.2
@@ -44,6 +54,15 @@ REGION_BRUSH_ALPHA = 30  # 0-255
 # Distinct from the white data curve and the yellow region markers.
 FIT_PEN_COLOR = "#ff7eb6"
 FIT_PEN_WIDTH = 1.6
+# Centre / border marks drawn for a saved (fitted / matched) selection.
+# Same colour as the fit curve so the two read as one "this peak's fit"
+# layer; the centre is solid, the box edges dashed.
+STORED_MARK_COLOR = FIT_PEN_COLOR
+STORED_MARK_CENTRE_WIDTH = 1.8
+STORED_MARK_EDGE_WIDTH = 1.2
+# Linear background under a saved peak's curve, drawn on its own so the
+# line the height is measured above is visible.
+BACKGROUND_PEN_WIDTH = 1.2
 
 # Multiple of the box width added on each side when auto-zooming to a peak.
 # View window = (1 + 2 * ZOOM_PAD_FACTOR) * box_width. Matched to
@@ -117,6 +136,9 @@ class ProfileViewer(QWidget):
         region_brush = pg.mkBrush(QColor(*_hex_to_rgb(REGION_COLOR), REGION_BRUSH_ALPHA))
         fit_pen = pg.mkPen(FIT_PEN_COLOR, width=FIT_PEN_WIDTH)
         fit_pen.setCosmetic(True)
+        bg_pen = pg.mkPen(FIT_PEN_COLOR, width=BACKGROUND_PEN_WIDTH)
+        bg_pen.setStyle(Qt.PenStyle.DotLine)
+        bg_pen.setCosmetic(True)
 
         self._radial_plot = pg.PlotWidget()
         self._radial_plot.setLabel("bottom", "radius", units="Å⁻¹")
@@ -143,6 +165,7 @@ class ProfileViewer(QWidget):
         _disable_viewport_scroll(self._radial_plot)
         self._radial_curve = self._radial_plot.plot([], [], pen=pen)
         self._radial_fit_curve = self._radial_plot.plot([], [], pen=fit_pen)
+        self._radial_bg_curve = self._radial_plot.plot([], [], pen=bg_pen)
         self._radial_region = pg.LinearRegionItem(
             values=(0.0, 0.0), brush=region_brush, pen=region_pen
         )
@@ -151,6 +174,7 @@ class ProfileViewer(QWidget):
         self._radial_region.sigRegionChanged.connect(self._on_radial_changed)
         self._radial_region.sigRegionChangeFinished.connect(self._on_radial_finished)
         self._radial_plot.addItem(self._radial_region)
+        self._radial_marks = self._build_stored_marks(self._radial_plot)
         layout.addWidget(self._radial_plot)
 
         self._angular_plot = pg.PlotWidget()
@@ -170,6 +194,7 @@ class ProfileViewer(QWidget):
         _disable_viewport_scroll(self._angular_plot)
         self._angular_curve = self._angular_plot.plot([], [], pen=pen)
         self._angular_fit_curve = self._angular_plot.plot([], [], pen=fit_pen)
+        self._angular_bg_curve = self._angular_plot.plot([], [], pen=bg_pen)
         self._angular_region = pg.LinearRegionItem(
             values=(0.0, 0.0), brush=region_brush, pen=region_pen
         )
@@ -178,6 +203,7 @@ class ProfileViewer(QWidget):
         self._angular_region.sigRegionChanged.connect(self._on_angular_changed)
         self._angular_region.sigRegionChangeFinished.connect(self._on_angular_finished)
         self._angular_plot.addItem(self._angular_region)
+        self._angular_marks = self._build_stored_marks(self._angular_plot)
         layout.addWidget(self._angular_plot)
 
         self._polar_stack: np.ndarray | None = None
@@ -188,6 +214,12 @@ class ProfileViewer(QWidget):
         # kind is "manual" — file-resident peaks edit through the 2D ROI.
         self._selected: SelectedPeak | None = None
         self._current_frame = 0
+        # ``provider(frame, SelectedPeak) -> list[PeakBox]``: the other
+        # peaks to mask out of the selected peak's profiles. None (or an
+        # empty list) leaves the profiles untouched. The host owns the
+        # on/off setting and answers [] while it is off.
+        self._neighbour_provider = None
+        self._cluster_distance_provider = None
         # When True, the angular Gaussian fit is skipped + cleared. Driven
         # by the host (MainWindow) from the parameter panel's ring toggle:
         # if Add-to-fitted will commit a ring there's no angular dimension
@@ -211,6 +243,57 @@ class ProfileViewer(QWidget):
         self._current_frame = 0
         self._recompute_curves()
 
+    def set_neighbour_provider(self, provider) -> None:
+        """Install the callable that lists the peaks to mask (see above)."""
+        self._neighbour_provider = provider
+
+    def set_cluster_distance_provider(self, provider) -> None:
+        """Install the callable returning pygidfit's clustering distance
+        for peaks (pixels of its polar grid; None = the default). Read
+        each time the profiles are drawn, so a changed Pipeline setting
+        applies on the next redraw."""
+        self._cluster_distance_provider = provider
+
+    def refresh(self) -> None:
+        """Redraw the profiles, e.g. after the masking setting changed."""
+        self._recompute_curves()
+
+    def _masked_for_neighbours(self, img: np.ndarray) -> tuple[np.ndarray, bool]:
+        """``img`` with the neighbours of the selected peak set to NaN.
+
+        Returns ``(image, masked)``. The cached frame is never edited in
+        place; a masked frame is a copy. Any provider failure means no
+        masking rather than a broken plot.
+        """
+        peak = self._selected
+        if peak is None or self._neighbour_provider is None:
+            return img, False
+        try:
+            boxes = self._neighbour_provider(self._current_frame, peak)
+        except Exception:
+            return img, False
+        if not boxes:
+            return img, False
+        target = PeakBox(
+            radius=float(peak.radius), radius_width=float(peak.radius_width),
+            angle=float(peak.angle), angle_width=float(peak.angle_width),
+        )
+        distance = None
+        if self._cluster_distance_provider is not None:
+            try:
+                distance = self._cluster_distance_provider()
+            except Exception:
+                distance = None
+        mask = neighbour_mask(
+            img.shape, self._radius, self._angle, target, boxes,
+            cluster_distance=distance,
+        )
+        if mask is None:
+            return img, False
+        out = np.array(img, dtype=np.float32 if img.dtype.kind != "f" else img.dtype)
+        out[mask] = np.nan
+        return out, True
+
     def set_frame(self, frame: int) -> None:
         if self._polar_stack is None:
             return
@@ -224,6 +307,8 @@ class ProfileViewer(QWidget):
         self._angular_curve.setData([], [])
         self._radial_fit_curve.setData([], [])
         self._angular_fit_curve.setData([], [])
+        self._clear_backgrounds()
+        self._hide_stored_marks()
         self._polar_stack = None
         self._radius = None
         self._angle = None
@@ -290,6 +375,8 @@ class ProfileViewer(QWidget):
         """
         self._radial_fit_curve.setVisible(visible)
         self._angular_fit_curve.setVisible(visible)
+        self._radial_bg_curve.setVisible(visible)
+        self._angular_bg_curve.setVisible(visible)
 
     def _on_log_y_toggled(self, log: bool) -> None:
         """Apply the Log-y toggle to both profile plots.
@@ -466,6 +553,11 @@ class ProfileViewer(QWidget):
         except (RuntimeError, ValueError, OSError, KeyError):
             return
 
+        img, masked = self._masked_for_neighbours(img)
+        suffix = " (neighbours masked)" if masked else ""
+        self._radial_plot.setTitle("Radial profile" + suffix)
+        self._angular_plot.setTitle("Angular profile" + suffix)
+
         # Polar maps legitimately hold all-NaN rows/columns — bins the
         # detector never covers (missing wedge, gaps). ``nanmean`` of
         # such a slice is NaN by design and pyqtgraph gaps the curve
@@ -481,15 +573,27 @@ class ProfileViewer(QWidget):
                 peak = self._selected
                 box_r, box_dr = peak.radius, peak.radius_width
                 box_a, box_da = peak.angle, peak.angle_width
+                # Half-extent of the band each profile averages over,
+                # as a multiple of the stored/drawn width. A manual /
+                # detected box is a drawn extent (width / 2 each side).
+                # A saved peak stores 2σ, so width / 2 would average
+                # over only ±σ and the profile height would depend on
+                # how wide the box it came from was; the full stored
+                # width (±2σ) takes in ~95% of the other axis' Gaussian
+                # whatever the original box was.
+                half = (
+                    STORED_BAND_HALF_FACTOR
+                    if peak.kind in ("fitted", "matched") else 0.5
+                )
                 a_slice = _bounds_to_slice(
                     self._angle,
-                    box_a - box_da / 2.0,
-                    box_a + box_da / 2.0,
+                    box_a - half * box_da,
+                    box_a + half * box_da,
                 )
                 r_slice = _bounds_to_slice(
                     self._radius,
-                    box_r - box_dr / 2.0,
-                    box_r + box_dr / 2.0,
+                    box_r - half * box_dr,
+                    box_r + half * box_dr,
                 )
                 radial_src = (
                     img[:, a_slice] if a_slice.stop > a_slice.start else img
@@ -511,31 +615,102 @@ class ProfileViewer(QWidget):
         else:
             self._radial_fit_curve.setData([], [])
             self._angular_fit_curve.setData([], [])
+            self._clear_backgrounds()
+            self._hide_stored_marks()
             self._set_fit_cache(None, None)
+
+    @staticmethod
+    def _build_stored_marks(plot: pg.PlotWidget) -> tuple:
+        """Centre line + two edge lines for a saved peak, hidden until used."""
+        centre_pen = pg.mkPen(STORED_MARK_COLOR, width=STORED_MARK_CENTRE_WIDTH)
+        centre_pen.setCosmetic(True)
+        edge_pen = pg.mkPen(STORED_MARK_COLOR, width=STORED_MARK_EDGE_WIDTH)
+        edge_pen.setStyle(Qt.PenStyle.DashLine)
+        edge_pen.setCosmetic(True)
+        lines = (
+            pg.InfiniteLine(angle=90, movable=False, pen=edge_pen),
+            pg.InfiniteLine(angle=90, movable=False, pen=centre_pen),
+            pg.InfiniteLine(angle=90, movable=False, pen=edge_pen),
+        )
+        for line in lines:
+            line.setZValue(40)
+            line.setVisible(False)
+            plot.addItem(line, ignoreBounds=True)
+        return lines
+
+    @staticmethod
+    def _set_marks(marks: tuple, centre: float, width: float) -> None:
+        """Place (lo edge, centre, hi edge); edges at ``centre ± width/2``."""
+        lo, mid, hi = marks
+        lo.setPos(centre - width / 2.0)
+        mid.setPos(centre)
+        hi.setPos(centre + width / 2.0)
+        for line in marks:
+            line.setVisible(True)
+
+    def _hide_stored_marks(self) -> None:
+        for marks in (self._radial_marks, self._angular_marks):
+            for line in marks:
+                line.setVisible(False)
+
+    def _show_stored_marks(self, peak: SelectedPeak) -> None:
+        """Mark a saved peak's centre and box edges in both profiles.
+
+        The edges sit where the drawn box ends (``centre ± width / 2``,
+        the stored width being the full box extent), so the profile
+        shows the stored numbers and nothing the viewer computed. A
+        ring has no angular extent (``angle_width`` is inf), so only the
+        radial marks appear for it.
+        """
+        r, dr = peak.radius, peak.radius_width
+        if np.isfinite(r) and np.isfinite(dr) and dr > 0:
+            self._set_marks(self._radial_marks, float(r), float(dr))
+        else:
+            for line in self._radial_marks:
+                line.setVisible(False)
+        a, da = peak.angle, peak.angle_width
+        if not peak.is_ring and np.isfinite(a) and np.isfinite(da) and da > 0:
+            self._set_marks(self._angular_marks, float(a), float(da))
+        else:
+            for line in self._angular_marks:
+                line.setVisible(False)
+
+    def _clear_backgrounds(self) -> None:
+        self._radial_bg_curve.setData([], [])
+        self._angular_bg_curve.setData([], [])
+
+    @staticmethod
+    def _draw_background(curve, fit: GaussianFit | None, enabled: bool) -> None:
+        """Draw ``fit``'s linear background (``slope * x + intercept``) over
+        its own span, or clear it. Only a saved peak's curve gets one; a
+        live fit keeps just its curve."""
+        if enabled and fit is not None:
+            curve.setData(fit.x, fit.slope * fit.x + fit.intercept)
+        else:
+            curve.setData([], [])
 
     def _update_fit_curves(
         self, peak: SelectedPeak, radial: np.ndarray, angular: np.ndarray
     ) -> None:
-        # All peak kinds drive a live 1D scipy fit on the integrated
-        # profile data; only the *interval* we fit over changes:
-        #   manual / detected  → box bounds (the user-controlled region)
-        #   fitted / matched   → ``FITTED_FIT_REGION_FACTOR × stored_width``
-        #                        around the centre. Stored widths are
-        #                        pygidfit's ``2σ`` on both axes (the
-        #                        unified convention shared by
-        #                        ``manual_fit.fit_one_peak`` and the
-        #                        1D Add-to-fitted path), so the fit
-        #                        window is roughly ``±1.5 × 2σ = ±3σ``
-        #                        — wide enough that the Gaussian's
-        #                        tails settle into the baseline on
-        #                        both sides.
-        # An earlier revision used ``gaussian_from_stored_params`` for
-        # fitted/matched (projection of the persisted 2D Gaussian) so
-        # the overlay would track pygidfit's stored values rather than
-        # re-fit the data. That helper is retained for future use but
-        # not called here — the user feedback was that the live data
-        # fit looked better; the projection added drift relative to
-        # what the user actually sees in the profile.
+        # Two displays, by what the selection is:
+        #   manual / detected  → a live 1D scipy fit over the box (a
+        #                        forecast of what Add-to-fitted would
+        #                        save; nothing is stored yet).
+        #   fitted / matched   → the STORED row: a Gaussian centred on
+        #                        the stored centre with the stored width,
+        #                        its maximum read off the profile at that
+        #                        centre above the flank background
+        #                        (``gaussian_at_stored_shape``), plus
+        #                        marks at the centre and the two edges
+        #                        where the drawn box ends. Never a
+        #                        refit: a stored value that disagrees
+        #                        with the data shows as a curve off the
+        #                        profile peak.
+        stored = peak.kind in ("fitted", "matched")
+        if stored:
+            self._show_stored_marks(peak)
+        else:
+            self._hide_stored_marks()
         rfit: GaussianFit | None = None
         afit: GaussianFit | None = None
         r_range = _radial_fit_range(peak)
@@ -543,15 +718,22 @@ class ProfileViewer(QWidget):
             r_lo, r_hi = r_range
             r_pad = FIT_RENDER_PAD_FACTOR * (r_hi - r_lo)
             render_r = (r_lo - r_pad, r_hi + r_pad)
-            rfit = fit_gaussian_on_axis(
-                self._radius, radial, peak.radius, peak.radius_width,
-                fit_range=(r_lo, r_hi),
-                render_range=render_r,
-            )
+            if stored:
+                rfit = gaussian_at_stored_shape(
+                    self._radius, radial, peak.radius, peak.radius_width,
+                    render_range=render_r,
+                )
+            else:
+                rfit = fit_gaussian_on_axis(
+                    self._radius, radial, peak.radius, peak.radius_width,
+                    fit_range=(r_lo, r_hi),
+                    render_range=render_r,
+                )
             if rfit is not None:
                 self._radial_fit_curve.setData(rfit.x, rfit.y)
             else:
                 self._radial_fit_curve.setData([], [])
+            self._draw_background(self._radial_bg_curve, rfit, stored)
         # Skip angular fit when the host has flagged ring-save mode — the
         # angular dimension won't be saved, so showing a fit would lie
         # about what Add-to-fitted will write.
@@ -560,17 +742,25 @@ class ProfileViewer(QWidget):
             a_lo, a_hi = a_range
             a_pad = FIT_RENDER_PAD_FACTOR * (a_hi - a_lo)
             render_a = (a_lo - a_pad, a_hi + a_pad)
-            afit = fit_gaussian_on_axis(
-                self._angle, angular, peak.angle, peak.angle_width,
-                fit_range=(a_lo, a_hi),
-                render_range=render_a,
-            )
+            if stored:
+                afit = gaussian_at_stored_shape(
+                    self._angle, angular, peak.angle, peak.angle_width,
+                    render_range=render_a,
+                )
+            else:
+                afit = fit_gaussian_on_axis(
+                    self._angle, angular, peak.angle, peak.angle_width,
+                    fit_range=(a_lo, a_hi),
+                    render_range=render_a,
+                )
             if afit is not None:
                 self._angular_fit_curve.setData(afit.x, afit.y)
             else:
                 self._angular_fit_curve.setData([], [])
+            self._draw_background(self._angular_bg_curve, afit, stored)
         elif self._angle is not None:
             self._angular_fit_curve.setData([], [])
+            self._angular_bg_curve.setData([], [])
         self._set_fit_cache(rfit, afit)
 
     def _set_fit_cache(
@@ -717,13 +907,13 @@ def _radial_fit_range(peak: SelectedPeak) -> tuple[float, float] | None:
 
     For manual / detected peaks the interval is the box itself (the user
     controls the box bounds, so we fit over what they drew). For
-    fitted / matched peaks the stored ``radius_width`` is pygidfit's
-    ``2σ`` (mlgidbase pass-through, mirrored by
-    ``manual_fit.fit_one_peak`` so manual peaks match pipeline peaks).
-    The fit interval expands to ``FITTED_FIT_REGION_FACTOR × radius_width``
-    around the centre so the Gaussian's tails have room to settle into
-    the baseline on both sides. Returns ``None`` only when widths are
-    non-finite or zero (caller hides the curve in that case).
+    fitted / matched peaks nothing is fitted: the stored
+    ``radius_width`` is pygidfit's ``2σ`` (mlgidbase pass-through,
+    mirrored by ``manual_fit.fit_one_peak``) and the interval,
+    ``FITTED_FIT_REGION_FACTOR × radius_width`` around the centre, only
+    sizes the span the stored curve is rendered over. Returns ``None``
+    only when widths are non-finite or zero (caller hides the curve in
+    that case).
     """
     r = peak.radius
     dr = peak.radius_width
@@ -753,12 +943,8 @@ def _angular_fit_range(peak: SelectedPeak) -> tuple[float, float] | None:
         # ``angle_width`` as pygidfit's ``2σ`` (per the wrapper in
         # ``manual_fit.fit_one_peak`` and mlgidbase's pass-through
         # of the same container — they share an identical write
-        # convention). Expand the fit window symmetrically with the
-        # radial helper so the Gaussian's tails settle into the
-        # baseline on both sides; without this expansion the
-        # angular window was only ±1.5σ (top half of the peak),
-        # which is what the user reported as "the angular profile
-        # doesn't reach around the complete peak".
+        # convention). Same render-span interval as the radial helper;
+        # the stored curve is drawn, not fitted, over it.
         half = FITTED_FIT_REGION_FACTOR * da / 2.0
     return (a - half, a + half)
 

@@ -345,3 +345,385 @@ def test_detach_drops_pending_tree_inserts(main_window, qtbot, tmp_path):
     qtbot.waitUntil(lambda: not main_window._tree_insert_queue, timeout=10000)
     model = main_window.tree.findHdf5TreeModel()
     qtbot.waitUntil(lambda: model.rowCount() == 3, timeout=10000)
+
+
+def _selection_files(window) -> list[str]:
+    tree = window.conversion_panel.selection_tree
+    return [
+        tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())
+    ]
+
+
+def test_images_dropped_one_by_one_accumulate(main_window, qtbot, tmp_path):
+    """Each single-image drop joins the open raw batch: one session, and
+    the Conversion panel's Selection gains a row per drop instead of
+    showing only the newest file."""
+    tiffs = _write_tiffs(tmp_path, n=3)
+    for i, p in enumerate(tiffs, start=1):
+        main_window._open_paths([p])
+        assert len(main_window._sessions) == 1
+        assert _selection_files(main_window) == [t.name for t in tiffs[:i]]
+        assert main_window.entry_combo.count() == i
+        # The viewer follows the file that was just dropped.
+        assert main_window.entry_combo.currentText() == p.name
+
+    assert main_window.session.raw_paths == [p.resolve() for p in tiffs]
+    qtbot.waitUntil(lambda: not main_window._tree_insert_queue, timeout=10000)
+    model = main_window.tree.findHdf5TreeModel()
+    qtbot.waitUntil(lambda: model.rowCount() == 3, timeout=10000)
+
+
+def test_drop_keeps_existing_selection_state(main_window, tmp_path):
+    """A later drop must not clear what is already ticked."""
+    tiffs = _write_tiffs(tmp_path, n=2)
+    main_window._open_paths([tiffs[0]])
+    panel = main_window.conversion_panel
+    first = panel.selection_tree.topLevelItem(0)
+    first.setCheckState(0, Qt.CheckState.Checked)
+
+    main_window._open_paths([tiffs[1]])
+
+    assert panel.selection_tree.topLevelItem(0).checkState(0) == (
+        Qt.CheckState.Checked
+    )
+    assert panel.selection_tree.topLevelItem(1).checkState(0) == (
+        Qt.CheckState.Unchecked
+    )
+    assert panel.select_all_box.checkState() == Qt.CheckState.PartiallyChecked
+    assert panel.select_all_box.isEnabled()
+
+
+def test_dropping_the_same_image_twice_adds_nothing(main_window, tmp_path):
+    (tiff,) = _write_tiffs(tmp_path, n=1)
+    main_window._open_paths([tiff])
+    main_window._open_paths([tiff])
+
+    assert len(main_window._sessions) == 1
+    assert main_window.session.raw_paths == [tiff.resolve()]
+    assert _selection_files(main_window) == [tiff.name]
+    assert main_window.entry_combo.count() == 1
+
+
+def test_raw_drop_joins_the_raw_batch_behind_a_nexus_file(
+    main_window, synthetic_nexus, tmp_path
+):
+    """With a NeXus session in front, a dropped raw file still extends
+    the existing raw batch and brings it to the front with both files."""
+    from mlgidlab.session import NexusSession
+
+    first, second = _write_tiffs(tmp_path, n=2)
+    main_window._open_paths([first])
+    raw = main_window.session
+    nexus = NexusSession.open(synthetic_nexus)
+    main_window._sessions.append(nexus)
+    main_window._set_active_session(nexus)
+    assert main_window.session is nexus
+
+    main_window._open_paths([second])
+
+    assert main_window.session is raw
+    assert len([s for s in main_window._sessions if s.kind == "raw"]) == 1
+    assert raw.raw_paths == [first.resolve(), second.resolve()]
+    assert _selection_files(main_window) == [first.name, second.name]
+
+
+def test_hdf5_raw_files_dropped_one_by_one_accumulate(
+    main_window, qtbot, tmp_path, synthetic_raw
+):
+    """Same as the image case, through the CopyWorker path HDF5 files use."""
+    import shutil
+
+    files = []
+    for i in range(3):
+        dest = tmp_path / f"raw_{i}.h5"
+        shutil.copy(synthetic_raw, dest)
+        files.append(dest)
+
+    for i, p in enumerate(files, start=1):
+        main_window._open_paths([p])
+        qtbot.waitUntil(
+            lambda: main_window._thread is None
+            and not main_window._open_queue
+            and not main_window._pending_raw_paths,
+            timeout=15000,
+        )
+        assert len(main_window._sessions) == 1
+        assert _selection_files(main_window) == [f.name for f in files[:i]]
+        assert main_window.entry_combo.count() == i
+
+
+def test_closing_the_raw_session_empties_the_selection(main_window, tmp_path):
+    """Closed raw files must leave the Conversion panel's Selection list
+    (and the Convert button) instead of lingering until the next load."""
+    tiffs = _write_tiffs(tmp_path, n=2)
+    main_window._open_paths([tiffs[0]])
+    main_window._open_paths([tiffs[1]])
+    panel = main_window.conversion_panel
+    panel.selection_tree.topLevelItem(0).setCheckState(0, Qt.CheckState.Checked)
+    assert _selection_files(main_window) == [t.name for t in tiffs]
+
+    main_window._close_session(main_window.session)
+
+    assert main_window.session is None
+    assert _selection_files(main_window) == []
+    assert not panel.select_all_box.isEnabled()
+    assert not panel.btn_convert.isEnabled()
+    assert main_window._raw_entries == {}
+    assert main_window._raw_entry_label_by_path == {}
+
+
+def test_closing_a_raw_session_behind_a_nexus_file_empties_the_selection(
+    main_window, synthetic_nexus, tmp_path
+):
+    from mlgidlab.session import NexusSession
+
+    (tiff,) = _write_tiffs(tmp_path, n=1)
+    main_window._open_paths([tiff])
+    raw = main_window.session
+    nexus = NexusSession.open(synthetic_nexus)
+    main_window._sessions.append(nexus)
+    main_window._set_active_session(nexus)
+    assert _selection_files(main_window) == [tiff.name]
+
+    main_window._close_session(raw)
+
+    assert main_window.session is nexus
+    assert _selection_files(main_window) == []
+
+
+def test_a_file_dropped_after_closing_starts_a_fresh_selection(
+    main_window, tmp_path
+):
+    first, second = _write_tiffs(tmp_path, n=2)
+    main_window._open_paths([first])
+    main_window._close_session(main_window.session)
+
+    main_window._open_paths([second])
+
+    assert _selection_files(main_window) == [second.name]
+    assert main_window.session.raw_paths == [second.resolve()]
+
+
+def _browser_rows(window) -> list[str]:
+    from PySide6.QtCore import QModelIndex
+
+    model = window.tree.findHdf5TreeModel()
+    return [
+        model.data(model.index(r, 0, QModelIndex()), Qt.ItemDataRole.DisplayRole)
+        for r in range(model.rowCount())
+    ]
+
+
+def _open_tiffs(window, qtbot, tmp_path, n=3) -> list[Path]:
+    tiffs = _write_tiffs(tmp_path, n=n)
+    for p in tiffs:
+        window._open_paths([p])
+    qtbot.waitUntil(lambda: not window._tree_insert_queue, timeout=10000)
+    model = window.tree.findHdf5TreeModel()
+    qtbot.waitUntil(lambda: model.rowCount() == n, timeout=10000)
+    return tiffs
+
+
+def _select_browser_rows(window, rows) -> None:
+    from PySide6.QtCore import QItemSelectionModel
+
+    view = window.tree
+    flags = QItemSelectionModel.SelectionFlag.ClearAndSelect
+    for r in rows:
+        view.selectionModel().select(view.model().index(r, 0), flags)
+        flags = QItemSelectionModel.SelectionFlag.Select
+
+
+def test_closing_one_raw_file_removes_only_it_from_the_selection(
+    main_window, qtbot, tmp_path
+):
+    """Ctrl+W on a raw batch closes the file on screen: its Selection row,
+    entry and browser row go, the others (and their ticks) stay."""
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path)
+    panel = main_window.conversion_panel
+    panel.selection_tree.topLevelItem(2).setCheckState(0, Qt.CheckState.Checked)
+    main_window.entry_combo.setCurrentText(tiffs[1].name)
+
+    main_window._action_close_file()
+
+    assert main_window.session.raw_paths == [tiffs[0].resolve(), tiffs[2].resolve()]
+    assert _selection_files(main_window) == [tiffs[0].name, tiffs[2].name]
+    assert panel.selection_tree.topLevelItem(1).checkState(0) == (
+        Qt.CheckState.Checked
+    )
+    assert panel.select_all_box.checkState() == Qt.CheckState.PartiallyChecked
+    assert _browser_rows(main_window) == [tiffs[0].name, tiffs[2].name]
+    assert [
+        main_window.entry_combo.itemText(i)
+        for i in range(main_window.entry_combo.count())
+    ] == [tiffs[0].name, tiffs[2].name]
+    assert tiffs[1].name not in {
+        e.file_path.name for e in main_window._raw_entries.values()
+    }
+    # The viewer moved off the closed image onto a remaining one.
+    assert main_window.entry_combo.currentText() == tiffs[0].name
+    assert main_window.session is not None
+
+
+def test_closing_a_file_that_is_not_on_screen_keeps_the_view(
+    main_window, qtbot, tmp_path
+):
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path)
+    main_window.entry_combo.setCurrentText(tiffs[2].name)
+
+    main_window._remove_raw_files(main_window.session, [str(tiffs[0].resolve())])
+
+    assert _selection_files(main_window) == [tiffs[1].name, tiffs[2].name]
+    assert main_window.entry_combo.currentText() == tiffs[2].name
+
+
+def test_delete_key_removes_only_the_selected_raw_file(
+    main_window, qtbot, tmp_path
+):
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path)
+    _select_browser_rows(main_window, [1])
+
+    main_window._remove_selected_file_from_browser()
+
+    assert _selection_files(main_window) == [tiffs[0].name, tiffs[2].name]
+    assert _browser_rows(main_window) == [tiffs[0].name, tiffs[2].name]
+    assert len(main_window._sessions) == 1
+
+
+def test_delete_key_removes_every_selected_raw_file(
+    main_window, qtbot, tmp_path
+):
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=4)
+    _select_browser_rows(main_window, [0, 2])
+
+    main_window._remove_selected_file_from_browser()
+
+    assert _selection_files(main_window) == [tiffs[1].name, tiffs[3].name]
+    assert _browser_rows(main_window) == [tiffs[1].name, tiffs[3].name]
+
+
+def test_closing_the_last_raw_file_closes_the_session(
+    main_window, qtbot, tmp_path
+):
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=2)
+    main_window._action_close_file()
+    assert len(main_window.session.raw_paths) == 1
+    main_window._action_close_file()
+
+    assert main_window.session is None
+    assert _selection_files(main_window) == []
+    assert not main_window.conversion_panel.btn_convert.isEnabled()
+    assert _browser_rows(main_window) == []
+
+
+def test_a_closed_raw_file_can_be_dropped_again(main_window, qtbot, tmp_path):
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=2)
+    main_window._remove_raw_files(main_window.session, [str(tiffs[0].resolve())])
+    assert _selection_files(main_window) == [tiffs[1].name]
+
+    main_window._open_paths([tiffs[0]])
+
+    assert main_window.session.raw_paths == [tiffs[1].resolve(), tiffs[0].resolve()]
+    assert _selection_files(main_window) == [tiffs[1].name, tiffs[0].name]
+
+
+def test_closing_a_raw_file_behind_a_nexus_file_updates_the_selection(
+    main_window, qtbot, synthetic_nexus, tmp_path
+):
+    from mlgidlab.session import NexusSession
+
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=2)
+    raw = main_window.session
+    nexus = NexusSession.open(synthetic_nexus)
+    main_window._sessions.append(nexus)
+    main_window._set_active_session(nexus)
+
+    main_window._remove_raw_files(raw, [str(tiffs[0].resolve())])
+
+    assert main_window.session is nexus
+    assert raw.raw_paths == [tiffs[1].resolve()]
+    assert _selection_files(main_window) == [tiffs[1].name]
+
+
+def test_closing_one_hdf5_raw_file_keeps_the_others(
+    main_window, qtbot, tmp_path, synthetic_raw
+):
+    import shutil
+
+    files = []
+    for i in range(2):
+        dest = tmp_path / f"raw_{i}.h5"
+        shutil.copy(synthetic_raw, dest)
+        files.append(dest)
+        main_window._open_paths([dest])
+        qtbot.waitUntil(
+            lambda: main_window._thread is None
+            and not main_window._open_queue
+            and not main_window._pending_raw_paths,
+            timeout=15000,
+        )
+    qtbot.waitUntil(lambda: not main_window._tree_insert_queue, timeout=10000)
+    model = main_window.tree.findHdf5TreeModel()
+    qtbot.waitUntil(lambda: model.rowCount() == 2, timeout=10000)
+
+    main_window._remove_raw_files(main_window.session, [str(files[0].resolve())])
+
+    assert _selection_files(main_window) == [files[1].name]
+    assert main_window.session.raw_paths == [files[1].resolve()]
+    assert model.rowCount() == 1
+    assert main_window.session.display_path == files[1].resolve()
+    assert all(
+        e.file_path.resolve() == files[1].resolve()
+        for e in main_window._raw_entries.values()
+    )
+
+
+def test_shift_selecting_rows_and_pressing_delete_closes_them(
+    main_window, qtbot, tmp_path
+):
+    """The real route: extended selection in the browser, then the Delete
+    key on the tree."""
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=5)
+    view = main_window.tree
+    proxy = view.model()
+    from PySide6.QtCore import QItemSelection, QItemSelectionModel
+
+    sel = QItemSelection(proxy.index(1, 0), proxy.index(3, 0))
+    view.selectionModel().select(
+        sel,
+        QItemSelectionModel.SelectionFlag.ClearAndSelect
+        | QItemSelectionModel.SelectionFlag.Rows,
+    )
+    assert len(view.selectionModel().selectedRows()) == 3
+
+    qtbot.keyClick(view, Qt.Key.Key_Delete)
+
+    assert _selection_files(main_window) == [tiffs[0].name, tiffs[4].name]
+    assert _browser_rows(main_window) == [tiffs[0].name, tiffs[4].name]
+    assert main_window.session.raw_paths == [
+        tiffs[0].resolve(), tiffs[4].resolve()
+    ]
+
+
+def test_a_multi_row_selection_does_not_move_the_viewer(
+    main_window, qtbot, tmp_path
+):
+    """A single click follows the row; adding a second row to the
+    selection (Ctrl-click) leaves the viewer where it was."""
+    from PySide6.QtCore import QItemSelectionModel
+
+    tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=3)
+    view = main_window.tree
+    proxy = view.model()
+    view.selectionModel().select(
+        proxy.index(0, 0), QItemSelectionModel.SelectionFlag.ClearAndSelect
+    )
+    assert main_window.entry_combo.currentText() == tiffs[0].name
+
+    view.selectionModel().select(
+        proxy.index(2, 0), QItemSelectionModel.SelectionFlag.Select
+    )
+
+    picked = [i for i in view.selectedIndexes() if i.column() == 0]
+    assert len(picked) == 2
+    assert main_window.entry_combo.currentText() == tiffs[0].name

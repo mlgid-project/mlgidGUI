@@ -791,3 +791,102 @@ def test_flipud_moves_the_beam_center_with_the_image(tmp_path):
     np.testing.assert_allclose(
         np.nan_to_num(a_img), np.nan_to_num(b_img), rtol=1e-4, atol=1e-4,
     )
+
+
+# -- panel: Output section and the optional directory --------------------
+
+
+def _ready_to_convert(panel, tmp_path, *entries):
+    """Pin the ticked entries and fill the only other required field."""
+    poni = _write_poni(tmp_path)
+    panel.poni_path.setText(str(poni))
+    panel.frame_mode.setCurrentText("All")
+    _fake_entries(panel, *entries)
+
+
+def test_output_sits_under_selection_and_starts_open(main_window):
+    panel = main_window.conversion_panel
+    assert [s.title() for s in panel._sections] == [
+        "Selection", "Output", "Experimental parameters", "Metadata",
+        "Conversion config",
+    ]
+    assert panel._sections[1].is_expanded()
+
+
+def test_an_empty_directory_with_a_checked_entry_is_runnable(
+        main_window, tmp_path, synthetic_raw):
+    from PySide6.QtCore import Qt
+
+    from mlgidlab.file_model import list_raw_entries
+
+    panel = main_window.conversion_panel
+    panel.poni_path.setText(str(_write_poni(tmp_path)))
+    panel.set_raw_inputs([(synthetic_raw, list_raw_entries(synthetic_raw))])
+    assert not panel.btn_convert.isEnabled()
+    panel.selection_tree.topLevelItem(0).child(0).setCheckState(
+        0, Qt.CheckState.Checked)
+    assert panel.output_dir.text() == ""
+    assert panel.btn_convert.isEnabled()
+    # The placeholder is the live default, not "(required)".
+    assert str(synthetic_raw.parent) in panel.output_dir.placeholderText()
+
+
+def test_an_empty_directory_resolves_to_the_raw_file_s_folder(
+        main_window, tmp_path):
+    panel = main_window.conversion_panel
+    raw_dir = tmp_path / "beamtime"
+    raw_dir.mkdir()
+    _ready_to_convert(panel, tmp_path, _raw_entry(raw_dir, "scan.h5", 3))
+    logged: list[str] = []
+    panel.logMessage.connect(logged.append)
+
+    scans, cfg = panel._collect_run_inputs()
+
+    assert cfg.output_dir == raw_dir
+    assert any(str(raw_dir) in line for line in logged)
+
+
+def test_an_explicit_directory_wins(main_window, tmp_path):
+    panel = main_window.conversion_panel
+    raw_dir = tmp_path / "beamtime"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "out"
+    _ready_to_convert(panel, tmp_path, _raw_entry(raw_dir, "scan.h5", 3))
+    panel.output_dir.setText(str(out_dir))
+
+    _scans, cfg = panel._collect_run_inputs()
+
+    assert cfg.output_dir == out_dir
+
+
+def test_a_read_only_raw_folder_is_refused(main_window, tmp_path, monkeypatch):
+    """Monkeypatched rather than chmod-ed: CI may run as root, which
+    writes anywhere."""
+    from mlgidlab import conversion_panel as cp
+
+    panel = main_window.conversion_panel
+    _ready_to_convert(panel, tmp_path, _raw_entry(tmp_path, "scan.h5", 3))
+    monkeypatch.setattr(cp.os, "access", lambda *a, **k: False)
+
+    with pytest.raises(ValueError, match="Choose an output directory"):
+        panel._collect_run_inputs()
+
+
+def test_the_append_target_follows_the_default_directory(
+        main_window, tmp_path):
+    panel = main_window.conversion_panel
+    raw_dir = tmp_path / "beamtime"
+    raw_dir.mkdir()
+    _existing_output(raw_dir)            # raw_dir/converted.h5, two entries
+    _ready_to_convert(panel, tmp_path, _raw_entry(raw_dir, "scan.h5", 3))
+    panel.output_mode_combo.setCurrentText(OUTPUT_SEPARATE_DATASETS)
+
+    assert panel._resolve_append_target() == raw_dir / "converted.h5"
+    panel.append_frames_chk.setChecked(True)
+    items = [panel.append_entry_combo.itemText(i)
+             for i in range(panel.append_entry_combo.count())]
+    assert items == ["entry_0000", "entry_0001"]
+
+    _scans, cfg = panel._collect_run_inputs()
+    assert cfg.append_entry == "entry_0001"
+    assert cfg.output_dir == raw_dir

@@ -118,7 +118,8 @@ def test_the_request_lands_once_the_window_has_room(qtbot, main_window):
     qtbot.wait(150)
 
     tree = main_window._tree_dock.width()
-    right = main_window._display_dock.width()
+    # Measured on the front tab: one behind it keeps a stale width.
+    right = main_window._pipeline_dock.width()
     wanted_right = main_window._preferred_right_dock_width()
     # What the two columns were actually allotted, versus what was
     # asked for. Qt never hands out more than the request, so the
@@ -138,3 +139,104 @@ def test_the_default_window_grows_with_the_screen():
     width, height = MainWindow._default_window_size()
     assert 1400 <= width <= 1600
     assert 900 <= height <= 950
+
+
+# -- which right-hand tab is in front -------------------------------------
+
+
+def _front_right_tab(window) -> str:
+    """The current tab of the right-hand dock group, by its title."""
+    from PySide6.QtWidgets import QApplication, QTabBar
+
+    for _ in range(5):
+        QApplication.processEvents()
+    for bar in window.findChildren(QTabBar):
+        if bar.parent() is not window or not bar.isVisible():
+            continue
+        titles = {bar.tabText(i) for i in range(bar.count())}
+        if "Logs" in titles:
+            return bar.tabText(bar.currentIndex())
+    raise AssertionError("no visible right-hand dock tab bar")
+
+
+def _open_nexus(window, path):
+    from mlgidlab.session import NexusSession
+
+    session = NexusSession.open(path)
+    window._sessions.append(session)
+    window._set_active_session(session)
+    return session
+
+
+def test_pipeline_is_in_front_at_startup(main_window):
+    main_window.show()
+    assert _front_right_tab(main_window) == "Pipeline"
+
+
+def test_opening_a_file_keeps_pipeline_in_front(main_window, synthetic_nexus):
+    main_window.show()
+    _open_nexus(main_window, synthetic_nexus)
+    assert _front_right_tab(main_window) == "Pipeline"
+
+
+def test_switching_sessions_keeps_the_tab_the_user_chose(
+    main_window, synthetic_nexus, synthetic_nexus_with_peaks
+):
+    main_window.show()
+    first = _open_nexus(main_window, synthetic_nexus)
+    main_window._display_dock.raise_()
+    assert _front_right_tab(main_window) == "Display"
+    assert main_window._right_front_dock is main_window._display_dock
+    _open_nexus(main_window, synthetic_nexus_with_peaks)
+    assert _front_right_tab(main_window) == "Display"
+    main_window._logs_dock.raise_()
+    main_window._set_active_session(first)
+    assert _front_right_tab(main_window) == "Logs"
+
+
+def test_switching_entries_keeps_the_tab_the_user_chose(
+    main_window, synthetic_nexus
+):
+    import h5py
+
+    with h5py.File(synthetic_nexus, "a") as f:
+        f.copy("entry_0000", "entry_0001")
+    main_window.show()
+    _open_nexus(main_window, synthetic_nexus)
+    combo = main_window.entry_combo
+    assert combo.count() == 2
+    main_window._sim_dock.raise_()
+    combo.setCurrentIndex(1 - combo.currentIndex())
+    assert _front_right_tab(main_window) == "Expected pattern"
+
+
+def test_raw_shows_conversion_and_nexus_falls_back_to_pipeline(
+    main_window, synthetic_raw, synthetic_nexus
+):
+    from mlgidlab.session import RawSession
+
+    main_window.show()
+    raw = RawSession.open([synthetic_raw])
+    main_window._sessions.append(raw)
+    main_window._set_active_session(raw)
+    assert _front_right_tab(main_window) == "Conversion"
+    _open_nexus(main_window, synthetic_nexus)
+    assert _front_right_tab(main_window) == "Pipeline"
+
+
+def test_a_structure_tab_round_trip_keeps_the_tab_the_user_chose(
+    main_window, synthetic_nexus
+):
+    """Unfolding shows the docks one by one, each coming forward in turn."""
+    main_window.show()
+    main_window._confirm_discard_changes = lambda session=None: True
+    _open_nexus(main_window, synthetic_nexus)
+    main_window._logs_dock.raise_()
+    try:
+        main_window.tabs.setCurrentWidget(main_window.structure_panel)
+        main_window.tabs.setCurrentWidget(main_window.viewer)
+        assert _front_right_tab(main_window) == "Logs"
+        assert main_window._right_front_dock is main_window._logs_dock
+    finally:
+        if main_window._h5_edit_handle is not None:
+            main_window._h5_edit_handle.release()

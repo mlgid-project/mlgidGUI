@@ -228,3 +228,194 @@ def test_a_window_with_no_flanks_falls_back_to_a_flat_baseline():
     slope, intercept = _flank_baseline(x, y, -1.0, 2.0)
     assert slope == 0.0
     assert intercept == pytest.approx(float(y.min()))
+
+
+# -- gaussian_at_stored_shape: the stored row, drawn as stored ---------
+
+
+def test_stored_shape_keeps_stored_centre_and_width():
+    """The curve is the stored Gaussian whatever the data say: centre
+    and sigma come back verbatim (stored width is 2 sigma)."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.2, 50.0, 0.0, 3.0)
+    # Stored values deliberately off the real peak (centre 0, 2 sigma 2.4).
+    fit = gaussian_at_stored_shape(axis, data, center=2.0, width_2sigma=1.0)
+    assert fit is not None
+    assert fit.center == 2.0
+    assert fit.sigma == pytest.approx(0.5)
+    # Off the peak, so it is not dragged onto it as a refit would be.
+    assert fit.x[np.argmax(fit.y)] == pytest.approx(2.0, abs=0.1)
+
+
+def test_stored_shape_maximum_is_the_profile_value_at_the_centre():
+    """The curve's maximum sits at the stored centre and equals the
+    profile there above the background."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(-1.0, 1.0, 40.0, 0.5, 4.0)
+    fit = gaussian_at_stored_shape(axis, data, center=-1.0, width_2sigma=2.0)
+    assert fit is not None
+    assert fit.amplitude == pytest.approx(40.0, rel=0.05)
+    assert fit.slope == pytest.approx(0.5, abs=0.15)
+    assert fit.x[np.argmax(fit.y - (fit.slope * fit.x + fit.intercept))] == \
+        pytest.approx(-1.0, abs=0.1)
+
+
+def test_stored_shape_off_the_peak_gets_a_lower_maximum():
+    """A stored centre two sigma off the real peak reads the profile
+    where it is low, so the curve is visibly lower than the data."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    on = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    off = gaussian_at_stored_shape(axis, data, center=2.0, width_2sigma=2.0)
+    assert on is not None and off is not None
+    assert off.amplitude < 0.25 * on.amplitude
+
+
+def test_stored_shape_fwhm_follows_the_stored_width():
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    fit = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    assert fit is not None
+    assert fit.fwhm == pytest.approx(_FWHM_K * 1.0)   # sigma = width / 2
+
+
+def test_stored_shape_amplitude_is_floored_at_zero():
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis = np.linspace(-10.0, 10.0, 200)
+    data = np.full_like(axis, 5.0)
+    data[np.abs(axis) < 1.0] = 0.0          # a dip where the stored peak sits
+    fit = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    assert fit is not None
+    assert fit.amplitude == 0.0
+
+
+@pytest.mark.parametrize(
+    "center,width", [(np.nan, 1.0), (0.0, np.nan), (0.0, 0.0), (0.0, -1.0),
+                     (0.0, np.inf)],
+)
+def test_stored_shape_rejects_unusable_stored_values(center, width):
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 10.0, 0.0, 0.0)
+    assert gaussian_at_stored_shape(axis, data, center, width) is None
+
+
+def test_stored_shape_none_when_peak_is_off_the_axis():
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 10.0, 0.0, 0.0)
+    assert gaussian_at_stored_shape(axis, data, center=500.0, width_2sigma=1.0) is None
+
+
+def test_stored_shape_height_is_not_the_single_sample_at_the_centre():
+    """One noisy sample exactly at the stored centre must not set the
+    curve's height: the window mean damps it."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    spike = data.copy()
+    k = int(np.argmin(np.abs(axis)))
+    spike[k] += 400.0                       # one hot sample at the centre
+    clean = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    hot = gaussian_at_stored_shape(axis, spike, center=0.0, width_2sigma=2.0)
+    assert clean is not None and hot is not None
+    # A point read would jump by 400; the window (about 10 samples
+    # wide here) takes a small fraction of it.
+    assert hot.amplitude - clean.amplitude < 0.2 * 400.0
+
+
+@pytest.mark.parametrize("n", [200, 60])
+def test_stored_shape_height_correction_holds_on_coarse_grids(n):
+    """The window grows to one sample on a coarse grid; the Gaussian
+    correction keeps a matching peak at its true height."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0, n=n)
+    fit = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    assert fit is not None
+    assert fit.amplitude == pytest.approx(40.0, rel=0.08)
+
+
+# -- masked (NaN) samples ---------------------------------------------
+
+
+def _masked(data, axis, lo, hi):
+    out = data.copy()
+    out[(axis >= lo) & (axis <= hi)] = np.nan
+    return out
+
+
+def test_stored_shape_height_ignores_a_masked_stretch_beside_the_centre():
+    """A neighbour masked out of the profile leaves NaN next to the
+    peak. The height must come from the finite samples only: the same
+    as the unmasked profile, not dragged by a line bridging the gap."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    clean = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    # NaN stretch from the right shoulder outwards (the window is +-0.5).
+    gap = _masked(data, axis, 0.2, 4.0)
+    masked = gaussian_at_stored_shape(axis, gap, center=0.0, width_2sigma=2.0)
+    assert clean is not None and masked is not None
+    assert np.isfinite(masked.amplitude)
+    assert masked.amplitude == pytest.approx(clean.amplitude, rel=0.08)
+
+
+def test_stored_shape_is_not_biased_by_a_gap_across_the_centre():
+    """With a gap through the centre only the shoulders are finite. The
+    Gaussian's mean is taken at those same samples, so the height still
+    matches the true peak (an interpolated bridge would read the shoulder
+    value, about 0.88 of the peak, as if it were the centre)."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    masked = gaussian_at_stored_shape(
+        axis, _masked(data, axis, -0.25, 0.25), center=0.0, width_2sigma=2.0,
+    )
+    assert masked is not None
+    assert masked.amplitude == pytest.approx(40.0, rel=0.05)
+
+
+def test_stored_shape_height_is_exact_for_a_wide_gap_across_the_centre():
+    """The discriminating case: a gap leaving only the outer shoulders of
+    the window. Bridging it with a line through the shoulder values read
+    37.6 instead of 40 (about 6% low); the finite-sample mean, divided by
+    the Gaussian's mean at those same samples, reads 40."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    fit = gaussian_at_stored_shape(
+        axis, _masked(data, axis, -0.4, 0.4), center=0.0, width_2sigma=2.0,
+    )
+    assert fit is not None
+    assert fit.amplitude == pytest.approx(40.0, rel=0.015)
+
+
+def test_stored_shape_has_no_curve_when_the_window_is_fully_masked():
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    assert gaussian_at_stored_shape(
+        axis, _masked(data, axis, -0.9, 0.9), center=0.0, width_2sigma=2.0,
+    ) is None
+
+
+def test_stored_shape_spacing_is_read_from_the_axis_not_the_gaps():
+    """The window width is at least one sample spacing. Measured after
+    dropping NaN samples, a stretch of masked samples would inflate the
+    spacing and so the window; here that would swallow the shoulder far
+    from the centre and bias the height."""
+    from mlgidlab.fit import gaussian_at_stored_shape
+
+    axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
+    scattered = data.copy()
+    scattered[::2] = np.nan                       # every other sample masked
+    fit = gaussian_at_stored_shape(axis, scattered, center=0.0, width_2sigma=2.0)
+    clean = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
+    assert fit is not None and clean is not None
+    assert fit.amplitude == pytest.approx(clean.amplitude, rel=0.05)

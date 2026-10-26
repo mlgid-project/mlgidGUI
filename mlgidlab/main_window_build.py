@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QAbstractSpinBox,
     QCheckBox,
     QComboBox,
@@ -55,6 +56,7 @@ from mlgidlab.main_window_constants import (
     DEFAULT_PLAYBACK_FRAME_MS,
 )
 from mlgidlab.parameter_panel import ParameterPanel
+from mlgidlab.peak_link import read_bool
 from mlgidlab.peaks_table_panel import PeaksTablePanel
 from mlgidlab.pipeline import is_mlgidbase_available
 from mlgidlab.pipeline_panel import PipelinePanel
@@ -86,6 +88,9 @@ logger = logging.getLogger(__name__)
 
 #: QSettings key for whether the workflow strip is open or folded.
 RAIL_EXPANDED_KEY = "view/workflow_rail_expanded"
+#: QSettings key for whether a stage's run glyph also brings its dock
+#: forward. Default on.
+RAIL_RUN_OPENS_DOCK_KEY = "view/rail_run_opens_dock"
 
 
 def _dirty_dot(diameter: int = 8) -> QPixmap:
@@ -235,6 +240,11 @@ class BuildMixin:
         # Entries show in the file's native order (acquisition order for the
         # track_order pygid masters this targets).
         self.tree.setSortingEnabled(False)
+        # Shift/Ctrl-click and Ctrl+A pick several rows so Delete can close
+        # them together.
+        self.tree.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         # Single-click silently updates Data tab; double-click jumps to it.
         self.tree.selectionModel().selectionChanged.connect(
             self._on_tree_selection_changed
@@ -734,10 +744,11 @@ class BuildMixin:
         )
         sim_orient_row.addWidget(self._sim_matched_combo, 1)
         self._sim_hkl_edit = QLineEdit()
-        self._sim_hkl_edit.setPlaceholderText("h k l   e.g. 0 0 1")
+        self._sim_hkl_edit.setPlaceholderText("h k l   e.g. 0 0 1 or 001")
         self._sim_hkl_edit.setToolTip(
             "Miller indices of the orientation to render: three "
-            "integers separated by spaces or commas. Validated "
+            "integers separated by spaces or commas, or three single "
+            "digits written together (001, -110, 1-10). Validated "
             "against the structure's precomputed orientations; "
             "equivalent spellings (2 2 0, 0 0 -1) resolve to the "
             "simulated one (1 1 0, 0 0 1)."
@@ -1046,7 +1057,16 @@ class BuildMixin:
         self.conversion_panel.logMessage.connect(self._log_view.appendPlainText)
         self.conversion_panel.logCleared.connect(self._log_view.clear)
 
-        self._display_dock.raise_()
+        # Remember which right-hand tab the user has in front, so a
+        # session switch that re-tabifies the column can put it back
+        # (``_apply_session_mode``). A tabbed dock emits
+        # ``visibilityChanged(True)`` when its tab becomes current.
+        self._right_front_dock = None
+        for dock in (self._display_dock, self._pipeline_dock, self._sim_dock,
+                     self._conversion_dock, self._logs_dock):
+            dock.visibilityChanged.connect(
+                lambda visible, d=dock: self._note_right_front_dock(d, visible))
+        self._pipeline_dock.raise_()
 
         # Bottom: profile viewer + peaks table, tabified together.
         # Default to ~30% of window height so the central image
@@ -1055,6 +1075,19 @@ class BuildMixin:
         # than the peak table; the peak table sits behind it,
         # one click away.
         self.profile_viewer = ProfileViewer(self)
+        self.profile_viewer.set_neighbour_provider(self._profile_neighbour_boxes)
+        # The neighbour mask leaves out peaks pygidfit would fit together
+        # with the selected one; that distance is the Pipeline panel's.
+        # (A backend-less install builds a stub panel without the fitting
+        # form: no provider then, and the viewer uses the default.)
+        _dist = getattr(self.pipeline_panel, "fit_dist_peaks", None)
+        if _dist is not None:
+            self.profile_viewer.set_cluster_distance_provider(
+                lambda: float(_dist.value())
+            )
+            _dist.valueChanged.connect(
+                lambda _v: self.profile_viewer.refresh()
+            )
         self._profile_dock = QDockWidget("Profiles", self)
         self._profile_dock.setWidget(self.profile_viewer)
         self._profile_dock.setObjectName("ProfileDock")
@@ -1076,6 +1109,9 @@ class BuildMixin:
             Qt.DockWidgetArea.BottomDockWidgetArea, self._scan_tracking_dock
         )
         self.tabifyDockWidget(self._peaks_dock, self._scan_tracking_dock)
+        self.scan_tracking_panel.loadSavedRequested.connect(
+            lambda: self._request_saved_tracking(force=True)
+        )
         self.scan_tracking_panel.trackRequested.connect(
             self._on_track_scan_requested
         )
@@ -1463,6 +1499,18 @@ class BuildMixin:
     _RIGHT_DOCK_MAX_PX = 500
     _RIGHT_DOCK_MIN_PX = 380
 
+    def _note_right_front_dock(self, dock, visible: bool) -> None:
+        if not visible or dock.isFloating():
+            return
+        # Folding the docks for the Structure tab brings each next tab
+        # forward for a moment on the way out; that is not a choice.
+        tabs = getattr(self, "tabs", None)
+        structure = getattr(self, "structure_panel", None)
+        if tabs is not None and structure is not None \
+                and tabs.currentWidget() is structure:
+            return
+        self._right_front_dock = dock
+
     def _apply_default_dock_widths(self) -> None:
         """Open the two side columns at their default widths.
 
@@ -1736,6 +1784,9 @@ class BuildMixin:
     def _on_rail_stage_run(self, key: str) -> None:
         button = self._rail_run_button(key)
         if button is not None and button.isEnabled():
+            # Read per click, so the Settings dialog applies at once.
+            if read_bool(RAIL_RUN_OPENS_DOCK_KEY, True):
+                self._on_rail_stage_activated(key)
             button.click()
 
     def _refresh_workflow_rail(self) -> None:
@@ -1747,6 +1798,7 @@ class BuildMixin:
         rail = getattr(self, "workflow_rail", None)
         if rail is None:
             return
+        self._sync_scan_tracking_visibility()
         session = self.session
         rail.setVisible(session is not None)
         if session is None:

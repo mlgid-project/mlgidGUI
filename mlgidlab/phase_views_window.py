@@ -21,8 +21,8 @@ The window never touches the tracking math: the payload is pushed by
 the host, and the two image aids are computed by
 ``workers.ScanProfileWorker`` on QThreads owned here (read-only, own
 h5py handles). "Save official mlgidBASE figures…" emits
-``saveFiguresRequested`` for the host to run upstream's real matplotlib
-export on the GUI thread.
+``saveFiguresRequested`` for the host to run upstream's
+``plot_tracked_peaks`` on the GUI thread.
 """
 from __future__ import annotations
 
@@ -235,8 +235,10 @@ class PhaseViewsWindow(QMainWindow):
         act_images.triggered.connect(self._on_export_images)
         act_save = QAction("Save official mlgidBASE figures…", self)
         act_save.setToolTip(
-            "Run mlgidBASE track_peaks with save_fig=True: writes the "
-            "upstream *_qxy_qz / *_evolution matplotlib figures."
+            "Rerun mlgidBASE track_peaks and save its own tracking "
+            "figure (q_xy vs q_z next to the chosen axis against frame "
+            "number) to the file you pick. The amplitude axis is not "
+            "available upstream and is drawn as radius."
         )
         act_save.triggered.connect(self._on_save_figures)
         toolbar = self.addToolBar("Export")

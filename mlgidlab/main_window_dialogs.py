@@ -21,8 +21,10 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QSpinBox,
     QTableWidget,
+    QTabWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 from mlgidlab import file_model, peak_lists
 from mlgidlab.widgets import skin_item_view
@@ -32,7 +34,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 from mlgidlab.main_window_constants import (
+    DEFAULT_PROFILE_MASK_NEIGHBOURS,
+    DEFAULT_ZOOM_TO_SELECTED_PEAK,
+    ZOOM_TO_SELECTED_PEAK_KEY,
     PEAK_LINK_KEY,
+    PROFILE_MASK_NEIGHBOURS_KEY,
     PEAK_LINK_REVERSE_KEY,
     PLAYBACK_FRAME_MS_KEY,
     PLAYBACK_MODE_KEY,
@@ -46,6 +52,7 @@ from mlgidlab.main_window_constants import (
     PLAYBACK_TOTAL_S_MAX,
     PLAYBACK_TOTAL_S_MIN,
 )
+from mlgidlab.main_window_build import RAIL_RUN_OPENS_DOCK_KEY
 from mlgidlab.peak_link import link_enabled, read_bool
 
 
@@ -120,12 +127,31 @@ class _ExportPeaksDialog(QDialog):
 # Total play time.
 
 
+def _describe(text: str) -> QLabel:
+    """One muted explanatory line under an option, so what it does is
+    readable without hovering for the tooltip. Indented to sit under the
+    checkbox text rather than the checkbox."""
+    label = QLabel(text)
+    label.setProperty("status", "muted")
+    label.setWordWrap(True)
+    label.setContentsMargins(24, 0, 0, 0)
+    return label
+
+
+def _option(layout: QVBoxLayout, box: QCheckBox, description: str) -> None:
+    layout.addWidget(box)
+    layout.addWidget(_describe(description))
+
+
 class _SettingsDialog(QDialog):
     """Application-wide settings dialog.
 
-    Carries the frame-playback section and the peak-editing section;
-    the layout leaves room for more, so adding a section is just
-    appending another ``QGroupBox`` to the outer layout.
+    Three tabs so nothing needs scrolling: **Display** (image viewer,
+    profiles, frame playback), **Peaks** (peak editing, extra peak
+    lists) and **Interface** (workflow strip). Adding a section is
+    appending another ``QGroupBox`` to the right tab's layout; each
+    option is a checkbox with a muted one-line description under it
+    (``_option``), the longer explanation staying in the tooltip.
 
     On accept, every changed value is written back to QSettings and
     the host MainWindow is told to re-apply (so an in-flight
@@ -135,18 +161,31 @@ class _SettingsDialog(QDialog):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(380)
+        self.setMinimumWidth(560)
 
         outer = QVBoxLayout(self)
+        outer.setSpacing(12)
+        self._tabs = QTabWidget()
+        outer.addWidget(self._tabs)
+
+        def _page(title: str) -> QVBoxLayout:
+            page = QWidget()
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(14, 14, 14, 14)
+            layout.setSpacing(14)
+            self._tabs.addTab(page, title)
+            return layout
+
+        display_page = _page("Display")
+        peaks_page = _page("Peaks")
+        interface_page = _page("Interface")
 
         # --- Playback section -------------------------------------------------
         playback_box = QGroupBox("Frame playback")
         playback_layout = QVBoxLayout(playback_box)
 
-        hint = QLabel(
-            "<i>Controls the speed of the Display-dock Play button.</i>"
-        )
-        hint.setWordWrap(True)
+        hint = _describe("Controls the speed of the Display-dock Play button.")
+        hint.setContentsMargins(0, 0, 0, 0)
         playback_layout.addWidget(hint)
 
         # Two mutually-exclusive modes. The active radio's spinbox is
@@ -192,17 +231,15 @@ class _SettingsDialog(QDialog):
         form.addRow(self._rb_frame, self._spin_frame_ms)
         form.addRow(self._rb_total, self._spin_total_s)
         playback_layout.addLayout(form)
-        outer.addWidget(playback_box)
 
         # --- Peak editing section ---------------------------------------------
         peaks_box = QGroupBox("Peak editing")
         peaks_layout = QVBoxLayout(peaks_box)
 
-        peaks_hint = QLabel(
-            "<i>How fitted peaks relate to the detected peaks they "
-            "come from.</i>"
+        peaks_hint = _describe(
+            "How fitted peaks relate to the detected peaks they come from."
         )
-        peaks_hint.setWordWrap(True)
+        peaks_hint.setContentsMargins(0, 0, 0, 0)
         peaks_layout.addWidget(peaks_hint)
 
         self._chk_peak_link = QCheckBox(
@@ -227,30 +264,37 @@ class _SettingsDialog(QDialog):
             "to delete."
         )
         self._chk_peak_link.toggled.connect(self._refresh_enabled)
-        peaks_layout.addWidget(self._chk_peak_link)
-        peaks_layout.addWidget(self._chk_peak_link_reverse)
-        outer.addWidget(peaks_box)
+        _option(
+            peaks_layout, self._chk_peak_link,
+            "Fitting a detected peak again replaces its fit instead of "
+            "adding a second one.",
+        )
+        _option(
+            peaks_layout, self._chk_peak_link_reverse,
+            "Off by default. Needs the option above.",
+        )
 
         # --- Extra peak lists -------------------------------------------------
         lists_box = QGroupBox("Extra peak lists")
         lists_layout = QVBoxLayout(lists_box)
-        lists_hint = QLabel(
-            "<i>Show another peak table from a file's analysis group as "
-            "its own layer in the Display dock. A display layer only: "
-            "you can see it, pick a box and nudge it, and nothing else "
-            "in the app reads it.<br><br>"
+        for paragraph in (
+            "Show another peak table from a file's analysis group as its "
+            "own layer in the Display dock. A display layer only: you can "
+            "see it, pick a box and nudge it, and nothing else in the app "
+            "reads it.",
             "<b>Pipeline primary</b> is the one exception, and it is "
-            "niche. Tick it and Detection and Fitting read and write "
-            "that table instead of the standard one for its flavour, so "
-            "you can build a second analysis without touching the first. "
-            "One table per flavour. Everything else still uses the "
-            "standard tables: the Peaks table, CSV export, peak "
-            "tracking, and matching — so with a primary Fitted "
-            "table, matching keeps matching a table the pipeline is no "
-            "longer updating.</i>"
-        )
-        lists_hint.setWordWrap(True)
-        lists_layout.addWidget(lists_hint)
+            "niche. Tick it and Detection and Fitting read and write that "
+            "table instead of the standard one for its flavour, so you can "
+            "build a second analysis without touching the first. One "
+            "table per flavour.",
+            "Everything else still uses the standard tables: the Peaks "
+            "table, CSV export, peak tracking, and matching. With a "
+            "primary Fitted table, matching keeps matching a table the "
+            "pipeline is no longer updating.",
+        ):
+            lists_hint = _describe(paragraph)
+            lists_hint.setContentsMargins(0, 0, 0, 0)
+            lists_layout.addWidget(lists_hint)
 
         self._lists_table = QTableWidget(0, 4)
         self._lists_table.setHorizontalHeaderLabels(
@@ -283,10 +327,79 @@ class _SettingsDialog(QDialog):
         self._lists_empty_hint.setProperty("status", "muted")
         self._lists_empty_hint.setWordWrap(True)
         lists_layout.addWidget(self._lists_empty_hint)
-        outer.addWidget(lists_box)
+
+        # --- Workflow strip ---------------------------------------------------
+        rail_box = QGroupBox("Workflow strip")
+        rail_layout = QVBoxLayout(rail_box)
+        self._chk_rail_run_opens_dock = QCheckBox(
+            "Open a stage's dock when its play button is pressed"
+        )
+        self._chk_rail_run_opens_dock.setToolTip(
+            "The play button next to a stage on the strip above the image "
+            "runs that stage. With this on it also brings the dock that "
+            "owns the stage forward, so the run's settings and progress "
+            "are in view. Clicking a stage's name always does."
+        )
+        _option(
+            rail_layout, self._chk_rail_run_opens_dock,
+            "The play button next to a stage also brings that stage's "
+            "dock forward. Clicking a stage's name always does.",
+        )
+
+        # --- Profiles ---------------------------------------------------------
+        profile_box = QGroupBox("Profiles")
+        profile_layout = QVBoxLayout(profile_box)
+        self._chk_profile_mask = QCheckBox(
+            "Mask the other peaks out of the selected peak's profiles"
+        )
+        self._chk_profile_mask.setToolTip(
+            "Sets the boxes of the frame's other detected and fitted peaks "
+            "to NaN before the radial and angular profiles are averaged, "
+            "so the profiles show the selected peak and not its "
+            "neighbours. This is what pygidfit does to the other boxes "
+            "when it fits a peak: a neighbour masks its radius +- "
+            "radius_width by angle +- angle_width / 2. Neighbours "
+            "within pygidfit's clustering distance (the Pipeline panel's "
+            "Cluster dist (peaks), 2 px of its polar grid by default) "
+            "are left in, as pygidfit fits those jointly, and "
+            "rings are not masked. The profile titles say when masking "
+            "is active."
+        )
+        _option(
+            profile_layout, self._chk_profile_mask,
+            "The profiles show the selected peak and not its neighbours, "
+            "as pygidfit sees it when it fits. The profile titles say when "
+            "this is active.",
+        )
+
+        # --- Image viewer -----------------------------------------------------
+        view_box = QGroupBox("Image viewer")
+        view_layout = QVBoxLayout(view_box)
+        self._chk_zoom_peak = QCheckBox("Zoom to a peak when it is selected")
+        self._chk_zoom_peak.setToolTip(
+            "Selecting a detected or fitted peak (in the image or in the "
+            "Peaks table) zooms the image onto its box, so the box fills "
+            "about the middle third of the view. Rings are never zoomed, "
+            "and neither are manual boxes you are still drawing. Reset "
+            "zoom brings the full image back."
+        )
+        _option(
+            view_layout, self._chk_zoom_peak,
+            "Detected and fitted peaks only; rings stay where they are. "
+            "Reset zoom returns to the full image.",
+        )
+
+        # --- Lay the sections out on their tabs --------------------------------
+        for box in (view_box, profile_box, playback_box):
+            display_page.addWidget(box)
+        display_page.addStretch(1)
+        for box in (peaks_box, lists_box):
+            peaks_page.addWidget(box)
+        peaks_page.addStretch(1)
+        interface_page.addWidget(rail_box)
+        interface_page.addStretch(1)
 
         # --- Buttons + outer wiring -------------------------------------------
-        outer.addStretch(1)
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
@@ -335,8 +448,45 @@ class _SettingsDialog(QDialog):
         self._chk_peak_link_reverse.setChecked(
             read_bool(PEAK_LINK_REVERSE_KEY, False)
         )
+        self._chk_rail_run_opens_dock.setChecked(
+            read_bool(RAIL_RUN_OPENS_DOCK_KEY, True)
+        )
+        self._chk_zoom_peak.setChecked(
+            read_bool(
+                ZOOM_TO_SELECTED_PEAK_KEY, DEFAULT_ZOOM_TO_SELECTED_PEAK,
+            )
+        )
+        self._chk_profile_mask.setChecked(
+            read_bool(
+                PROFILE_MASK_NEIGHBOURS_KEY, DEFAULT_PROFILE_MASK_NEIGHBOURS,
+            )
+        )
         self._load_list_rows()
         self._refresh_enabled()
+
+    # --- Layout ---
+
+    def _fit_wrapped_labels(self) -> None:
+        """Give every word-wrapped label the height its text needs at its
+        current width.
+
+        A wrapped ``QLabel`` inside a ``QTabWidget`` page reports a
+        height computed before the width is known, so a long hint is
+        cut off after its first lines. Once the dialog has a width the
+        real height is known; this applies it.
+        """
+        for label in self.findChildren(QLabel):
+            if label.wordWrap() and label.width() > 0:
+                label.setMinimumHeight(label.heightForWidth(label.width()))
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._fit_wrapped_labels()
+        self.adjustSize()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit_wrapped_labels()
 
     # --- Extra peak lists ---
 
@@ -633,4 +783,16 @@ class _SettingsDialog(QDialog):
         settings.setValue(
             PEAK_LINK_REVERSE_KEY,
             bool(self._chk_peak_link_reverse.isChecked()),
+        )
+        settings.setValue(
+            RAIL_RUN_OPENS_DOCK_KEY,
+            bool(self._chk_rail_run_opens_dock.isChecked()),
+        )
+        settings.setValue(
+            ZOOM_TO_SELECTED_PEAK_KEY,
+            bool(self._chk_zoom_peak.isChecked()),
+        )
+        settings.setValue(
+            PROFILE_MASK_NEIGHBOURS_KEY,
+            bool(self._chk_profile_mask.isChecked()),
         )

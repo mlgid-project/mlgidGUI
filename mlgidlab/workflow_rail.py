@@ -123,10 +123,13 @@ class _StageBlock(QWidget):
         column.addWidget(chip)
         column.addWidget(chip.state)
         row.addLayout(column)
+        #: The trailing arrow, or ``None`` on the last stage. Hidden when
+        #: no visible stage follows (``WorkflowRail.set_stage_visible``).
+        self.arrow: QLabel | None = None
         if with_arrow:
-            arrow = QLabel("\u2192", self)
-            arrow.setProperty("status", "muted")
-            row.addWidget(arrow)
+            self.arrow = QLabel("\u2192", self)
+            self.arrow.setProperty("status", "muted")
+            row.addWidget(self.arrow)
 
 
 class WorkflowRail(QWidget):
@@ -165,6 +168,10 @@ class WorkflowRail(QWidget):
 
         self.chips: dict[str, _StageChip] = {}
         self._blocks: list[_StageBlock] = []
+        #: Stages taken off the strip because they do not apply to the
+        #: data (``set_stage_visible``), as opposed to the whole strip
+        #: being folded.
+        self._hidden_stages: set[str] = set()
         for index, (key, label, glyph) in enumerate(STAGES):
             chip = _StageChip(key, label, glyph, self)
             chip.activated.connect(self.stageActivated)
@@ -200,8 +207,13 @@ class WorkflowRail(QWidget):
 
     def _apply_expanded(self) -> None:
         expanded = self._toggle.isChecked()
-        for block in self._blocks:
-            block.setVisible(expanded)
+        shown = [key not in self._hidden_stages for key, _l, _g in STAGES]
+        for index, block in enumerate(self._blocks):
+            block.setVisible(expanded and shown[index])
+            # An arrow only where a visible stage follows, so the strip
+            # never ends on one pointing at nothing.
+            if block.arrow is not None:
+                block.arrow.setVisible(any(shown[index + 1:]))
         self._folded_label.setVisible(not expanded)
         self._toggle.setToolTip(
             "Fold the workflow strip away" if expanded
@@ -216,6 +228,24 @@ class WorkflowRail(QWidget):
         except Exception:  # pragma: no cover - a missing asset costs an icon
             logger.debug("no chevron for the workflow rail", exc_info=True)
         self.updateGeometry()
+
+    def set_stage_visible(self, key: str, visible: bool) -> None:
+        """Take a stage off the strip, or put it back.
+
+        For a stage that does not apply to the data at all (tracking a
+        single frame), unlike ``set_available``, which greys a stage that
+        applies later. The previous stage's arrow goes with it.
+        """
+        if key not in self.chips or visible == self.is_stage_visible(key):
+            return
+        if visible:
+            self._hidden_stages.discard(key)
+        else:
+            self._hidden_stages.add(key)
+        self._apply_expanded()
+
+    def is_stage_visible(self, key: str) -> bool:
+        return key in self.chips and key not in self._hidden_stages
 
     # -- state ---------------------------------------------------------
 

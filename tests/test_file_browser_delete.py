@@ -116,3 +116,86 @@ def test_handler_noops_without_a_resolvable_session(
     main_window._safe_selected_h5_nodes = lambda: []
     main_window._remove_selected_file_from_browser()
     assert s1 in main_window._sessions
+
+
+class _Node:
+    def __init__(self, path) -> None:
+        self.local_filename = str(path)
+
+
+def test_the_browser_allows_selecting_several_rows(main_window):
+    from PySide6.QtWidgets import QAbstractItemView
+
+    assert main_window.tree.selectionMode() == (
+        QAbstractItemView.SelectionMode.ExtendedSelection
+    )
+
+
+def test_delete_closes_every_selected_converted_file(
+    main_window, synthetic_nexus, tmp_path
+):
+    s1 = _open(main_window, synthetic_nexus)
+    second = tmp_path / "second.h5"
+    third = tmp_path / "third.h5"
+    shutil.copy2(synthetic_nexus, second)
+    shutil.copy2(synthetic_nexus, third)
+    s2 = _open(main_window, second)
+    s3 = _open(main_window, third)
+    # Two rows of the same file count once; the active file (s3) goes too.
+    main_window._safe_selected_h5_nodes = lambda: [
+        _Node(s1.temp_path), _Node(s1.temp_path), _Node(s3.temp_path),
+    ]
+
+    main_window._remove_selected_file_from_browser()
+
+    assert main_window._sessions == [s2]
+    assert main_window.session is s2
+
+
+def test_cancelling_the_unsaved_prompt_closes_nothing(
+    main_window, synthetic_nexus, tmp_path, monkeypatch
+):
+    from PySide6.QtWidgets import QMessageBox
+
+    s1 = _open(main_window, synthetic_nexus)
+    second = tmp_path / "second.h5"
+    shutil.copy2(synthetic_nexus, second)
+    s2 = _open(main_window, second)
+    s2.dirty = True
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *a, **k: QMessageBox.StandardButton.Cancel,
+    )
+    main_window._safe_selected_h5_nodes = lambda: [
+        _Node(s1.temp_path), _Node(s2.temp_path),
+    ]
+
+    main_window._remove_selected_file_from_browser()
+
+    assert main_window._sessions == [s1, s2]
+    # The window's own teardown must not ask again.
+    s2.dirty = False
+
+
+def test_delete_closes_converted_and_raw_files_together(
+    main_window, synthetic_nexus, synthetic_raw, tmp_path
+):
+    from mlgidlab.session import RawSession
+
+    s1 = _open(main_window, synthetic_nexus)
+    raw_files = []
+    for name in ("a.h5", "b.h5"):
+        f = tmp_path / name
+        shutil.copy2(synthetic_raw, f)
+        raw_files.append(f)
+    raw = RawSession.open(raw_files)
+    main_window._sessions.append(raw)
+    main_window._set_active_session(raw)
+    main_window._safe_selected_h5_nodes = lambda: [
+        _Node(s1.temp_path), _Node(raw_files[0]),
+    ]
+
+    main_window._remove_selected_file_from_browser()
+
+    assert main_window._sessions == [raw]
+    assert raw.raw_paths == [raw_files[1].resolve()]

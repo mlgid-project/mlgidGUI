@@ -1537,8 +1537,9 @@ class MatchedStructure:
 
     Each ``matched_*`` NeXus dataset can contain several rows — multi-phase
     solutions — and each row corresponds to one ``MatchedStructure``. The
-    ``peaks`` table is a subset of the frame's ``fitted_peaks`` taken at the
-    indices listed in ``peak_list``, so the existing peak-rendering helpers
+    ``peaks`` table is the subset of the frame's ``fitted_peaks`` that the
+    row's ``peak_list`` names (by id or by position, see
+    ``resolve_matched_kinds``), so the existing peak-rendering helpers
     can draw matched peaks without any special-casing.
     """
 
@@ -1550,8 +1551,10 @@ class MatchedStructure:
     l: int
     probability: float
     peaks: PeakTable
-    # Indices into the frame's ``fitted_peaks`` table that produced ``peaks``.
-    # Kept so matched overlays can be re-derived after an in-memory edit of a
+    # POSITIONS (row indices) into the frame's ``fitted_peaks`` table that
+    # produced ``peaks``, whatever the file stores (ids or positions, see
+    # ``resolve_matched_kinds``); ``peaks.ids`` are the matching ids. Kept
+    # so matched overlays can be re-derived after an in-memory edit of a
     # fitted peak without a second file read.
     peak_list: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=int))
 
@@ -1579,6 +1582,239 @@ class MatchedStructure:
         return f"{self.cif} {ori}  p={self.probability:.2f}"
 
 
+# -- matched ``peak_list`` kinds -------------------------------------
+#
+# A ``matched_*`` row's ``peak_list`` is a vlen int array that refers to
+# fitted peaks in one of two ways:
+#
+# - ``"position"``: row positions into the frame's ``fitted_peaks`` (what
+#   mlgidbase <= 0.1.10 wrote), or
+# - ``"id"``: the ``fitted_peaks['id']`` values (what mlgidbase >= 0.1.11
+#   writes, via ``solution2container(fitted_ids=)``).
+#
+# Nothing in the file says which one a dataset holds, and a single frame
+# can hold both (0.1.11 replaces ``matched_rings_*`` and
+# ``matched_segments_*`` independently). mlgidLAB therefore stamps each
+# dataset it writes or migrates with the ``peak_list_kind`` attribute and
+# decides the kind of an unstamped dataset from its values (see
+# ``classify_peak_list_kind``). Every reader translates to POSITIONS
+# (``MatchedStructure.peak_list`` is positional), every editor works in
+# ids, so a delete never has to shift anything.
+MATCHED_KIND_ATTR = "peak_list_kind"
+KIND_ID = "id"
+KIND_POSITION = "position"
+
+
+def stamped_peak_list_kind(ds) -> str | None:
+    """The ``peak_list_kind`` attribute of a matched dataset, or None when
+    absent or unrecognised."""
+    try:
+        raw = ds.attrs.get(MATCHED_KIND_ATTR)
+    except Exception:
+        return None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    raw = str(raw) if raw is not None else None
+    return raw if raw in (KIND_ID, KIND_POSITION) else None
+
+
+def classify_peak_list_kind(values, fitted_ids) -> str | None:
+    """Decide from the values alone whether ``values`` are ids or positions.
+
+    Returns ``"id"`` / ``"position"`` when exactly one reading explains
+    more of the values, and None when the data cannot tell: no values, or
+    every value is valid under both readings (always the case when the
+    fitted ids are ``0..n-1``, where the two readings coincide anyway).
+    Values valid under neither reading (stale entries) count for
+    neither.
+    """
+    vals = np.asarray(values, dtype=int).ravel()
+    if vals.size == 0:
+        return None
+    ids = np.asarray(fitted_ids, dtype=int).ravel()
+    n = ids.size
+    pos_ok = int(((vals >= 0) & (vals < n)).sum())
+    id_ok = int(np.isin(vals, ids).sum())
+    if pos_ok == vals.size and id_ok == vals.size:
+        return None
+    if id_ok > pos_ok:
+        return KIND_ID
+    return KIND_POSITION
+
+
+def _flat_peak_values(arr) -> np.ndarray:
+    """All ``peak_list`` values of a matched dataset array, flattened."""
+    parts = [
+        np.atleast_1d(np.asarray(arr["peak_list"][i], dtype=int))
+        for i in range(len(arr))
+    ]
+    return np.concatenate(parts) if parts else np.zeros(0, dtype=int)
+
+
+def resolve_matched_kinds(
+    datasets: dict[str, tuple[str | None, np.ndarray]], fitted_ids,
+) -> dict[str, str]:
+    """Kind of every matched dataset of one frame.
+
+    ``datasets`` maps a dataset name to ``(stamp, flat values)``. A stamp
+    is authoritative. An unstamped dataset takes the kind its values
+    imply; one that cannot tell takes the majority kind of the frame's
+    other datasets, and ``"position"`` (the legacy format) when none
+    could be decided.
+    """
+    kinds: dict[str, str] = {}
+    undecided: list[str] = []
+    for name, (stamp, vals) in datasets.items():
+        if stamp is not None:
+            kinds[name] = stamp
+            continue
+        kind = classify_peak_list_kind(vals, fitted_ids)
+        if kind is None:
+            undecided.append(name)
+        else:
+            kinds[name] = kind
+    if undecided:
+        decided = list(kinds.values())
+        fallback = (
+            KIND_ID
+            if decided.count(KIND_ID) > decided.count(KIND_POSITION)
+            else KIND_POSITION
+        )
+        for name in undecided:
+            kinds[name] = fallback
+    return kinds
+
+
+def peak_list_to_positions(values, kind: str, fitted_ids) -> np.ndarray:
+    """Row positions into ``fitted_ids`` for one ``peak_list``.
+
+    Entries that name no existing fitted row (stale after a refit, or an
+    id that was deleted) are dropped, never re-pointed at another peak.
+    """
+    vals = np.atleast_1d(np.asarray(values, dtype=int))
+    ids = np.asarray(fitted_ids, dtype=int).ravel()
+    if kind == KIND_ID:
+        pos_of: dict[int, int] = {}
+        for pos, pid in enumerate(ids.tolist()):
+            pos_of.setdefault(int(pid), pos)
+        return np.asarray(
+            [pos_of[int(v)] for v in vals if int(v) in pos_of], dtype=int,
+        )
+    return vals[(vals >= 0) & (vals < ids.size)]
+
+
+def peak_list_to_ids(values, kind: str, fitted_ids) -> np.ndarray:
+    """Fitted ids for one ``peak_list`` of either kind (stale entries
+    dropped, as in ``peak_list_to_positions``)."""
+    ids = np.asarray(fitted_ids, dtype=int).ravel()
+    return ids[peak_list_to_positions(values, kind, ids)]
+
+
+def _fitted_ids_in_group(group) -> np.ndarray:
+    """``fitted_peaks['id']`` of a frame analysis group, empty if absent."""
+    if "fitted_peaks" not in group:
+        return np.zeros(0, dtype=int)
+    arr = group["fitted_peaks"][()]
+    if arr.dtype.names is None or "id" not in arr.dtype.names:
+        return np.zeros(0, dtype=int)
+    return np.asarray(arr["id"], dtype=int)
+
+
+def normalise_matched_group_to_ids(group) -> int:
+    """Rewrite every ``matched_*`` dataset of an open ``r+`` frame group
+    in id form and stamp it. Returns the number of datasets touched.
+
+    A position-kind dataset has its positions translated through the
+    frame's CURRENT ``fitted_peaks`` ids, so call this BEFORE fitted rows
+    are removed or reordered. An id-kind dataset is only stamped. A
+    frame without fitted rows is left alone: positions cannot be
+    translated and would be emptied.
+    """
+    fitted_ids = _fitted_ids_in_group(group)
+    names = [n for n in group.keys() if n.startswith("matched_")]
+    if not names or fitted_ids.size == 0:
+        return 0
+    arrays = {n: group[n][()] for n in names}
+    stamps = {n: stamped_peak_list_kind(group[n]) for n in names}
+    kinds = resolve_matched_kinds(
+        {n: (stamps[n], _flat_peak_values(arrays[n])) for n in names},
+        fitted_ids,
+    )
+    touched = 0
+    for name in names:
+        if stamps[name] == KIND_ID:
+            continue
+        ds = group[name]
+        arr = arrays[name]
+        if kinds[name] == KIND_POSITION and len(arr):
+            for i in range(len(arr)):
+                arr["peak_list"][i] = peak_list_to_ids(
+                    arr["peak_list"][i], KIND_POSITION, fitted_ids,
+                ).astype(np.int32)
+            ds[...] = arr
+        ds.attrs[MATCHED_KIND_ATTR] = KIND_ID
+        touched += 1
+    return touched
+
+
+def stamp_matched_kind(
+    file_path: Path, entry: str, frame: int | None, kind: str,
+) -> int:
+    """Stamp every UNSTAMPED ``matched_*`` dataset under ``entry`` (one
+    frame, or all frames when ``frame`` is None) with ``kind``.
+
+    Called after a matching run, when the backend that just wrote the
+    datasets is known: the matched datasets are fresh then (a rewrite
+    drops attributes), so an existing stamp is never overwritten.
+    Returns the number of datasets stamped.
+    """
+    if kind not in (KIND_ID, KIND_POSITION):
+        raise ValueError(f"kind must be 'id' or 'position', not {kind!r}")
+    stamped = 0
+    with h5py.File(file_path, "r+") as f:
+        ana_path = f"{entry}/{ANALYSIS_REL}"
+        if ana_path not in f:
+            return 0
+        ana = f[ana_path]
+        for frame_name, _ in _iter_frame_keys(ana, frame):
+            fg = ana[frame_name]
+            for name in fg.keys():
+                if not name.startswith("matched_"):
+                    continue
+                ds = fg[name]
+                if stamped_peak_list_kind(ds) is None:
+                    ds.attrs[MATCHED_KIND_ATTR] = kind
+                    stamped += 1
+    return stamped
+
+
+def normalise_matched_entry(file_path: Path, entry: str) -> int:
+    """``normalise_matched_group_to_ids`` over every frame of ``entry``
+    with a single file open (what a scan-wide run wants; one open per
+    frame is slow on a long scan). Returns the number of datasets
+    touched."""
+    touched = 0
+    with h5py.File(file_path, "r+") as f:
+        ana = f.get(f"{entry}/{ANALYSIS_REL}")
+        if not isinstance(ana, h5py.Group):
+            return 0
+        for name in list(ana.keys()):
+            grp = ana[name]
+            if name.startswith("frame") and isinstance(grp, h5py.Group):
+                touched += normalise_matched_group_to_ids(grp)
+    return touched
+
+
+def normalise_matched_to_ids(file_path: Path, entry: str, frame: int) -> int:
+    """Open ``file_path`` and run ``normalise_matched_group_to_ids`` on one
+    frame. Returns the number of datasets touched."""
+    with h5py.File(file_path, "r+") as f:
+        group = _frame_analysis_group(f, entry, frame)
+        if group is None:
+            return 0
+        return normalise_matched_group_to_ids(group)
+
+
 def read_matched_peaks(
     f: "h5py.File | h5py.Group",
     entry: str,
@@ -1590,7 +1826,6 @@ def read_matched_peaks(
     ``read_peaks`` for why the open handle matters)."""
     if fitted_peaks is None or len(fitted_peaks) == 0:
         return []
-    n_fit = len(fitted_peaks)
     group = _frame_analysis_group(f, entry, frame)
     if group is None:
         return []
@@ -1604,12 +1839,23 @@ def read_matched_peaks(
     # includes the dataset type prefix so a segments identification
     # never merges with a rings one.
     merged: dict[tuple, dict] = {}  # insertion-ordered
-    for name in sorted(group.keys()):
-        if not name.startswith("matched_"):
-            continue
+    fitted_ids = np.asarray(fitted_peaks.ids, dtype=int)
+    names = [n for n in sorted(group.keys()) if n.startswith("matched_")]
+    arrays = {n: group[n][()] for n in names}
+    # Each dataset's peak_list holds fitted ids (mlgidbase >= 0.1.11) or
+    # row positions (older files) — decided per dataset, see
+    # ``resolve_matched_kinds``. Everything below works in positions.
+    kinds = resolve_matched_kinds(
+        {
+            n: (stamped_peak_list_kind(group[n]), _flat_peak_values(arrays[n]))
+            for n in names
+        },
+        fitted_ids,
+    )
+    for name in names:
         type_prefix = "_".join(name.split("_")[:2])
-        ds = group[name]
-        arr = ds[()]
+        arr = arrays[name]
+        kind = kinds[name]
         for i in range(len(arr)):
             cif_raw = arr["CIF"][i]
             cif_str = (
@@ -1620,17 +1866,19 @@ def read_matched_peaks(
             # Strip the .cif extension for display.
             if cif_str.lower().endswith(".cif"):
                 cif_str = cif_str[:-4]
-            idx = np.asarray(arr["peak_list"][i], dtype=int)
-            # Tolerate stale matches: drop indices that no longer exist
-            # in fitted_peaks (e.g. fitting was re-run after matching).
+            # Tolerate stale matches: drop entries that name no fitted
+            # row any more (e.g. fitting was re-run after matching).
             # Physics-audit F-04 is closed at the *write* side — the
             # ``pipeline.execute`` pre-flight clears matched_* on every
             # entry/frame before run_fitting rewrites fitted_peaks, so
-            # this clamp should never fire on files produced by the
-            # current GUI. Kept as defence-in-depth for files written
-            # by older GUI builds (or external tooling) where matches
-            # may still reference stale fitted positions.
-            idx = idx[(idx >= 0) & (idx < n_fit)]
+            # this should never fire on files produced by the current
+            # GUI. Kept as defence-in-depth for files written by older
+            # GUI builds (or external tooling). Id-kind entries are
+            # translated to positions here, so an id above the row count
+            # (a gap left by a delete) is a perfectly good peak.
+            idx = peak_list_to_positions(
+                arr["peak_list"][i], kind, fitted_ids,
+            )
             if idx.size == 0:
                 continue
             hkl = (int(arr["h"][i]), int(arr["k"][i]), int(arr["l"][i]))
@@ -1704,16 +1952,51 @@ def load_matched_peaks(
         return read_matched_peaks(f, entry, frame, fitted_peaks)
 
 
+def _matched_arrays_as_ids(group) -> dict[str, np.ndarray]:
+    """Copies of a frame group's ``matched_*`` arrays with every
+    ``peak_list`` translated to fitted ids.
+
+    The kind of each dataset comes from ``resolve_matched_kinds``. A frame
+    without fitted rows cannot translate positions, so its arrays are
+    returned untouched.
+    """
+    names = sorted(k for k in group.keys() if k.startswith("matched_"))
+    arrays = {n: group[n][()] for n in names}
+    fitted_ids = _fitted_ids_in_group(group)
+    if not names or fitted_ids.size == 0:
+        return arrays
+    kinds = resolve_matched_kinds(
+        {
+            n: (stamped_peak_list_kind(group[n]), _flat_peak_values(arrays[n]))
+            for n in names
+        },
+        fitted_ids,
+    )
+    for n in names:
+        if kinds[n] != KIND_POSITION:
+            continue
+        arr = arrays[n]
+        for i in range(len(arr)):
+            arr["peak_list"][i] = peak_list_to_ids(
+                arr["peak_list"][i], KIND_POSITION, fitted_ids,
+            ).astype(np.int32)
+    return arrays
+
+
 def read_matched_raw(
     file_path: Path, entry: str, frames,
 ) -> dict[int, dict[str, np.ndarray]]:
-    """Raw ``matched_*`` dataset arrays for ``frames``.
+    """``matched_*`` dataset arrays for ``frames``, with each ``peak_list``
+    expressed as fitted IDS (whatever kind the file stores).
 
     Snapshot for ``merge_matched_rows``: the Expected-pattern flows
     capture a frame's solutions BEFORE their re-match (which rewrites
     them wholesale) so identifications the re-match fails to reproduce
-    can be restored afterwards. Frames without matched data map to an
-    empty dict.
+    can be restored afterwards. Ids stay valid across the re-match and
+    across the injection flows' row edits (injected fitted rows are
+    appended under fresh ids), which positions would not if the re-match
+    changed the numbering convention. Frames without matched data map to
+    an empty dict.
     """
     out: dict[int, dict[str, np.ndarray]] = {}
     with h5py.File(file_path, "r") as f:
@@ -1723,9 +2006,7 @@ def read_matched_raw(
             group = _frame_analysis_group(f, entry, frame)
             if group is None:
                 continue
-            for name in sorted(group.keys()):
-                if name.startswith("matched_"):
-                    out[frame][name] = group[name][()]
+            out[frame] = _matched_arrays_as_ids(group)
     return out
 
 
@@ -1735,15 +2016,16 @@ def merge_matched_rows(
 ) -> int:
     """Union-merge ``snapshot`` solution rows into a frame's matched data.
 
-    For each peaks type present in the snapshot, the frame's current
-    ``matched_<type>_*`` rows and the snapshot rows are merged by
-    (CIF, h, k, l) — peak lists unioned, probability the maximum —
-    and written back as a single ``matched_<type>_0000`` dataset
-    (the same consolidation shape ``pipeline._dedupe_matched_groups``
-    produces). Safe against the injection flows' row edits: injected
-    fitted rows are APPENDED and only appended rows are ever rolled
-    back, so the snapshot's positional ``peak_list`` indices still
-    reference the same fitted rows.
+    ``snapshot`` is what ``read_matched_raw`` returned (``peak_list``
+    values are fitted ids). For each peaks type present in the snapshot,
+    the frame's current ``matched_<type>_*`` rows (translated to ids the
+    same way) and the snapshot rows are merged by (CIF, h, k, l) — peak
+    lists unioned, probability the maximum — and written back as a
+    single ``matched_<type>_0000`` dataset stamped as id form (the same
+    consolidation shape ``pipeline._dedupe_matched_groups`` produces).
+    Ids are stable under the injection flows' row edits (injected fitted
+    rows are APPENDED under fresh ids and only appended rows are ever
+    rolled back), so the snapshot's entries still name the same peaks.
 
     Returns the number of structures restored (present in the snapshot
     but missing from the current data).
@@ -1759,6 +2041,7 @@ def merge_matched_rows(
         group = _frame_analysis_group(f, entry, frame)
         if group is None:
             return 0
+        current = _matched_arrays_as_ids(group)
         for prefix, snap_arrays in by_type.items():
             current_names = sorted(
                 k for k in group.keys() if k.startswith(prefix + "_")
@@ -1790,7 +2073,7 @@ def merge_matched_rows(
                         )
 
             for name in current_names:
-                _absorb(group[name][()], count_missing=False)
+                _absorb(current[name], count_missing=False)
             for arr in snap_arrays:
                 _absorb(arr, count_missing=True)
             if not merged:
@@ -1813,7 +2096,8 @@ def merge_matched_rows(
                 )
             for name in current_names:
                 del group[name]
-            group.create_dataset(f"{prefix}_0000", data=out)
+            new_ds = group.create_dataset(f"{prefix}_0000", data=out)
+            new_ds.attrs[MATCHED_KIND_ATTR] = KIND_ID
     return restored
 
 
@@ -1964,54 +2248,79 @@ def _add_peak_row(
     appends, it does not check for or replace an existing row with the
     same id; ``delete_peak_row`` first is the caller's job.
     """
+    row = {
+        "amplitude": amplitude,
+        "angle": angle,
+        "angle_width": angle_width,
+        "radius": radius,
+        "radius_width": radius_width,
+        "theta": theta,
+        "score": score,
+        "A": A,
+        "B": B,
+        "C": C,
+        "is_ring": is_ring,
+        "is_cut_qz": is_cut_qz,
+        "is_cut_qxy": is_cut_qxy,
+        "visibility": visibility,
+    }
+    if peak_id is not None:
+        row["id"] = int(peak_id)
     with h5py.File(file_path, "r+") as f:
         ds = ensure_peak_dataset(f, entry, frame, dataset_name)
-        # Absolute path of the dataset we are about to rewrite. Read off
-        # the object rather than rebuilt from ``frame_key`` so a file
-        # using the older ``NNNNN`` frame-key spelling is written back
-        # where its rows already live.
-        ds_path = ds.name
-        arr = ds[()]
-        if peak_id is not None:
-            new_id = int(peak_id)
+        return _append_peak_rows(f, ds, [row])[0]
+
+
+def _append_peak_rows(
+    f: "h5py.File", ds: "h5py.Dataset", rows: list[dict],
+) -> list[int]:
+    """Append ``rows`` to ``ds`` in one rewrite and return their ids.
+
+    ``rows`` are dicts of column name to value; columns the dataset's
+    dtype lacks are dropped and missing ones stay zero. q_xy/q_z are
+    always recomputed from polar. A row with an ``"id"`` key is written
+    under that id, the others get ``max(id)+1`` onwards in order.
+    **The caller owns uniqueness of forced ids** (see ``_add_peak_row``).
+    Takes an already-open ``r+`` handle, so a caller that appends to
+    many frames keeps one file open and a many-row batch costs one
+    dataset rewrite instead of one per row.
+    """
+    # Absolute path of the dataset we are about to rewrite. Read off
+    # the object rather than rebuilt from ``frame_key`` so a file
+    # using the older ``NNNNN`` frame-key spelling is written back
+    # where its rows already live.
+    ds_path = ds.name
+    arr = ds[()]
+    next_id = int(arr["id"].max() + 1) if len(arr) > 0 else 0
+    # Build the new rows by name to stay schema-resilient if the dtype
+    # ever gains/loses a field.
+    new_rows = np.zeros(len(rows), dtype=arr.dtype)
+    new_ids: list[int] = []
+    from mlgidlab.polar import polar_to_qxyz
+    for i, row in enumerate(rows):
+        if "id" in row:
+            new_id = int(row["id"])
         else:
-            new_id = int(arr["id"].max() + 1) if len(arr) > 0 else 0
-        # Build the new row by name to stay schema-resilient if the dtype
-        # ever gains/loses a field.
-        new_row = np.zeros(1, dtype=arr.dtype)
-        from mlgidlab.polar import polar_to_qxyz
-        q_xy_val, q_z_val = polar_to_qxyz(radius, angle)
-        fields = {
-            "amplitude": amplitude,
-            "angle": angle,
-            "angle_width": angle_width,
-            "radius": radius,
-            "radius_width": radius_width,
-            "q_z": q_z_val,
-            "q_xy": q_xy_val,
-            "theta": theta,
-            "score": score,
-            "A": A,
-            "B": B,
-            "C": C,
-            "is_ring": is_ring,
-            "is_cut_qz": is_cut_qz,
-            "is_cut_qxy": is_cut_qxy,
-            "visibility": visibility,
-            "id": new_id,
-        }
+            new_id = next_id
+            next_id += 1
+        fields = dict(row)
+        fields["id"] = new_id
+        fields["q_xy"], fields["q_z"] = polar_to_qxyz(
+            fields["radius"], fields["angle"]
+        )
         for name, value in fields.items():
             if name in arr.dtype.names:
-                new_row[name] = value
-        new_arr = np.concatenate([arr, new_row])
-        # pygid creates fixed-shape datasets (maxshape == shape), so resize
-        # is unavailable — delete and recreate, preserving any attrs.
-        attrs = dict(ds.attrs)
-        del f[ds_path]
-        new_ds = f.create_dataset(ds_path, data=new_arr)
-        for k, v in attrs.items():
-            new_ds.attrs[k] = v
-        return new_id
+                new_rows[name][i] = value
+        new_ids.append(new_id)
+    new_arr = np.concatenate([arr, new_rows])
+    # pygid creates fixed-shape datasets (maxshape == shape), so resize
+    # is unavailable — delete and recreate, preserving any attrs.
+    attrs = dict(ds.attrs)
+    del f[ds_path]
+    new_ds = f.create_dataset(ds_path, data=new_arr)
+    for k, v in attrs.items():
+        new_ds.attrs[k] = v
+    return new_ids
 
 
 def add_fitted_peak_row(
@@ -2101,6 +2410,139 @@ def add_detected_peak_row(
         score=score, is_ring=is_ring,
         peak_id=peak_id,
     )
+
+
+#: Detection score for a fitted row's visibility grade (mlgidDETECT's
+#: confidence classes: 3 = clear, 2 = fair, 1 = faint). A row with no
+#: grade (0, which is also what the fitting pipeline writes) has no
+#: confidence to carry over and is scored 1.0.
+VISIBILITY_SCORE = {3: 1.0, 2: 0.5, 1: 0.1}
+
+
+def detected_score_for_visibility(visibility: int) -> float:
+    """The detected score a fitted row's ``visibility`` stands for."""
+    return VISIBILITY_SCORE.get(int(visibility), 1.0)
+
+
+def add_missing_detected_for_fitted(
+    file_path: Path,
+    entry: str,
+    *,
+    ring_angle: float,
+    ring_width: float,
+) -> tuple[dict[int, list[int]], int]:
+    """Give every fitted peak of the entry a detected partner.
+
+    Walks all frames of ``entry`` and, for each ``fitted_peaks`` id with
+    no row of that id in ``detected_peaks``, appends a detected row
+    under the same id (the fitted/detected link pairs by id). Older
+    datasets can have fitted peaks that no detected box produced; after
+    this, every fitted id has a partner.
+
+    The new box has the fitted row's radius, radius width, angle and
+    angle width, so it overlays the fitted box. A fitted row whose angle
+    width is not finite is a ring: it gets ``ring_angle`` /
+    ``ring_width`` (the middle and span of the entry's angular axis) and
+    ``is_ring=True``, the finite quadrant-spanning form ring boxes are
+    stored in under ``detected_peaks``. The score follows the row's
+    visibility (``detected_score_for_visibility``); everything else a
+    detection does not know (amplitude, A/B/C, theta, visibility, cut
+    flags) stays zero, as for a hand-added detected box.
+
+    A fitted row with a non-finite radius or radius width has no box to
+    draw and is left without a partner; it is counted in the second
+    return value. Several fitted rows sharing an id produce one detected
+    row. Returns ``({frame: [new ids]}, n_unusable)``; frames that gained
+    nothing are absent. Each frame is rewritten once.
+    """
+    added: dict[int, list[int]] = {}
+    unusable = 0
+    with h5py.File(file_path, "r+") as f:
+        ana_path = f"{entry}/{ANALYSIS_REL}"
+        if ana_path not in f:
+            return added, unusable
+        ana_group = f[ana_path]
+        for name, frame in sorted(
+            _iter_frame_keys(ana_group, None), key=lambda t: t[1]
+        ):
+            group = ana_group[name]
+            fit_ds = group.get("fitted_peaks")
+            if not isinstance(fit_ds, h5py.Dataset) or not fit_ds.dtype.names:
+                continue
+            fitted = fit_ds[()]
+            if len(fitted) == 0:
+                continue
+            det_ds = group.get("detected_peaks")
+            have: set[int] = set()
+            if isinstance(det_ds, h5py.Dataset) and det_ds.dtype.names:
+                have = {int(i) for i in det_ds[()]["id"]}
+            names = set(fitted.dtype.names)
+            rows: list[dict] = []
+            for rec in fitted:
+                pid = int(rec["id"])
+                if pid in have:
+                    continue
+                radius = float(rec["radius"])
+                radius_width = float(rec["radius_width"])
+                if not (np.isfinite(radius) and np.isfinite(radius_width)):
+                    unusable += 1
+                    continue
+                angle = float(rec["angle"])
+                angle_width = float(rec["angle_width"])
+                is_ring = bool(rec["is_ring"]) if "is_ring" in names else False
+                if not np.isfinite(angle_width):
+                    angle, angle_width, is_ring = (
+                        float(ring_angle), float(ring_width), True
+                    )
+                elif not np.isfinite(angle):
+                    angle = float(ring_angle)
+                visibility = int(rec["visibility"]) if "visibility" in names else 0
+                rows.append({
+                    "id": pid, "angle": angle, "angle_width": angle_width,
+                    "radius": radius, "radius_width": radius_width,
+                    "is_ring": is_ring,
+                    "score": detected_score_for_visibility(visibility),
+                })
+                have.add(pid)
+            if not rows:
+                continue
+            ds = ensure_peak_dataset(f, entry, frame, "detected_peaks")
+            added[frame] = _append_peak_rows(f, ds, rows)
+    return added, unusable
+
+
+def delete_detected_rows(
+    file_path: Path, entry: str, ids_by_frame: dict[int, list[int]],
+) -> int:
+    """Delete the detected rows ``{frame: [ids]}`` in one file open.
+
+    The undo of ``add_missing_detected_for_fitted``. Like
+    ``delete_peak_row`` it touches only ``detected_peaks``, keeps the
+    surviving ids as they are, and skips an id or frame that is gone.
+    Returns the number of rows removed.
+    """
+    removed = 0
+    with h5py.File(file_path, "r+") as f:
+        for frame, ids in ids_by_frame.items():
+            path = (
+                f"{entry}/{ANALYSIS_REL}/{FRAME_KEY_FMT.format(int(frame))}"
+                "/detected_peaks"
+            )
+            if path not in f:
+                continue
+            ds = f[path]
+            arr = ds[()]
+            keep = ~np.isin(arr["id"], [int(i) for i in ids])
+            if keep.all():
+                continue
+            attrs = dict(ds.attrs)
+            parent = ds.parent
+            del parent["detected_peaks"]
+            new_ds = parent.create_dataset("detected_peaks", data=arr[keep])
+            for k, v in attrs.items():
+                new_ds.attrs[k] = v
+            removed += int(arr.shape[0] - int(keep.sum()))
+    return removed
 
 
 def normalize_for_pygid(
@@ -2202,6 +2644,7 @@ def read_peak_rows(
     kind: str,
     peak_ids: list[int],
     with_ids: bool = False,
+    with_errors: bool = False,
 ) -> list[dict]:
     """Snapshot full field dicts for the given peak ids on one frame.
 
@@ -2223,6 +2666,11 @@ def read_peak_rows(
     by default because every other caller splats the dict straight into
     an add helper. ``kind`` is ``"detected"`` or ``"fitted"``;
     read-only (mode ``"r"``).
+
+    ``with_errors=True`` (fitted only) adds the row's
+    ``fitted_peaks_errors`` entry as ``d["errors"]`` (a field dict, absent
+    when the row has none), so a delete can be undone without losing the
+    fit errors ``delete_peak_row`` removes with the row.
     """
     if kind not in ("detected", "fitted"):
         raise ValueError(
@@ -2260,8 +2708,89 @@ def read_peak_rows(
                     d[nm] = float(val)
             if with_ids:
                 d["id"] = int(row["id"])
+            if with_errors and kind == "fitted":
+                err = _fitted_error_row(f, ds_path, int(pid))
+                if err is not None:
+                    d["errors"] = err
             out.append(d)
     return out
+
+
+def _fitted_error_row(f, fitted_ds_path: str, peak_id: int) -> dict | None:
+    """The ``fitted_peaks_errors`` row with ``id == peak_id`` next to the
+    fitted dataset at ``fitted_ds_path``, as a field dict (None if the
+    errors dataset or the row is missing)."""
+    err_path = fitted_ds_path + "_errors"
+    if err_path not in f:
+        return None
+    arr = f[err_path][()]
+    names = arr.dtype.names or ()
+    if "id" not in names:
+        return None
+    hit = np.nonzero(np.asarray(arr["id"]) == int(peak_id))[0]
+    if hit.size == 0:
+        return None
+    row = arr[int(hit[0])]
+    return {nm: row[nm].item() for nm in names if nm != "id"}
+
+
+def restore_fitted_error_row(
+    file_path: Path, entry: str, frame: int, peak_id: int, errors: dict,
+) -> bool:
+    """Write ``errors`` (a ``read_peak_rows(with_errors=True)`` field dict)
+    into ``fitted_peaks_errors`` under ``peak_id``, replacing any row that
+    already has that id. The undo half of ``delete_peak_row``'s removal of
+    the errors row. Returns False when the frame has no errors dataset."""
+    frame_key = FRAME_KEY_FMT.format(int(frame))
+    err_path = f"{entry}/{ANALYSIS_REL}/{frame_key}/fitted_peaks_errors"
+    with h5py.File(file_path, "r+") as f:
+        if err_path not in f:
+            return False
+        ds = f[err_path]
+        arr = ds[()]
+        names = arr.dtype.names or ()
+        if "id" not in names:
+            return False
+        new_row = np.zeros(1, dtype=arr.dtype)
+        for nm, val in errors.items():
+            if nm in names and nm != "id":
+                new_row[nm][0] = val
+        new_row["id"][0] = int(peak_id)
+        arr = arr[np.asarray(arr["id"]) != int(peak_id)]
+        out = np.concatenate([arr, new_row])
+        attrs = dict(ds.attrs)
+        parent = ds.parent
+        name = ds.name.rsplit("/", 1)[-1]
+        del parent[name]
+        new_ds = parent.create_dataset(name, data=out)
+        for k, v in attrs.items():
+            new_ds.attrs[k] = v
+    return True
+
+
+def _drop_fitted_error_rows(group, peak_id: int) -> int:
+    """Remove the rows with ``id == peak_id`` from the frame group's
+    ``fitted_peaks_errors`` (pygidfit writes one per fitted row, paired by
+    id). Without this the errors table keeps a row for a peak that no
+    longer exists: id and position then drift apart between the two
+    tables, and a later peak that reuses the id (``max(id)+1``) inherits
+    the old fit's errors. Returns the number of rows removed."""
+    name = "fitted_peaks_errors"
+    if name not in group:
+        return 0
+    ds = group[name]
+    arr = ds[()]
+    if not arr.dtype.names or "id" not in arr.dtype.names:
+        return 0
+    keep = np.asarray(arr["id"]) != int(peak_id)
+    if keep.all():
+        return 0
+    attrs = dict(ds.attrs)
+    del group[name]
+    new_ds = group.create_dataset(name, data=arr[keep])
+    for k, v in attrs.items():
+        new_ds.attrs[k] = v
+    return int(arr.shape[0] - int(keep.sum()))
 
 
 def delete_peak_row(
@@ -2281,14 +2810,18 @@ def delete_peak_row(
 
     **Does not cascade across kinds.** mlgidbase's
     ``_delete_peak_single_frame`` removes the row from detected,
-    fitted, and matched_* in one shot (and reindexes ids on each).
-    This helper is the opposite: deletes only the kind you ask for,
-    leaves the other kinds alone, and **does not reindex**
-    ``id`` — the remaining ids stay stable so a delete operation
-    can't silently shift external references. Callers that need a
-    cascade (e.g. fitted-delete invalidates matched ``peak_list``
-    integer indices into ``fitted_peaks``) must invoke
-    ``clear_peaks(..., "matched", frame=frame)`` separately.
+    fitted, and matched_* in one shot (mlgidbase >= 0.1.11 no longer
+    reindexes the surviving ids; 0.1.8 did). This helper deletes only
+    the kind you ask for, leaves the other kinds alone, and **does not
+    reindex** ``id`` — the remaining ids stay stable so a delete
+    operation can't silently shift external references. A fitted delete also
+    removes the row's entry from ``fitted_peaks_errors`` (the two tables
+    are paired by id; ``read_peak_rows(with_errors=True)`` +
+    ``restore_fitted_error_row`` bring it back on undo). Callers that
+    need a further cascade (e.g. dropping the id from the ``matched_*``
+    ``peak_list`` entries) must call ``prepare_fitted_delete`` before
+    and ``remap_matched_peak_lists`` after, or
+    ``clear_peaks(..., "matched", frame=frame)``.
 
     ``raise ValueError`` for unsupported ``kind`` (matched can't be
     row-deleted through here because ``matched_*`` lives across
@@ -2323,6 +2856,8 @@ def delete_peak_row(
         )
         for k, v in attrs.items():
             new_ds.attrs[k] = v
+        if kind == "fitted":
+            _drop_fitted_error_rows(parent, int(peak_id))
         # ``fitted_peaks`` row ordering changed → matched_* peak_list
         # integer indices into this frame's fitted_peaks may now be
         # stale. The caller is expected to invoke
@@ -2334,44 +2869,45 @@ def delete_peak_row(
         return int(arr.shape[0] - new_arr.shape[0])
 
 
-def rekey_fitted_ids_to_detected(
+#: The angle a ring row stores. A ring spans the whole angular axis, so
+#: the value is a placeholder; 45 is the convention every ring row in a
+#: file shares (``pipeline`` and the 1D ring path write it too).
+RING_ANGLE = 45.0
+
+
+def ring_if_infinite_width(
+    angle: float, angle_width: float, is_ring: bool,
+) -> tuple[float, bool]:
+    """``(angle, is_ring)`` for a fitted row, ring-normalised if it is one.
+
+    pygidfit reports a ring as an infinite angular width (with a NaN
+    angle). Such a row is a ring whatever the caller's flag said, so it
+    is typed ring and given the shared ring angle. Every other row is
+    returned as it came in.
+    """
+    if bool(is_ring) or np.isposinf(float(angle_width)):
+        return RING_ANGLE, True
+    return float(angle), False
+
+
+def flag_infinite_width_fitted_as_rings(
     file_path: Path,
     entry: str,
     frame: int | None = None,
     *,
-    detected_dataset: str = "detected_peaks",
     fitted_dataset: str = "fitted_peaks",
 ) -> int:
-    """Give every fitted row the id of the detected row it came from.
+    """Type every fitted row with an infinite angular width as a ring.
 
-    The GUI can pair a fit with its detected peak by id (the
-    fitted/detected link setting), but a pipeline ``run_fitting`` does
-    not: pygidfit's container carries ``id = box.index`` — the position
-    of the box in the input array — and mlgidbase writes that straight
-    out, so a refit renumbers ``fitted_peaks`` 0..N-1. That equals the
-    detected ids only while ``detected_peaks`` has no gaps, and it gets
-    gaps the moment a detected peak is deleted (deletes here never
-    reindex). Without this pass, "delete detected 42 also deletes
-    fitted 42" would hit an unrelated peak after a run.
+    A pipeline ``run_fitting`` writes pygidfit's rows as they come, and
+    pygidfit has no notion of mlgidLAB's ``is_ring`` flag: a ring it
+    finds arrives with ``angle_width = inf`` and ``is_ring = False``.
+    This pass sets ``is_ring`` and the shared ring angle on those rows
+    (see :func:`ring_if_infinite_width`) and touches nothing else.
 
-    The mapping is positional and exact: pygidfit fits the boxes in the
-    order it receives them and emits one row per box, so fitted row *i*
-    is the fit of detected row *i*. Frames where the two counts differ
-    are skipped rather than guessed at.
-
-    Row count and row order are untouched — only the ``id`` column is
-    rewritten, in place — so ``matched_*`` ``peak_list``, which stores
-    *positions* into ``fitted_peaks``, is unaffected by construction.
-
-    ``frame`` restricts the pass to one frame; the default walks every
-    frame in the entry. Returns the number of frames actually
-    rewritten (frames already in agreement cost a read and no write).
-
-    ``detected_dataset`` / ``fitted_dataset`` name the pair to work on.
-    They default to the standard tables; a pipeline run redirected to a
-    registered primary list (see ``peak_lists``) passes the names that
-    run actually read and wrote, since re-keying the standard pair
-    would be pairing two tables the run never touched.
+    ``frame`` restricts the pass to one frame, the default walks every
+    frame of the entry. Returns the number of rows changed; a frame
+    with nothing to change costs a read and no write.
     """
     changed = 0
     with h5py.File(file_path, "r+") as f:
@@ -2386,32 +2922,26 @@ def rekey_fitted_ids_to_detected(
             frame_names = [target] if target in ana_group else []
         for frame_name in frame_names:
             frame_group = ana_group[frame_name]
-            if not isinstance(frame_group, h5py.Group):
-                continue
             if (
-                detected_dataset not in frame_group
+                not isinstance(frame_group, h5py.Group)
                 or fitted_dataset not in frame_group
             ):
                 continue
-            det_ids = np.asarray(
-                frame_group[detected_dataset][()]["id"], dtype=int
-            )
             ds = frame_group[fitted_dataset]
             arr = ds[()]
-            if arr.shape[0] == 0 or arr.shape[0] != det_ids.shape[0]:
-                if arr.shape[0]:
-                    logger.info(
-                        "rekey_fitted_ids_to_detected: %s/%s has %d fitted "
-                        "row(s) against %d detected — leaving the ids alone "
-                        "(the positional pairing cannot be trusted).",
-                        entry, frame_name, int(arr.shape[0]), int(det_ids.shape[0]),
-                    )
+            if arr.shape[0] == 0:
                 continue
-            if np.array_equal(np.asarray(arr["id"], dtype=int), det_ids):
+            inf = np.isposinf(np.asarray(arr["angle_width"], dtype=float))
+            stale = inf & (
+                ~np.asarray(arr["is_ring"], dtype=bool)
+                | (np.asarray(arr["angle"], dtype=float) != RING_ANGLE)
+            )
+            if not stale.any():
                 continue
-            arr["id"] = det_ids
+            arr["is_ring"][stale] = True
+            arr["angle"][stale] = RING_ANGLE
             ds[...] = arr
-            changed += 1
+            changed += int(stale.sum())
     return changed
 
 
@@ -2423,14 +2953,13 @@ def fitted_positions_for_ids(
 ) -> list[int]:
     """Positional indices of fitted rows whose ``id`` is in ``peak_ids``.
 
-    ``matched_*`` ``peak_list`` entries are **positional** indices into
-    the frame's ``fitted_peaks`` (file order — the same order
-    ``PeakTable.from_dataset`` / ``load_matched_peaks`` read), NOT peak
-    ids. mlgidLAB keeps fitted ids stable across deletes (it does not
-    reindex), so id and position diverge. A caller about to delete fitted
-    rows must capture their positions **before** deleting so it can hand
-    them to ``remap_matched_peak_lists``; this helper returns those
-    positions, sorted ascending. Ids not present are skipped.
+    Positions are file order — the same order ``PeakTable.from_dataset``
+    / ``read_matched_peaks`` read. mlgidLAB keeps fitted ids stable
+    across deletes (it does not reindex), so id and position diverge.
+    A caller about to delete fitted rows should use
+    ``prepare_fitted_delete`` (this plus the matched normalisation);
+    ``remap_matched_peak_lists`` takes the positions it returns. Sorted
+    ascending; ids not present are skipped.
     """
     wanted = {int(pid) for pid in peak_ids}
     if not wanted:
@@ -2444,35 +2973,144 @@ def fitted_positions_for_ids(
     return [pos for pos, pid in enumerate(ids) if int(pid) in wanted]
 
 
+#: Where mlgidbase >= 0.1.11 saves its peak-tracking table, and the
+#: metadata group beside it, both relative to an entry.
+TRACKED_PEAKS_REL = f"{ANALYSIS_REL}/general/tracked_peaks"
+TRACKING_PROCESS_REL = "process/peak_tracking"
+
+
+def drop_ids_from_tracked(
+    file_path: Path, entry: str, frame: int, peak_ids: list[int],
+) -> int:
+    """Remove fitted ids of one frame from a saved ``tracked_peaks`` table.
+
+    Each track row holds the parallel arrays ``frame_list`` /
+    ``peak_list``; the pairs ``(frame, id)`` for the given ids are
+    dropped, the track rows themselves stay (mlgidbase's own delete does
+    the same). A no-op returning 0 when the entry has no table, or one
+    written before the ``frames`` / ``peak_ids`` -> ``frame_list`` /
+    ``peak_list`` rename. Returns the number of pairs removed.
+    """
+    drop = np.asarray(sorted({int(p) for p in peak_ids}), dtype=int)
+    if drop.size == 0:
+        return 0
+    removed = 0
+    with h5py.File(file_path, "r+") as f:
+        ds = f.get(f"{entry}/{TRACKED_PEAKS_REL}")
+        if not isinstance(ds, h5py.Dataset):
+            return 0
+        arr = ds[()]
+        names = arr.dtype.names or ()
+        if "frame_list" not in names or "peak_list" not in names:
+            return 0
+        changed = False
+        for i in range(len(arr)):
+            fl = np.atleast_1d(np.asarray(arr["frame_list"][i], dtype=int))
+            pl = np.atleast_1d(np.asarray(arr["peak_list"][i], dtype=int))
+            keep = ~((fl == int(frame)) & np.isin(pl, drop))
+            if not keep.all():
+                arr["frame_list"][i] = fl[keep].astype(np.int32)
+                arr["peak_list"][i] = pl[keep].astype(np.int32)
+                removed += int((~keep).sum())
+                changed = True
+        if changed:
+            ds[...] = arr
+    return removed
+
+
+def clear_tracked_peaks(file_path: Path, entry: str) -> bool:
+    """Delete an entry's saved tracking table (and its metadata group,
+    and the ``general`` group when that leaves it empty). Returns True
+    when a table was removed.
+
+    A tracking result describes one set of fitted rows and one set of
+    frames, so a refit or an append of frames makes it stale. Removing
+    the empty ``general`` group matters for appends: pygid counts every
+    group under ``analysis`` as a frame when it numbers new ones.
+    """
+    removed = False
+    with h5py.File(file_path, "r+") as f:
+        ana = f.get(f"{entry}/{ANALYSIS_REL}")
+        if not isinstance(ana, h5py.Group):
+            return False
+        general = ana.get("general")
+        if isinstance(general, h5py.Group):
+            if "tracked_peaks" in general:
+                del general["tracked_peaks"]
+                removed = True
+            if len(general) == 0:
+                del ana["general"]
+        if removed and f"{entry}/{TRACKING_PROCESS_REL}" in f:
+            del f[f"{entry}/{TRACKING_PROCESS_REL}"]
+    return removed
+
+
+def prepare_fitted_delete(
+    file_path: Path,
+    entry: str,
+    frame: int,
+    peak_ids: list[int],
+) -> list[int]:
+    """Step one of deleting fitted rows: capture their positions and put
+    the frame's ``matched_*`` datasets into id form.
+
+    Call BEFORE the rows are deleted. The matched ``peak_list`` of an
+    older file holds row positions, which only a still-intact
+    ``fitted_peaks`` can translate to ids; once they are ids (stamped
+    ``peak_list_kind = "id"``) a delete never has to shift anything and
+    ``remap_matched_peak_lists`` only drops the deleted ids. Nothing is
+    written when no row matches ``peak_ids``. The ids also leave a saved
+    ``tracked_peaks`` table (``drop_ids_from_tracked``); undoing the
+    delete does not put them back, like the matched structures. Returns
+    the positions for ``remap_matched_peak_lists``.
+    """
+    positions = fitted_positions_for_ids(file_path, entry, frame, peak_ids)
+    if positions:
+        try:
+            normalise_matched_to_ids(file_path, entry, frame)
+        except (ValueError, TypeError):
+            # A matched dataset whose peak_list is not an int array (a
+            # hand-made or foreign file): leave it as it is rather than
+            # block the delete. The remap that follows reads it the same
+            # way and reports what it cannot handle.
+            logger.warning(
+                "could not read the matched peak lists of %s/frame%05d "
+                "as integers; leaving them unmigrated", entry, int(frame),
+                exc_info=True,
+            )
+        drop_ids_from_tracked(file_path, entry, frame, peak_ids)
+    return positions
+
+
 def remap_matched_peak_lists(
     file_path: Path,
     entry: str,
     frame: int,
     deleted_positions: list[int],
 ) -> int:
-    """Reindex every ``matched_*`` ``peak_list`` after fitted rows at
-    ``deleted_positions`` were removed, keeping the structures.
+    """Remove deleted fitted rows from every ``matched_*`` ``peak_list``,
+    keeping the structures.
 
+    Step two of a fitted delete, after the rows are gone.
     ``deleted_positions`` are positional indices (file order) into the
     *pre-delete* ``fitted_peaks``, as returned by
-    ``fitted_positions_for_ids``. For each matched solution row's
-    ``peak_list`` (a vlen int array of fitted positions):
+    ``prepare_fitted_delete`` / ``fitted_positions_for_ids``.
 
-    - a position equal to a deleted one is dropped (that peak left the
-      structure), and
-    - a position above a deleted one is shifted down by the count of
-      deleted positions below it (the fitted array compacted).
+    - A dataset stamped ``"id"`` (what ``prepare_fitted_delete`` leaves
+      behind) just loses every entry that is no longer a fitted id: no
+      shifting, whatever order the ids are in.
+    - An unstamped dataset is a legacy positional one: a position equal
+      to a deleted one is dropped, one above it is shifted down by the
+      number of deleted slots below it, and the result is translated
+      through the post-delete ids and stamped, so a dataset is migrated
+      the first time it is touched.
 
     A solution row is **never removed**, even if its ``peak_list`` becomes
     empty: deleting a fitted peak removes its membership in a structure,
     not the structure itself (an empty one simply stops rendering, since
-    ``load_matched_peaks`` skips zero-length lists). Solutions that
-    reference none of the deleted peaks and sit entirely below them are
-    left byte-identical. Returns the number of solution rows changed.
-
-    Row count per ``matched_*`` dataset is unchanged, so each dataset is
-    rewritten in place (``ds[...] = arr``), preserving the vlen dtype +
-    attrs without a delete/recreate.
+    ``load_matched_peaks`` skips zero-length lists). Returns the number
+    of solution rows whose membership changed. Datasets whose rows are
+    untouched and already in id form are left byte-identical.
     """
     deleted = sorted({int(p) for p in deleted_positions})
     if not deleted:
@@ -2490,27 +3128,119 @@ def remap_matched_peak_lists(
         if group_path not in f:
             return 0
         group = f[group_path]
+        post_ids = _fitted_ids_in_group(group)
         for name in list(group.keys()):
             if not name.startswith("matched_"):
                 continue
             ds = group[name]
             arr = ds[()]
+            stamped = stamped_peak_list_kind(ds) == KIND_ID
             row_changed = False
             for i in range(len(arr)):
-                old = np.asarray(arr["peak_list"][i], dtype=int)
-                new = np.asarray(
-                    [_shift(int(x)) for x in old if int(x) not in deleted_set],
-                    dtype=np.int32,
-                )
-                if new.size != old.size or (
-                    new.size and not np.array_equal(new, old.astype(np.int32))
-                ):
+                old = np.atleast_1d(np.asarray(arr["peak_list"][i], dtype=int))
+                if stamped:
+                    new = old[np.isin(old, post_ids)].astype(np.int32)
+                else:
+                    shifted = np.asarray(
+                        [_shift(int(x)) for x in old
+                         if int(x) not in deleted_set],
+                        dtype=int,
+                    )
+                    new = peak_list_to_ids(
+                        shifted, KIND_POSITION, post_ids,
+                    ).astype(np.int32)
+                if new.size != old.size:
+                    changed += 1
+                if not np.array_equal(new, old.astype(np.int32)):
                     arr["peak_list"][i] = new
+                    row_changed = True
+            if row_changed:
+                ds[...] = arr
+            if not stamped:
+                ds.attrs[MATCHED_KIND_ATTR] = KIND_ID
+    return changed
+
+
+def drop_ids_from_matched(
+    file_path: Path, entry: str, frame: int, peak_ids: list[int],
+) -> int:
+    """Remove fitted ids from every ``matched_*`` ``peak_list`` of one
+    frame and touch nothing else: no detected or fitted row is deleted,
+    and no solution row is removed even when its list empties (an empty
+    one simply stops rendering).
+
+    The frame's datasets are put in id form first
+    (``normalise_matched_group_to_ids``), so the same call works on
+    positional files from older mlgidbase versions. Returns the number of
+    solution rows that lost a peak. The mlgidbase ``delete_peak`` this
+    replaces for the matched case removed the row from the detected and
+    fitted tables as well.
+    """
+    drop = np.asarray(sorted({int(p) for p in peak_ids}), dtype=int)
+    if drop.size == 0:
+        return 0
+    changed = 0
+    with h5py.File(file_path, "r+") as f:
+        group = _frame_analysis_group(f, entry, frame)
+        if group is None:
+            return 0
+        normalise_matched_group_to_ids(group)
+        for name in list(group.keys()):
+            if not name.startswith("matched_"):
+                continue
+            ds = group[name]
+            if stamped_peak_list_kind(ds) != KIND_ID:
+                continue  # cannot be read as ids (no fitted rows)
+            arr = ds[()]
+            row_changed = False
+            for i in range(len(arr)):
+                old = np.atleast_1d(np.asarray(arr["peak_list"][i], dtype=int))
+                new = old[~np.isin(old, drop)]
+                if new.size != old.size:
+                    arr["peak_list"][i] = new.astype(np.int32)
                     row_changed = True
                     changed += 1
             if row_changed:
                 ds[...] = arr
     return changed
+
+
+def snapshot_matched(
+    file_path: Path, entry: str, frame: int,
+) -> dict[str, tuple[np.ndarray, str | None]]:
+    """``{dataset name: (array, peak_list_kind stamp)}`` for every
+    ``matched_*`` dataset of one frame, exactly as stored — the undo
+    snapshot for ``restore_matched``."""
+    out: dict[str, tuple[np.ndarray, str | None]] = {}
+    with h5py.File(file_path, "r") as f:
+        group = _frame_analysis_group(f, entry, frame)
+        if group is None:
+            return out
+        for name in group.keys():
+            if name.startswith("matched_"):
+                out[name] = (group[name][()], stamped_peak_list_kind(group[name]))
+    return out
+
+
+def restore_matched(
+    file_path: Path, entry: str, frame: int,
+    snapshot: dict[str, tuple[np.ndarray, str | None]],
+) -> int:
+    """Write a ``snapshot_matched`` snapshot back, replacing the datasets
+    of the same names (and their stamps). Returns the number restored."""
+    restored = 0
+    with h5py.File(file_path, "r+") as f:
+        group = _frame_analysis_group(f, entry, frame)
+        if group is None:
+            return 0
+        for name, (arr, stamp) in snapshot.items():
+            if name in group:
+                del group[name]
+            ds = group.create_dataset(name, data=arr)
+            if stamp is not None:
+                ds.attrs[MATCHED_KIND_ATTR] = stamp
+            restored += 1
+    return restored
 
 
 def clear_peaks(
@@ -2620,7 +3350,7 @@ def export_peaks_csv(
     ``targets`` is a list of ``(entry, frame_or_None)`` tuples; pass
     ``frame=None`` to dump every frame in the entry. ``kind`` is
     ``"detected"`` or ``"fitted"``; for fitted, the ``fitted_peaks_errors``
-    sibling dataset is joined per row and its fields appear as
+    sibling dataset is joined per row by id and its fields appear as
     ``<name>_err`` columns. Returns the row count written.
 
     The header is the union of every dtype field seen in the scope
@@ -2652,8 +3382,16 @@ def export_peaks_csv(
                 if len(arr) == 0:
                     continue
                 err_arr = None
+                err_pos: dict[int, int] = {}
                 if err_ds_name is not None and err_ds_name in fg:
                     err_arr = fg[err_ds_name][()]
+                    # The errors table is paired with the peaks by id,
+                    # not by position: it can be shorter (rows added in
+                    # the GUI carry no errors) or ordered differently.
+                    if err_arr.dtype.names and "id" in err_arr.dtype.names:
+                        err_pos = {
+                            int(v): k for k, v in enumerate(err_arr["id"])
+                        }
                 for i in range(len(arr)):
                     row = {"entry": entry, "frame_num": frame_idx}
                     for name in arr.dtype.names:
@@ -2661,10 +3399,11 @@ def export_peaks_csv(
                         if name not in seen:
                             fieldnames.append(name)
                             seen.add(name)
-                    if err_arr is not None and i < len(err_arr):
+                    j = err_pos.get(int(arr["id"][i])) if err_pos else None
+                    if err_arr is not None and j is not None:
                         for name in err_arr.dtype.names:
                             col = f"{name}_err"
-                            row[col] = _csv_value(err_arr[name][i])
+                            row[col] = _csv_value(err_arr[name][j])
                             if col not in seen:
                                 fieldnames.append(col)
                                 seen.add(col)
@@ -2688,7 +3427,8 @@ def export_matched_csv(
     Mirrors what silx shows in its Data tab for the ``matched_*``
     datasets: every solution gets a single row, with its referenced
     fitted peaks compacted into a ``peak_list`` cell formatted as
-    ``[id_a, id_b, …]``. CIF is decoded and stripped of its ``.cif``
+    ``[id_a, id_b, …]`` (fitted ids, also for older files that store row
+    positions). CIF is decoded and stripped of its ``.cif``
     suffix to match the Display dock; any extra dtype fields on the
     matched dataset are passed through verbatim so schema additions
     don't silently disappear from the export.
@@ -2711,10 +3451,12 @@ def export_matched_csv(
             ana_group = f[ana_path]
             for frame_name, frame_idx in _iter_frame_keys(ana_group, frame):
                 fg = ana_group[frame_name]
+                # peak_list as fitted ids whatever the file stores.
+                sol_arrays = _matched_arrays_as_ids(fg)
                 for sol_name in sorted(fg.keys()):
                     if not sol_name.startswith("matched_"):
                         continue
-                    sol_arr = fg[sol_name][()]
+                    sol_arr = sol_arrays[sol_name]
                     if len(sol_arr) == 0:
                         continue
                     sol_dtype_names = sol_arr.dtype.names or ()
@@ -2736,8 +3478,8 @@ def export_matched_csv(
                         peak_list = np.atleast_1d(
                             np.asarray(sol_arr["peak_list"][i], dtype=int)
                         )
-                        # Verbatim list of indices as silx shows them in
-                        # the Data tab. Negative padding sentinels are
+                        # Fitted ids (translated from positions for
+                        # older files). Negative padding sentinels are
                         # filtered so the cell shows just the real
                         # peaks; users who need raw values can read the
                         # HDF5 dataset directly.
@@ -2800,7 +3542,7 @@ def update_peak_row(
 ) -> None:
     """Mutate one row of a frame's peak table in place, keyed by `id`.
 
-    The id field is unique within a frame (mlgidbase reindexes on delete), so
+    The id field is unique within a frame (a delete never reindexes), so
     finding a row by id is unambiguous.
 
     Every field is optional and only what is passed gets written, so this

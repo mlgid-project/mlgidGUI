@@ -10,9 +10,11 @@ that change that, plus the one sentence of policy each one carries.
     Fitting that detection again — with different borders, a different
     mode, whatever — replaces fitted 42 instead of appending a second
     row, so a detection can never accumulate fits. Deleting detected 42
-    deletes fitted 42 with it. A pipeline fitting run numbers fitted
-    rows positionally, so the run is followed by
-    ``file_model.rekey_fitted_ids_to_detected`` to restore the pairing.
+    deletes fitted 42 with it. A pipeline fitting run keeps the
+    pairing by itself: pygidfit 0.1.8 writes each fitted row under the
+    id of the detected row it came from (older versions numbered fitted
+    rows 0..N-1 by position and needed a re-key pass after every run;
+    that pass was removed with the 0.1.8 pin).
     A hand-drawn box is written to ``detected_peaks`` first and the fit
     pairs to that new row, so every fitted peak has a detected partner.
 
@@ -29,9 +31,9 @@ did before the setting existed; that is the acceptance criterion, and
 the tests assert the off case alongside each on case.
 
 Matched peaks are untouched by all of this. Where a linked delete
-removes a fitted row, the existing ``remap_matched_peak_lists`` handling
-runs exactly as it does for a plain fitted delete — no new matched
-semantics anywhere.
+removes a fitted row, the existing ``prepare_fitted_delete`` /
+``remap_matched_peak_lists`` handling runs exactly as it does for a
+plain fitted delete — no new matched semantics anywhere.
 """
 from __future__ import annotations
 

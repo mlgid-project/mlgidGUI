@@ -7,13 +7,14 @@ source split.
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 from mlgidlab import file_model, peak_lists, phase_tracking
 from mlgidlab.phase_views_window import PhaseViewsWindow
 from mlgidlab.peak_link import link_enabled
 from mlgidlab.pipeline import PipelineCommand
 from mlgidlab.widgets import skin_progress
+from mlgidlab.workers import TrackingLoadWorker
 
 import logging
 
@@ -27,9 +28,9 @@ class TrackingMixin:
         """Enqueue an mlgidBASE ``track_peaks`` run for the active entry.
 
         Rides the ordinary pipeline queue (silx detach, busy gating,
-        logging, entry snapshot all come for free); the captured
-        ``TrackingPayload`` comes back through ``_on_pipeline_finished``
-        -> ``_on_phase_track_result``.
+        logging, entry snapshot all come for free); the
+        ``TrackingPayload`` built from upstream's saved table comes back
+        through ``_on_pipeline_finished`` -> ``_on_phase_track_result``.
         """
         if self.session is None:
             return
@@ -38,10 +39,9 @@ class TrackingMixin:
         entry = self.entry_combo.currentText()
         if not entry:
             return
-        # No memory pre-flight here: pipeline.execute routes oversized
-        # scans to phase_tracking.track_peaks_blocked (same result,
-        # bounded memory) instead of upstream's dense IoU, so tracking
-        # is safe at any scan size.
+        # No memory pre-flight here: upstream's tracking (mlgidbase
+        # >= 0.1.11) streams the IoU in row blocks, so it is safe at any
+        # scan size.
         self._entry_queue_total = 1
         self._entry_queue_pos = 0
         self._show_tracking_progress()
@@ -51,6 +51,9 @@ class TrackingMixin:
                 "entry": entry,
                 "threshold": float(threshold),
                 "length": int(length),
+                "window_size": (
+                    self.scan_tracking_panel.window_size or None
+                ),
             }),
         )
 
@@ -116,53 +119,38 @@ class TrackingMixin:
                 4000,
             )
             return
-        tables = self._read_fitted_tables(payload, entry)
-        ids = (
-            phase_tracking.member_ids(payload, tables)
-            if tables else [None] * payload.n_members
+        state = phase_tracking.build_tracking_state(
+            self.session.temp_path, entry, payload,
         )
-        # Rings are tracked GUI-side by 1-D radial IoU (rings span the
-        # whole arc, so radius intervals are the right overlap measure)
-        # and appended to the payload; they then flow through the
-        # table, the views, and the only-tracked filter exactly like
-        # spot tracks. Upstream cannot fully track rings: pygidfit
-        # persists rings with angle = NaN, which still poisons the
-        # (angle, radius) IoU box. But since mlgidbase 0.1.5 clamps
-        # ring angle_width inf -> 45 inside track_peaks, rings stored
-        # with a FINITE angle (the GUI's injected rings persist
-        # angle = 45) CAN form native components — drop those first so
-        # track_rings stays the single source of ring tracks (no
-        # duplicated tracks, and NaN-angle members join the same
-        # radial-IoU track instead of being split off).
-        if tables:
-            native_ring = self._compute_ring_tracks(payload, ids, tables)
-            if native_ring:
-                payload.components = [
-                    c for k, c in enumerate(payload.components)
-                    if k not in native_ring
-                ]
-            ring_comps = phase_tracking.track_rings(
-                payload, ids, tables, payload.threshold, payload.length
-            )
-            if ring_comps:
-                payload.components = payload.components + ring_comps
+        self._apply_tracking_state(state, entry)
+        # What is on screen is what the file keeps. Upstream saved its own
+        # table into the working file during the run; rewrite it from the
+        # result as shown (the GUI's ring tracks replace upstream's
+        # ring components) so Save writes this, not the raw table. The
+        # tree is still detached here (the queue has not drained).
+        self._write_tracking_to_file(detach=False)
+
+    def _apply_tracking_state(self, state, entry: str) -> None:
+        """Install a ``phase_tracking.TrackingState`` into the panel, the
+        viewer and the views window. GUI thread; no file reads of its
+        own beyond the views window's context."""
+        payload = state.payload
+        ids = state.ids
+        tables = state.tables
         self._scan_payload = payload
         self._scan_member_ids = ids
         self._scan_fitted_tables = tables
         self._scan_track_entry = entry
         # Which tracks are rings (any ring member; rings and spots never
         # mix in a component). The q-map draws these as dashed arcs.
-        self._scan_ring_tracks = self._compute_ring_tracks(payload, ids, tables)
+        self._scan_ring_tracks = state.ring_tracks
         # Map each track to the matched crystal phases its tracked peaks
-        # belong to (for the q-map phase-identity overlay). No-op / empty
-        # when Matching hasn't run.
-        matched_tables = self._read_matched_tables(payload, entry, tables)
-        self._scan_track_phases = phase_tracking.match_tracks_to_structures(
-            payload, ids, matched_tables
-        )
-        self._scan_member_phases = phase_tracking.member_matched_phases(
-            payload, ids, matched_tables
-        )
+        # belong to (for the q-map phase-identity overlay). Empty when
+        # Matching hasn't run.
+        matched_tables = state.matched_tables
+        self._scan_matched_tables = matched_tables
+        self._scan_track_phases = state.track_phases
+        self._scan_member_phases = state.member_phases
         # Pre-assign overlay colours for every matched identity (sorted,
         # so the assignment is deterministic no matter which frame is
         # rendered first).
@@ -193,74 +181,134 @@ class TrackingMixin:
 
     def _compute_ring_tracks(self, payload, ids, tables) -> set:
         """Set of track indices whose members are rings (checked via the
-        reconstructed ids against the fitted tables' ``is_ring``)."""
-        rings: set = set()
-        for k, comp in enumerate(payload.components):
-            for i in comp:
-                tagged = ids[int(i)]
-                if tagged is None:
-                    continue
-                t = tables.get(int(tagged[0]))
-                if t is None or len(t) == 0:
-                    continue
-                hits = np.flatnonzero(
-                    np.asarray(t.ids, dtype=int) == int(tagged[1])
-                )
-                if hits.size == 1 and bool(t.is_ring[int(hits[0])]):
-                    rings.add(k)
-                    break
-        return rings
+        member ids against the fitted tables' ``is_ring``)."""
+        return phase_tracking.ring_track_set(payload, ids, tables)
 
     def _read_fitted_tables(self, payload, entry: str) -> dict:
-        """One-handle read of every payload frame's fitted table.
-
-        Feeds ``phase_tracking.member_ids`` (upstream's capture hook
-        carries no peak ids) and is kept on ``_scan_fitted_tables``
-        for the only-tracked display options (gap interpolation
-        anchors, GUI-side ring tracking). The per-frame tables are tiny.
-        """
-        tables: dict[int, object] = {}
-        try:
-            import h5py
-
-            with h5py.File(self.session.temp_path, "r") as f:
-                for frame in sorted({int(x) for x in payload.frame_num}):
-                    tables[frame] = file_model.read_peaks(
-                        f, entry, frame
-                    )["fitted"]
-        except Exception:
-            logger.debug(
-                "suppressed exception in MainWindow._read_fitted_tables",
-                exc_info=True,
-            )
-            return {}
-        return tables
+        """One-handle read of every payload frame's fitted table (kept
+        on ``_scan_fitted_tables`` for the only-tracked display options:
+        gap interpolation anchors, GUI-side ring tracking)."""
+        return phase_tracking.read_fitted_tables(
+            self.session.temp_path, entry, payload,
+        )
 
     def _read_matched_tables(self, payload, entry: str, fitted_tables: dict) -> dict:
-        """One-handle read of every payload frame's matched structures.
+        """One-handle read of every payload frame's matched structures;
+        empty on any error or when Matching hasn't run."""
+        return phase_tracking.read_matched_tables(
+            self.session.temp_path, entry, payload, fitted_tables,
+        )
 
-        ``read_matched_peaks`` needs the frame's fitted table (already
-        read for member-id reconstruction), so this reuses
-        ``fitted_tables``. Feeds ``match_tracks_to_structures`` for the
-        q-map phase-identity overlay; empty on any error or when
-        Matching hasn't run.
-        """
-        out: dict = {}
-        try:
-            import h5py
+    # -- Tracking saved in the file (loaded without running anything) --
 
-            with h5py.File(self.session.temp_path, "r") as f:
-                for frame in sorted({int(x) for x in payload.frame_num}):
-                    out[frame] = file_model.read_matched_peaks(
-                        f, entry, frame, fitted_tables.get(frame)
-                    )
-        except Exception:
-            logger.debug(
-                "suppressed exception in MainWindow._read_matched_tables",
-                exc_info=True,
+    def _ensure_track_load_worker(self) -> None:
+        """Spawn the persistent TrackingLoadWorker + thread on first use."""
+        if self._track_load_worker is not None:
+            return
+        self._track_load_thread = QThread(self)
+        self._track_load_worker = TrackingLoadWorker()
+        self._track_load_worker.moveToThread(self._track_load_thread)
+        self._trackLoadRequest.connect(
+            self._track_load_worker.load, Qt.ConnectionType.QueuedConnection,
+        )
+        self._track_load_worker.loaded.connect(
+            self._on_saved_tracking_loaded, Qt.ConnectionType.QueuedConnection,
+        )
+        self._track_load_thread.start()
+
+    def _maybe_autoload_saved_tracking(self, entry: str) -> None:
+        """Look for tracking the entry already carries, once per (file,
+        entry) shown. Runs from the entry install, so it covers opening a
+        file and switching entries; later overlay reloads of the same
+        entry (peak edits, a pipeline run finishing) do not repeat it.
+        Skipped for a single-frame entry (nothing to track), while a
+        pipeline step is running (it may be writing the file) and when
+        this entry's tracks are already on screen."""
+        session = self.session
+        if session is None or getattr(session, "kind", None) != "nexus":
+            return
+        if self.viewer.n_frames <= 1 or self._pipe_thread is not None:
+            return
+        if self._scan_track_entry == entry:
+            return
+        key = (id(session), entry)
+        if self._track_autoload_key == key:
+            return
+        self._track_autoload_key = key
+        self._request_saved_tracking(entry)
+
+    def _request_saved_tracking(self, entry: str | None = None, *, force: bool = False) -> None:
+        """Ask the worker to build the Scan-tracking state from the table
+        saved in the active entry. ``force`` also loads a table whose
+        members no longer all match a fitted peak."""
+        if self.session is None:
+            return
+        entry = entry or self.entry_combo.currentText()
+        if not entry:
+            return
+        self._track_load_req_id += 1
+        self._ensure_track_load_worker()
+        self._trackLoadRequest.emit(
+            str(self.session.temp_path), entry, self._track_load_req_id,
+            bool(force),
+        )
+
+    def _on_saved_tracking_loaded(
+        self, request_id: int, entry: str, state: object, info: object,
+    ) -> None:
+        """Show what the worker found: the saved tracks, or why not."""
+        if request_id != self._track_load_req_id:
+            return
+        if self.session is None or self.entry_combo.currentText() != entry:
+            return
+        if self._scan_payload is not None and self._scan_track_entry == entry:
+            return  # a run of its own got here first
+        panel = self.scan_tracking_panel
+        status = (info or {}).get("status", "none")
+        saved = (info or {}).get("saved")
+        if state is not None:
+            self._apply_tracking_state(state, entry)
+            panel.apply_settings(
+                saved.threshold, saved.length, saved.window_size,
             )
-            return {}
-        return out
+            made = " ".join(
+                part for part in (
+                    f"saved by {saved.program} {saved.version}".strip(),
+                    f"on {saved.date[:10]}" if saved.date else "",
+                ) if part
+            )
+            note = f"Loaded from the file ({made})." if made else (
+                "Loaded from the file."
+            )
+            skipped = int(info.get("unresolved", 0))
+            if skipped:
+                note += (
+                    f" {skipped} member(s) no longer match a fitted peak and "
+                    "were skipped."
+                )
+            panel.set_saved_note(note)
+            self.statusBar().showMessage(
+                f"Loaded {state.payload.n_tracks} saved track(s) for {entry}.",
+                4000,
+            )
+        elif status == "stale":
+            panel.set_saved_note(
+                "The file carries a tracking table, but it does not match the "
+                f"current fits: {info.get('message', '')} Re-run tracking, or "
+                "load it anyway.",
+                can_load=True,
+            )
+        elif status == "old_layout":
+            panel.set_saved_note(
+                "The file carries a tracking table written by an older "
+                "mlgidbase (before 0.1.11), which cannot be read. Run "
+                "tracking again to replace it."
+            )
+        elif status == "error":
+            logger.warning(
+                "could not read the saved tracking of %s: %s",
+                entry, (info or {}).get("message"),
+            )
 
     def _invalidate_scan_tracks(self) -> None:
         """Drop phase-tracking results and clear panel + views.
@@ -270,12 +318,17 @@ class TrackingMixin:
         Tools > Clear fitted / Reset.
         """
         self._scan_payload = None
+        # A look at the file's saved table is no longer current either;
+        # drop in-flight loads and let the next entry install look again.
+        self._track_load_req_id += 1
+        self._track_autoload_key = None
         self._scan_member_ids = None
         self._scan_fitted_tables = {}
         self._scan_track_phases = {}
         self._scan_member_phases = {}
         self._scan_ring_tracks = set()
         self._scan_track_entry = None
+        self._scan_matched_tables = {}
         # A gap-fill run in flight references the payload being dropped
         # — its result must not be applied against fresh tracks.
         self._interp_fill_result = None
@@ -288,6 +341,47 @@ class TrackingMixin:
         self.viewer.set_fitted_visible_only(None)
         if self._phase_views_window is not None:
             self._phase_views_window.clear()
+
+    def _sync_scan_tracking_visibility(self, *, from_scratch: bool = False) -> None:
+        """Take Scan tracking away for single-frame NeXus data.
+
+        Tracking follows peaks across frames, so one frame has nothing to
+        track: the dock and the workflow strip's Track stage go, and the
+        dock's View-menu action is disabled so it cannot be brought back.
+        When the rule stops holding, only a dock the rule hid comes back;
+        one the user closed by hand stays closed.
+
+        ``from_scratch`` is the session-mode path, which decides dock
+        visibility afresh: the dock is shown unless the rule hides it.
+        Raw sessions hide the dock in ``_apply_session_mode``.
+        """
+        dock = getattr(self, "_scan_tracking_dock", None)
+        if dock is None:
+            return
+        session = self.session
+        single = (session is not None and session.kind == "nexus"
+                  and self.viewer.n_frames <= 1)
+        rail = getattr(self, "workflow_rail", None)
+        if rail is not None:
+            rail.set_stage_visible("track", not single)
+        dock.toggleViewAction().setEnabled(not single)
+        name = "_scan_tracking_dock"
+        # Docks folded away for the Structure tab come back from this set
+        # when the tab is left.
+        folded = self._structure_folded_docks
+        if single:
+            if from_scratch or not dock.isHidden() or name in folded:
+                self._tracking_hidden_by_rule = True
+            folded.discard(name)
+            dock.hide()
+            return
+        if from_scratch or self._tracking_hidden_by_rule:
+            self._tracking_hidden_by_rule = False
+            structure = getattr(self, "structure_panel", None)
+            if structure is not None and self.tabs.currentWidget() is structure:
+                folded.add(name)
+            else:
+                dock.show()
 
     def _on_show_phase_views(self) -> None:
         """Open (lazily building) and raise the phase-tracking views."""
@@ -727,6 +821,7 @@ class TrackingMixin:
         matched_tables = self._read_matched_tables(
             payload, entry, self._scan_fitted_tables
         )
+        self._scan_matched_tables = matched_tables
         self._scan_track_phases = phase_tracking.match_tracks_to_structures(
             payload, self._scan_member_ids, matched_tables
         )
@@ -742,18 +837,65 @@ class TrackingMixin:
             self._phase_views_window.set_ring_tracks(self._scan_ring_tracks)
             self._phase_views_window.set_track_phases(self._scan_track_phases)
             self._phase_views_window.set_member_phases(self._scan_member_phases)
+        # The filled peaks are now members of their tracks; the saved
+        # table follows (silx is still detached on this path).
+        self._write_tracking_to_file(detach=False)
         self.statusBar().showMessage(
             f"Interpolate track: filled {appended} gap peak(s) "
             f"(fitted + matched) across {len(affected)} frame(s).",
             8000,
         )
 
+    def _write_tracking_to_file(self, *, detach: bool = True) -> bool:
+        """Write the tracks on screen back into the entry's saved
+        ``tracked_peaks`` table, so an edit made here is also an edit of
+        the file (the file is saved with the session as usual).
+
+        ``detach``: take the silx tree away around the ``r+`` write. The
+        gap-fill path calls with ``detach=False`` because the pipeline
+        completion that applies it still has the tree detached (a nested
+        detach would reattach it too early). Marks the session dirty.
+        Returns False, with a status-bar message, when the write failed;
+        the tracks on screen are unaffected either way.
+        """
+        payload = self._scan_payload
+        entry = self._scan_track_entry
+        if self.session is None or payload is None or not entry:
+            return False
+        try:
+            if detach:
+                with self._detached_silx_tree():
+                    n = phase_tracking.write_saved_tracking(
+                        self.session.temp_path, entry, payload,
+                        self._scan_member_ids or [],
+                        self._scan_matched_tables or {},
+                    )
+            else:
+                n = phase_tracking.write_saved_tracking(
+                    self.session.temp_path, entry, payload,
+                    self._scan_member_ids or [],
+                    self._scan_matched_tables or {},
+                )
+        except Exception as exc:
+            logger.warning("could not update the saved tracking", exc_info=True)
+            self.statusBar().showMessage(
+                f"The tracks changed on screen but the table in the file "
+                f"could not be updated: {exc}", 8000,
+            )
+            return False
+        self.session.mark_dirty()
+        self._update_title()
+        logger.info("saved tracking of %s updated: %d track(s)", entry, n)
+        return True
+
     def _on_scan_track_deleted(self, track: int) -> None:
         """Remove one track from the tracking results (Delete key).
 
-        Display-state only: the track disappears from the table, the
-        views, the only-tracked whitelist and the phase colouring —
-        no fitted peaks are deleted from the file. Track-indexed
+        The track disappears from the table, the views, the only-tracked
+        whitelist and the phase colouring, and from the ``tracked_peaks``
+        table saved in the file (rewritten from the tracks on screen;
+        the other tracks are renumbered). No fitted peaks are deleted.
+        Track-indexed
         derived state (ring set, phase map) is remapped since indices
         above the removed track shift down by one; member-indexed
         state (member_ids, fitted tables) is untouched.
@@ -761,6 +903,14 @@ class TrackingMixin:
         payload = self._scan_payload
         track = int(track)
         if payload is None or not (0 <= track < payload.n_tracks):
+            return
+        if self._is_busy():
+            # The table in the file is rewritten with the edit, which
+            # needs the file to itself.
+            self.statusBar().showMessage(
+                "Wait for the running step to finish, then delete the "
+                "track.", 5000,
+            )
             return
         del payload.components[track]
         self._scan_ring_tracks = {
@@ -779,9 +929,13 @@ class TrackingMixin:
             self._phase_views_window.set_payload(payload)
             self._phase_views_window.set_ring_tracks(self._scan_ring_tracks)
             self._phase_views_window.set_track_phases(self._scan_track_phases)
+        written = self._write_tracking_to_file()
         self.statusBar().showMessage(
-            f"Track {track} removed from the tracking results "
-            f"(display only — no peaks were deleted from the file).",
+            f"Track {track} removed from the tracking results"
+            + (
+                " and from the table saved in the file" if written else ""
+            )
+            + " (no fitted peaks were deleted).",
             6000,
         )
 
@@ -793,12 +947,21 @@ class TrackingMixin:
         )
 
     def _on_save_official_figures(self, path: str, axis: str) -> None:
-        """Run upstream's real matplotlib export (save_fig=True).
+        """Save upstream's own tracking figure (``plot_tracked_peaks``).
 
-        GUI thread on purpose: the run is quick (fitted-table reads +
-        two Agg savefigs) and matplotlib's pyplot state machine is not
-        worker-thread-safe under a Qt backend. The silx tree is
-        detached around mlgidBASE's file open, same as pipeline runs.
+        Reruns ``track_peaks`` with the payload's settings first, so the
+        saved table the figure reads is current (the GUI can have
+        deleted tracks or refitted since the last run), then draws it.
+        One figure with two panels (q_xy vs q_z, and ``axis`` against
+        frame number) is written to exactly ``path``. Upstream plots
+        radius, angle, q_z or q_xy; an amplitude axis falls back to
+        radius, with a note in the status bar.
+
+        GUI thread on purpose: the run is quick (bounded-memory
+        tracking + one Agg savefig) and matplotlib's pyplot state
+        machine is not worker-thread-safe under a Qt backend. The silx
+        tree is detached around mlgidBASE's file open, same as pipeline
+        runs.
         """
         if self._is_busy():
             return
@@ -806,30 +969,7 @@ class TrackingMixin:
         entry = self._scan_track_entry
         if payload is None or not entry:
             return
-        # This path reruns UPSTREAM track_peaks (its matplotlib export
-        # is the whole point), which needs the dense 64 * N**2 IoU —
-        # no blocked equivalent exists for the figures. Refuse on
-        # scans where that would OOM-kill the app; the phase-views
-        # window's own image export covers big scans.
-        n_peaks, needed = phase_tracking.estimate_tracking_memory(
-            self.session.temp_path, entry
-        )
-        available = phase_tracking.available_memory_bytes()
-        if (
-            needed and available
-            and needed > available * phase_tracking.TRACKING_DENSE_MEM_FRACTION
-        ):
-            QMessageBox.warning(
-                self,
-                "Save figures",
-                f"The official mlgidBASE figure export reruns "
-                f"upstream's tracking, which needs an estimated "
-                f"{needed / 1e9:.0f} GB for this scan's {n_peaks:,} "
-                f"fitted peaks ({available / 1e9:.0f} GB available).\n\n"
-                f"Use the phase-views window's image export instead — "
-                f"it renders from the already-computed tracks.",
-            )
-            return
+        plot_axis = axis if axis in ("radius", "angle", "q_z", "q_xy") else "radius"
         try:
             with self._detached_silx_tree():
                 from mlgidbase import mlgidBASE  # noqa: N814
@@ -839,18 +979,25 @@ class TrackingMixin:
                     entry=entry,
                     threshold=payload.threshold,
                     length=payload.length,
-                    axis=axis,
-                    plot_params={
-                        "plot_result": False,
-                        "save_fig": True,
-                        "path_to_save_fig": path,
-                    },
+                    window_size=payload.window_size,
+                )
+                analysis.plot_tracked_peaks(
+                    entry=entry,
+                    axis=plot_axis,
+                    plot_result=False,
+                    save_fig=True,
+                    path_to_save_fig=path,
                 )
         except Exception as exc:
             QMessageBox.critical(self, "Save figures", str(exc))
             return
+        self.session.mark_dirty()
+        note = (
+            "" if plot_axis == axis
+            else f" (upstream has no {axis} axis; plotted radius)"
+        )
         self.statusBar().showMessage(
-            f"Saved mlgidBASE tracking figures next to {path}", 6000
+            f"Saved the mlgidBASE tracking figure to {path}{note}", 6000
         )
 
     def _forward_selection_to_scan_tracking(self, sel) -> None:

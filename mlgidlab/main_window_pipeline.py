@@ -410,59 +410,43 @@ class PipelineMixin:
             self._open_queue.append(Path(out_path))
         self._process_open_queue()
 
-    def _rekey_fitted_after_fit(self, cmd) -> None:
-        """Pair the run's fitted rows back to their detected peaks.
+    def _flag_rings_after_fit(self, cmd) -> None:
+        """Type the run's infinite-width fitted rows as rings.
 
-        Scope follows the command exactly as the pre-run matched
-        invalidation does (``pipeline.execute``): an ``entry`` kwarg
-        limits it to that entry, a ``frame_num`` to that frame, and
-        neither means the run covered every entry. Frames whose ids
-        already agree cost a read and no write, so an all-entries run
-        over a long scan stays cheap.
-
-        Best-effort: a failure here is logged, not raised. The fits
-        themselves are already saved and correct; only the pairing
-        would be off, and the user can re-run.
-
-        Writes directly, without detaching silx: the only caller runs
-        while the tree is still detached for the pipeline job (it
-        reattaches when the queue drains).
-
-        Follows the run's primary tables: a redirected fit wrote its
-        rows to the primary fitted table and read the primary detected
-        one, so re-keying the standard pair would be pairing two tables
-        this run never touched.
+        pygidfit marks a ring only by an infinite angular width, and
+        ``run_fitting`` stores its rows as they come, so they would
+        read as segments. Scope: the command's entry / frame and the
+        run's primary fitted table. Writes directly while the silx tree
+        is detached, best-effort: a failure is logged, the fits stay.
+        Independent of the peak link.
         """
-        from mlgidlab.peak_link import link_enabled
-
-        if not link_enabled():
-            return
         entry_arg = cmd.kwargs.get("entry")
         frame_arg = cmd.kwargs.get("frame_num")
         frame = int(frame_arg) if isinstance(frame_arg, int) else None
-        swap = getattr(cmd, "table_swap", None)
-        detected_ds = peak_lists.swapped_name(swap, "detected_peaks")
-        fitted_ds = peak_lists.swapped_name(swap, "fitted_peaks")
+        fitted_ds = peak_lists.swapped_name(
+            getattr(cmd, "table_swap", None), "fitted_peaks",
+        )
         try:
             if isinstance(entry_arg, str) and entry_arg:
                 entries = [entry_arg]
             else:
                 entries = file_model.list_entries(self.session.temp_path)
-            changed = 0
-            for ent in entries:
-                changed += file_model.rekey_fitted_ids_to_detected(
+            changed = sum(
+                file_model.flag_infinite_width_fitted_as_rings(
                     self.session.temp_path, ent, frame=frame,
-                    detected_dataset=detected_ds, fitted_dataset=fitted_ds,
+                    fitted_dataset=fitted_ds,
                 )
+                for ent in entries
+            )
         except Exception as exc:
             self.pipeline_panel.append_log(
-                f"Could not link the new fits to their detected peaks: {exc}"
+                f"Could not type the infinite-width fits as rings: {exc}"
             )
             return
         if changed:
             self.pipeline_panel.append_log(
-                f"Linked the new fits to their detected peaks on "
-                f"{changed} frame(s)."
+                f"Typed {changed} fitted peak(s) with an infinite angular "
+                f"width as rings."
             )
 
     def _on_pipeline_finished(self, result: object, error: Exception | None) -> None:
@@ -494,15 +478,15 @@ class PipelineMixin:
         if self.session is not None and error is None:
             self.session.mark_dirty()
 
-        # A fitting run numbers fitted_peaks 0..N-1 by position over the
-        # detected table (pygidfit's container carries id = box.index),
-        # which is not the detected ids once those have gaps. While the
-        # fitted/detected link is on, re-key them back onto their
-        # detected peaks so the pairing the user relies on survives the
-        # run. Done here rather than inside ``pipeline.execute``: the
-        # worker has no business reading QSettings, and the silx tree is
-        # still detached at this point (it reattaches only when the
-        # queue drains), so the write is safe.
+        # pygidfit >= 0.1.8 writes each fitted row under the id of the
+        # detected row it came from, so the fitted/detected pairing the
+        # link relies on survives a run without any re-keying here
+        # (older versions numbered fitted rows 0..N-1 by position and
+        # needed a pass; the pinned version no longer does). What a run
+        # still leaves to do is typing its infinite-width rows as rings.
+        # Done here rather than inside ``pipeline.execute``: the silx
+        # tree is still detached at this point (it reattaches only when
+        # the queue drains), so the write is safe.
         cmd = getattr(self, "_pipe_command", None)
         if (
             error is None
@@ -510,7 +494,7 @@ class PipelineMixin:
             and cmd is not None
             and cmd.op_name == "run_fitting"
         ):
-            self._rekey_fitted_after_fit(cmd)
+            self._flag_rings_after_fit(cmd)
 
         # A re-fit rewrites the entry's fitted_peaks wholesale, so any
         # phase-tracking results for that entry are stale. Invalidate

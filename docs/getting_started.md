@@ -31,10 +31,10 @@ conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
 
 # GUI only
-pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a20"
+pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a21"
 
 # or, full pipeline (detection / fitting / matching + raw conversion)
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a20"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a21"
 ```
 
 ### From a local clone (for development)
@@ -57,7 +57,7 @@ pip install -e ".[pipeline]"      # or -e . for view-only, -e ".[dev]" for tests
   first launch may take a moment while Qt initializes.
 
 The `[pipeline]` extra pins the verified-good backend versions
-(`mlgidbase==0.1.8`, `pygid==0.2.17`, `pygidfit==0.1.4`,
+(`mlgidbase==0.1.11`, `pygid==0.2.20`, `pygidfit==0.1.8`,
 `mlgidmatch==0.1.3`, `pygidsim==0.1.7`, `mlgiddetect==0.2.8`); bumping them is a deliberate,
 test-rechecked step (see [backend_compatibility.md](backend_compatibility.md)).
 
@@ -79,6 +79,14 @@ restart. `Help → Update now…` runs the same check-and-install on demand
 (no need to wait for the banner), and `Help → Automatically install
 updates` (off by default) does it automatically on launch, after a single
 confirmation.
+
+**mlgidLAB is becoming mlgidGUI.** With release 1.0.0 the app is renamed
+mlgidGUI (package and command `mlgidgui`). Nothing has to be done in
+advance: when 1.0.0 is out, the same banner offers **Update now**, which
+installs mlgidGUI from PyPI and only then removes mlgidLAB, so a failed
+install leaves mlgidLAB working. Scripts that `import mlgidlab` must be
+changed to `import mlgidgui`; there is no compatibility layer. A one-time
+notice in the app explains this (`Help → mlgidLAB is becoming mlgidGUI…`).
 
 Self-update is only offered for normal pip installs. For a **development /
 editable** checkout (`pip install -e`) the button is hidden — update it with

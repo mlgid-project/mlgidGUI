@@ -1,8 +1,8 @@
-"""``mlgidlab.phase_tracking`` — payload math, capture contract, helpers.
+"""``mlgidlab.phase_tracking`` — payload math, the tracked-table adapter,
+helpers.
 
-Pure numpy tests run everywhere; the capture / integration tests need
-the private ``mlgidbase`` backend (plus its undeclared ``networkx``
-dependency) and skip cleanly without it.
+Pure numpy / h5py tests run everywhere; the integration tests need the
+private ``mlgidbase`` backend and skip cleanly without it.
 """
 from __future__ import annotations
 
@@ -13,12 +13,11 @@ from mlgidlab.file_model import MatchedStructure, PeakTable
 from mlgidlab.phase_tracking import (
     AXIS_NAMES,
     TrackingPayload,
-    UpstreamContractError,
-    amplitudes_from_track_result,
-    build_payload,
     match_tracks_to_structures,
     member_ids,
     member_matched_phases,
+    payload_from_tracked_table,
+    read_fitted_members,
     smooth_normalize_amplitude,
 )
 from mlgidlab.polar import polar_to_qxyz
@@ -484,91 +483,118 @@ def test_member_matched_phases_per_frame_claims():
     assert member_matched_phases(payload, [None] * 5, matched) == {}
 
 
-# --- amplitudes_from_track_result (pure) ---
-# The adapter understands exactly the per-component return shape of
-# the pinned mlgidbase (>= 0.1.5); anything else must raise loudly.
+# --- the tracked_peaks table -> payload adapter (pure h5py) ---
+# mlgidbase >= 0.1.11 saves one row per track with the parallel vlen
+# arrays frame_list / peak_list (fitted ids); the adapter turns that
+# plus the entry's fitted rows into the payload the views consume.
 
 
-def _amp_rec():
-    """Capture record for 4 members on frames 0/1/1/2; member 3 is in
-    no component. axis_arr = radius (what the pipeline requests)."""
-    return {
-        "frame_num": np.array([0, 1, 1, 2]),
-        "axis_arr": np.array([1.0, 1.1, 2.0, 9.9]),
-        "components": [[0, 1, 2]],
-    }
+def _tracked_table(tracks):
+    """A table in upstream's layout. ``tracks`` is a list of
+    ``(frames, ids)``."""
+    import h5py
+
+    vlen = h5py.vlen_dtype(np.int32)
+    dt = np.dtype([
+        ("id", "i4"), ("CIF", "S64"), ("h", "f4"), ("k", "f4"), ("l", "f4"),
+        ("frame_list", vlen), ("peak_list", vlen),
+    ])
+    arr = np.empty(len(tracks), dtype=dt)
+    for i, (frames, ids) in enumerate(tracks):
+        arr["id"][i] = i
+        arr["CIF"][i] = b"unmatched"
+        arr["h"][i] = arr["k"][i] = arr["l"][i] = np.nan
+        arr["frame_list"][i] = np.asarray(frames, dtype=np.int32)
+        arr["peak_list"][i] = np.asarray(ids, dtype=np.int32)
+    return arr
 
 
-def test_amplitudes_rejects_flat_pre014_shape():
-    # The flat pre-0.1.4 shape is no longer understood (support dropped
-    # with the ==0.1.5 pin); it must fail loudly, not silently misalign.
-    rec = _amp_rec()
-    ret = (rec["axis_arr"], np.array([10.0, 8.0, 7.0, 5.0]), [[0, 1, 2]])
-    with pytest.raises(UpstreamContractError):
-        amplitudes_from_track_result(ret, rec)
-
-
-def test_amplitudes_from_per_component_014_shape():
-    rec = _amp_rec()
-    # Frame-sorted per-component arrays, exactly what 0.1.4+ returns.
-    # Frames 1 and 1 (members 1/2) are disambiguated by the radius
-    # value carried in the axis array.
-    ret = (
-        [np.array([1.0, 2.0, 1.1])],
-        [np.array([10.0, 7.0, 8.0])],
-        [np.array([0, 1, 1])],
+def test_payload_from_table_names_members_by_frame_and_id(
+    synthetic_fitted_scan,
+):
+    """Frame 2 holds ids 0 (persistent) and 1 (blip); the track names
+    the persistent peak on every frame by id."""
+    members = read_fitted_members(synthetic_fitted_scan, "entry_0000")
+    assert members["frame"].tolist() == [0, 1, 2, 2, 3, 4, 5]
+    assert members["peak_id"].tolist() == [0, 0, 0, 1, 0, 0, 0]
+    table = _tracked_table([([0, 1, 2, 3, 4, 5], [0, 0, 0, 0, 0, 0])])
+    p = payload_from_tracked_table(
+        synthetic_fitted_scan, "entry_0000", table, 0.5, 3, window_size=7,
     )
-    amp = amplitudes_from_track_result(ret, rec)
-    assert amp[0] == 10.0 and amp[1] == 8.0 and amp[2] == 7.0
-    assert np.isnan(amp[3])  # not in any component
+    assert p.n_members == 7 and p.n_tracks == 1
+    # member 3 is the (frame 2, id 1) blip and must NOT be in the track
+    assert p.components == [[0, 1, 2, 4, 5, 6]]
+    assert p.window_size == 7
+    assert p.peak_id.tolist() == [0, 0, 0, 1, 0, 0, 0]
+    # Amplitudes are the fitted ones, exactly.
+    assert p.amplitude[0] == pytest.approx(100.0)
+    assert p.amplitude[3] == pytest.approx(50.0)
 
 
-def test_amplitudes_rejects_unknown_shapes():
-    rec = _amp_rec()
-    with pytest.raises(UpstreamContractError):
-        amplitudes_from_track_result(None, rec)
-    with pytest.raises(UpstreamContractError):
-        # Per-component lists whose length mismatches the components.
-        amplitudes_from_track_result(([], [], []), rec | {"components": [[0]]})
+def test_payload_from_table_skips_pairs_that_name_no_fitted_row(
+    synthetic_fitted_scan,
+):
+    table = _tracked_table([
+        ([0, 1], [0, 0]),           # fine
+        ([2, 3], [99, 98]),         # stale: no such fitted ids -> dropped
+        ([0, 4], [0, 7]),           # one good pair survives
+    ])
+    p = payload_from_tracked_table(
+        synthetic_fitted_scan, "entry_0000", table, 0.5, 1,
+    )
+    assert p.components == [[0, 1], [0]]
 
 
-# --- capture contract (needs mlgidbase) ---
+def test_payload_from_table_rejects_a_pre_rename_table(synthetic_fitted_scan):
+    import h5py
+
+    vlen = h5py.vlen_dtype(np.int32)
+    old = np.empty(1, dtype=np.dtype([("id", "i4"), ("frames", vlen),
+                                      ("peak_ids", vlen)]))
+    old["frames"][0] = np.asarray([0], dtype=np.int32)
+    old["peak_ids"][0] = np.asarray([0], dtype=np.int32)
+    with pytest.raises(ValueError, match="frame_list"):
+        payload_from_tracked_table(
+            synthetic_fitted_scan, "entry_0000", old, 0.5, 1,
+        )
+
+
+def test_read_fitted_members_without_fitted_rows_raises(tmp_path):
+    import h5py
+
+    path = tmp_path / "nofit.h5"
+    with h5py.File(path, "w") as f:
+        d = f.create_group("e/data")
+        d.create_dataset("img_gid_q", data=np.zeros((2, 4, 4), np.float32))
+    with pytest.raises(ValueError):
+        read_fitted_members(path, "e")
+
+
+def _ids_only_table(ids):
+    return _table([(i, 0.0, 0.0, 0.0) for i in ids])
+
+
+def test_member_ids_are_exact_when_the_payload_carries_ids():
+    p = _payload(peak_id=np.array([0, 0, 0, 0, 3, 4]))
+    tables = {
+        0: _ids_only_table([0]), 1: _ids_only_table([0]),
+        2: _ids_only_table([0, 3, 4]), 3: _ids_only_table([0]),
+    }
+    ids = member_ids(p, tables)
+    assert ids == [(0, 0), (1, 0), (2, 0), (3, 0), (2, 3), (2, 4)]
+    # A frame without a table, or an id the table no longer holds -> None.
+    assert member_ids(p, {0: _ids_only_table([0])})[1] is None
+    assert member_ids(p, {**tables, 2: _ids_only_table([0, 3])})[5] is None
+
+
+def test_payload_peak_id_length_is_validated():
+    with pytest.raises(ValueError, match="peak_id"):
+        _payload(peak_id=np.array([0, 1]))
+
+
+# --- integration with the real backend (needs mlgidbase) ---
 # importorskip is called INSIDE each test (not at module level) so the
 # pure tests above still run on CI boxes without the private backend.
-
-
-def test_capture_records_hook_args():
-    pytest.importorskip("mlgidbase")
-    from mlgidlab.phase_tracking import capture_tracking
-    import mlgidbase.peak_operations as po
-
-    with capture_tracking() as rec:
-        # Simulate upstream's positional call.
-        po._plot_tracked_peaks(
-            {}, np.array([1.0]), np.array([2.0]), np.array([0]),
-            [[0]], np.array([5.0]), "label", {},
-        )
-    payload = build_payload(rec, entry="e", threshold=0.4, length=2)
-    assert payload.n_members == 1 and payload.n_tracks == 1
-    assert payload.amplitude[0] == pytest.approx(5.0)
-    assert payload.threshold == 0.4 and payload.length == 2
-    # The original symbol is restored on exit.
-    assert po._plot_tracked_peaks.__name__ != "_record"
-
-
-def test_capture_rejects_signature_drift():
-    pytest.importorskip("mlgidbase")
-    from mlgidlab.phase_tracking import capture_tracking
-    import mlgidbase.peak_operations as po
-
-    with capture_tracking():
-        with pytest.raises(UpstreamContractError):
-            po._plot_tracked_peaks(1, 2, 3)  # wrong arity
-
-
-def test_build_payload_requires_fired_hook():
-    with pytest.raises(UpstreamContractError):
-        build_payload({}, entry="e", threshold=0.5, length=1)
 
 
 def test_track_peaks_integration(synthetic_fitted_scan):
@@ -576,7 +602,6 @@ def test_track_peaks_integration(synthetic_fitted_scan):
     forms one surviving track; the frame-2 blip's single-member
     component is cut by ``length``."""
     pytest.importorskip("mlgidbase")
-    pytest.importorskip("networkx")
     from mlgidlab.pipeline import PipelineCommand, execute
 
     payload = execute(
@@ -594,20 +619,70 @@ def test_track_peaks_integration(synthetic_fitted_scan):
     members = payload.track_members(0)
     assert set(members) <= set(range(payload.n_members))
     assert (payload.frame_num[members] == np.arange(6)).all()
+    # Exact ids came along, and upstream left its table in the file.
+    assert payload.peak_id is not None
+    assert (payload.peak_id[members] == 0).all()
+    import h5py
+
+    with h5py.File(synthetic_fitted_scan, "r") as f:
+        table = f["entry_0000/data/analysis/general/tracked_peaks"][()]
+    assert table.dtype.names[-2:] == ("frame_list", "peak_list")
+    assert len(table) == 1
+
+
+def test_track_peaks_window_size_reaches_upstream(synthetic_fitted_scan):
+    """A frame window of 1 cuts the chain 0-1-2-3-4-5 into links that
+    still connect neighbours; a window of 0 means 'off' in the GUI."""
+    pytest.importorskip("mlgidbase")
+    from mlgidlab.pipeline import PipelineCommand, execute
+
+    kw = {"entry": "entry_0000", "threshold": 0.5, "length": 3}
+    limited = execute(
+        synthetic_fitted_scan,
+        PipelineCommand("track_peaks", {**kw, "window_size": 1}),
+    )
+    assert limited.window_size == 1 and limited.n_tracks == 1
+    off = execute(
+        synthetic_fitted_scan,
+        PipelineCommand("track_peaks", {**kw, "window_size": 0}),
+    )
+    assert off.window_size is None
+
+
+def test_a_saved_table_is_the_same_tracks_the_payload_shows(
+    synthetic_fitted_scan,
+):
+    pytest.importorskip("mlgidbase")
+    import h5py
+
+    from mlgidlab.pipeline import PipelineCommand, execute
+
+    payload = execute(
+        synthetic_fitted_scan,
+        PipelineCommand("track_peaks", {
+            "entry": "entry_0000", "threshold": 0.5, "length": 3,
+        }),
+    )
+    with h5py.File(synthetic_fitted_scan, "r") as f:
+        table = f["entry_0000/data/analysis/general/tracked_peaks"][()]
+    rebuilt = payload_from_tracked_table(
+        synthetic_fitted_scan, "entry_0000", table, 0.5, 3,
+    )
+    assert rebuilt.components == payload.components
 
 
 def test_track_peaks_old_backend_named_error(
     synthetic_fitted_scan, monkeypatch,
 ):
-    """An mlgidbase without track_peaks (the 0.1.3 release) fails with
-    the named capability message, not a raw AttributeError."""
+    """An mlgidbase without track_peaks fails with the named capability
+    message, not a raw AttributeError."""
     pytest.importorskip("mlgidbase")
     from mlgidbase import mlgidBASE
 
     from mlgidlab.pipeline import PipelineCommand, execute
 
     monkeypatch.delattr(mlgidBASE, "track_peaks")
-    with pytest.raises(RuntimeError, match="needs mlgidbase >= 0.1.5"):
+    with pytest.raises(RuntimeError, match="needs mlgidbase >= 0.1.11"):
         execute(
             synthetic_fitted_scan,
             PipelineCommand("track_peaks", {
@@ -618,10 +693,10 @@ def test_track_peaks_old_backend_named_error(
 
 def test_track_peaks_no_fitted_peaks_message(synthetic_fitted_scan):
     """A file with no fitted rows fails with the actionable message,
-    not numpy's vstack error. (The file must still pass pygid's entry
-    validation, so strip the analysis groups from the valid fixture.)"""
+    not numpy's concatenate error. (The file must still pass pygid's
+    entry validation, so strip the analysis groups from the valid
+    fixture.)"""
     pytest.importorskip("mlgidbase")
-    pytest.importorskip("networkx")
     import h5py
 
     from mlgidlab.pipeline import PipelineCommand, execute
@@ -635,3 +710,187 @@ def test_track_peaks_no_fitted_peaks_message(synthetic_fitted_scan):
                 "entry": "entry_0000", "threshold": 0.5, "length": 3,
             }),
         )
+
+
+# --- reading the tracking an entry already carries (pure h5py) ---
+
+
+def _write_saved(path, tracks, *, meta=None, old_layout=False):
+    import h5py
+
+    vlen = h5py.vlen_dtype(np.int32)
+    names = ("frames", "peak_ids") if old_layout else ("frame_list", "peak_list")
+    dt = np.dtype([("id", "i4"), (names[0], vlen), (names[1], vlen)])
+    arr = np.empty(len(tracks), dtype=dt)
+    for i, (frames, ids) in enumerate(tracks):
+        arr["id"][i] = i
+        arr[names[0]][i] = np.asarray(frames, dtype=np.int32)
+        arr[names[1]][i] = np.asarray(ids, dtype=np.int32)
+    with h5py.File(path, "r+") as f:
+        f.require_group("entry_0000/data/analysis/general").create_dataset(
+            "tracked_peaks", data=arr,
+        )
+        if meta:
+            g = f.require_group("entry_0000/process/peak_tracking")
+            for k, v in meta.items():
+                g.create_dataset(k, data=v)
+
+
+def test_read_saved_tracking_returns_table_and_recorded_settings(
+    synthetic_fitted_scan,
+):
+    from mlgidlab.phase_tracking import read_saved_tracking, saved_tracking_problem
+
+    assert read_saved_tracking(synthetic_fitted_scan, "entry_0000") is None
+    assert saved_tracking_problem(synthetic_fitted_scan, "entry_0000") == "none"
+    _write_saved(
+        synthetic_fitted_scan, [([0, 1], [0, 0])],
+        meta={"threshold": 0.6, "length": 4, "window_size": 7,
+              "program": np.bytes_("mlgidbase"), "version": np.bytes_("0.1.11")},
+    )
+    saved = read_saved_tracking(synthetic_fitted_scan, "entry_0000")
+    assert (saved.threshold, saved.length, saved.window_size) == (0.6, 4, 7)
+    assert (saved.program, saved.version) == ("mlgidbase", "0.1.11")
+    assert len(saved.table) == 1
+    assert saved_tracking_problem(synthetic_fitted_scan, "entry_0000") == ""
+
+
+def test_saved_tracking_without_a_record_or_with_no_window(synthetic_fitted_scan):
+    from mlgidlab.phase_tracking import read_saved_tracking
+
+    _write_saved(synthetic_fitted_scan, [([0], [0])])
+    saved = read_saved_tracking(synthetic_fitted_scan, "entry_0000")
+    assert (saved.threshold, saved.length, saved.window_size) == (None, None, None)
+
+
+def test_an_old_layout_table_is_reported_not_read(synthetic_fitted_scan):
+    from mlgidlab.phase_tracking import (
+        load_saved_tracking_state,
+        read_saved_tracking,
+        saved_tracking_problem,
+    )
+
+    _write_saved(synthetic_fitted_scan, [([0], [0])], old_layout=True)
+    assert read_saved_tracking(synthetic_fitted_scan, "entry_0000") is None
+    assert saved_tracking_problem(synthetic_fitted_scan, "entry_0000") == "old_layout"
+    state, info = load_saved_tracking_state(synthetic_fitted_scan, "entry_0000")
+    assert state is None and info["status"] == "old_layout"
+
+
+def test_load_saved_tracking_state_loaded_stale_and_forced(synthetic_fitted_scan):
+    from mlgidlab.phase_tracking import load_saved_tracking_state
+
+    _write_saved(
+        synthetic_fitted_scan,
+        [([0, 1, 2, 3, 4, 5, 3], [0, 0, 0, 0, 0, 0, 77])],
+    )
+    state, info = load_saved_tracking_state(synthetic_fitted_scan, "entry_0000")
+    assert state is None and info["status"] == "stale"
+    assert (info["unresolved"], info["members"]) == (1, 7)
+
+    state, info = load_saved_tracking_state(
+        synthetic_fitted_scan, "entry_0000", force=True,
+    )
+    assert info["status"] == "loaded" and info["n_tracks"] == 1
+    assert state.payload.track_span(0) == (0, 5, 6, 6)
+    assert state.payload.n_unresolved == 1
+    assert state.ids[0] == (0, 0)
+    assert state.ring_tracks == set()
+
+
+def test_a_saved_table_for_an_entry_without_fits_is_an_error_not_a_crash(tmp_path):
+    import h5py
+
+    from mlgidlab.phase_tracking import load_saved_tracking_state
+
+    path = tmp_path / "nofit.h5"
+    with h5py.File(path, "w") as f:
+        f.create_group("entry_0000/data").create_dataset(
+            "img_gid_q", data=np.zeros((2, 4, 4), np.float32),
+        )
+    _write_saved(path, [([0], [0])])
+    state, info = load_saved_tracking_state(path, "entry_0000")
+    assert state is None and info["status"] == "error"
+
+
+# --- writing the tracks back (edits are edits of the saved table) ---
+
+
+def test_a_written_table_reads_back_to_the_same_tracks(synthetic_fitted_scan):
+    from mlgidlab.phase_tracking import (
+        load_saved_tracking_state,
+        write_saved_tracking,
+    )
+
+    _write_saved(
+        synthetic_fitted_scan,
+        [([0, 1, 2, 3, 4, 5], [0] * 6), ([2], [1])],
+        meta={"threshold": 0.5, "length": 1, "window_size": 0},
+    )
+    state, _ = load_saved_tracking_state(synthetic_fitted_scan, "entry_0000")
+    assert state.payload.n_tracks == 2
+    del state.payload.components[1]
+    n = write_saved_tracking(
+        synthetic_fitted_scan, "entry_0000", state.payload, state.ids,
+        state.matched_tables,
+    )
+    assert n == 1
+    again, info = load_saved_tracking_state(synthetic_fitted_scan, "entry_0000")
+    assert again.payload.components == state.payload.components
+    assert info["saved"].threshold == 0.5 and info["saved"].length == 1
+    assert info["saved"].window_size is None        # 0 = unlimited
+
+
+def test_the_written_phase_columns_follow_upstreams_majority_rule():
+    import h5py  # noqa: F401  (dtype helper needs it)
+
+    from mlgidlab.file_model import MatchedStructure
+    from mlgidlab.phase_tracking import TrackingPayload, tracking_table_from_payload
+
+    payload = TrackingPayload(
+        entry="e", threshold=0.5, length=1,
+        q_xy=np.zeros(3), q_z=np.zeros(3), frame_num=np.array([0, 1, 2]),
+        amplitude=np.ones(3), components=[[0, 1, 2], [0]],
+    )
+    ids = [(0, 5), (1, 5), (2, 5)]
+
+    def _struct(cif, hkl, prob, pids):
+        t = _table([(p, 0.0, 0.0, 0.0) for p in pids])
+        return MatchedStructure(
+            solution_field="matched_segments_0000", local_idx=0, cif=cif,
+            h=hkl[0], k=hkl[1], l=hkl[2], probability=prob, peaks=t,
+        )
+
+    matched = {
+        0: [_struct("A", (1, 0, 0), 0.9, [5]), _struct("B", (0, 0, 1), 0.2, [5])],
+        1: [_struct("A", (1, 0, 0), 0.5, [5])],
+        2: [_struct("B", (0, 0, 1), 0.99, [5])],
+    }
+    rows = tracking_table_from_payload(payload, ids, matched)
+    # Track 0: A claims 2 members, B claims 2 too -> the higher best
+    # probability (B 0.99) wins; ids renumbered, columns upstream-shaped.
+    assert rows["id"].tolist() == [0, 1]
+    assert rows["CIF"][0] == b"B.cif" and (rows["h"][0], rows["l"][0]) == (0.0, 1.0)
+    # Track 1 is member 0 only: A (0.9) beats B (0.2) there.
+    assert rows["CIF"][1] == b"A.cif"
+    # No claims at all -> unmatched / NaN, like upstream.
+    none = tracking_table_from_payload(payload, ids, {})
+    assert none["CIF"][0] == b"unmatched" and np.isnan(none["h"][0])
+    assert list(rows["frame_list"][0]) == [0, 1, 2]
+    assert list(rows["peak_list"][0]) == [5, 5, 5]
+
+
+def test_regenerating_a_table_reproduces_what_upstream_wrote(synthetic_fitted_scan):
+    """Load -> rewrite from the payload gives upstream's own rows back for
+    the members, which is what lets a rewrite after an edit be trusted."""
+    from mlgidlab.phase_tracking import (
+        load_saved_tracking_state,
+        tracking_table_from_payload,
+    )
+
+    _write_saved(synthetic_fitted_scan, [([0, 1, 2, 3, 4, 5], [0] * 6)])
+    state, info = load_saved_tracking_state(synthetic_fitted_scan, "entry_0000")
+    rows = tracking_table_from_payload(state.payload, state.ids, state.matched_tables)
+    orig = info["saved"].table
+    assert list(rows["frame_list"][0]) == list(orig["frame_list"][0])
+    assert list(rows["peak_list"][0]) == list(orig["peak_list"][0])

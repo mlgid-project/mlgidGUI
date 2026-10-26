@@ -78,9 +78,8 @@ def _install_fake(window, payload: TrackingPayload | None = None) -> TrackingPay
 
 def test_track_run_end_to_end(main_window, synthetic_fitted_scan, qtbot):
     """Real upstream run through the pipeline queue: payload installed,
-    member ids reconstructed, panel populated."""
+    member ids taken from upstream's saved table, panel populated."""
     pytest.importorskip("mlgidbase")
-    pytest.importorskip("networkx")
     _open(main_window, synthetic_fitted_scan)
     panel = main_window.scan_tracking_panel
     assert panel.btn_track.isEnabled()
@@ -919,94 +918,57 @@ def test_tracking_progress_dialog_lifecycle(main_window, synthetic_fitted_scan):
     assert main_window._track_progress_dialog is None
 
 
-def test_estimate_tracking_memory_counts_fitted_rows(synthetic_fitted_scan):
-    """The pre-flight estimate counts every fitted row of the entry
-    (h5py shape metadata only) and prices the run at 64*N^2 bytes —
-    the measured floor of upstream's dense IoU step (eight (N, N)
-    float64 arrays live at once). Unknown entries price at (0, 0),
-    which callers read as "cannot estimate, do not block"."""
-    import h5py
-
-    from mlgidlab import phase_tracking
-
-    with h5py.File(synthetic_fitted_scan, "r") as f:
-        ana = f[f"{ENTRY}/data/analysis"]
-        expected = sum(
-            ana[g]["fitted_peaks"].shape[0]
-            for g in ana
-            if "fitted_peaks" in ana[g]
-        )
-    n, needed = phase_tracking.estimate_tracking_memory(
-        synthetic_fitted_scan, ENTRY
-    )
-    assert n == expected and n > 0
-    assert needed == phase_tracking.TRACKING_BYTES_PER_PEAK_PAIR * n * n
-    assert phase_tracking.estimate_tracking_memory(
-        synthetic_fitted_scan, "not_an_entry"
-    ) == (0, 0)
-
-
-def test_track_scan_runs_blocked_when_memory_insufficient(
-    main_window, synthetic_fitted_scan, qtbot, monkeypatch,
-):
-    """OOM-kill regression, end to end: a scan whose estimated dense
-    tracking memory exceeds what the machine has (the kernel killed
-    the whole app at 27 GB RSS on a 602-frame / 43645-peak scan) now
-    runs through ``track_peaks_blocked`` instead — same payload, same
-    panel result, no upstream dense IoU."""
-    pytest.importorskip("mlgidbase")
-    from mlgidlab import phase_tracking
-
-    calls: list = []
-    real = phase_tracking.track_peaks_blocked
-
-    def _spy(*args, **kwargs):
-        calls.append(args)
-        return real(*args, **kwargs)
-
-    # Pretend ~1 kB is available: any real scan exceeds it.
-    monkeypatch.setattr(
-        phase_tracking, "available_memory_bytes", lambda: 1000
-    )
-    monkeypatch.setattr(phase_tracking, "track_peaks_blocked", _spy)
-    _open(main_window, synthetic_fitted_scan)
-    main_window._on_track_scan_requested(0.5, 3)
-    assert main_window._track_progress_dialog is not None
-    qtbot.waitUntil(
-        lambda: main_window._pipe_thread is None
-        and not main_window._pipeline_queue
-        and main_window._scan_payload is not None,
-        timeout=60000,
-    )
-    assert len(calls) == 1
-    payload = main_window._scan_payload
-    assert payload.n_tracks == 1
-    assert payload.track_span(0) == (0, 5, 6, 6)
-    assert main_window.scan_tracking_panel._model.rowCount() == 1
-
-
-def test_save_figures_refused_on_big_scan(
+def test_the_frame_gap_control_travels_with_the_run(
     main_window, synthetic_fitted_scan, monkeypatch,
 ):
-    """The official figure export reruns UPSTREAM tracking (dense
-    IoU, no blocked equivalent renders its matplotlib output), so on
-    scans where that would OOM it must refuse and point at the
-    phase-views image export instead."""
-    from mlgidlab import phase_tracking
+    """'Max frame gap' (mlgidbase window_size): off = None, a number is
+    sent as is, and the panel names it in the result line."""
+    _open(main_window, synthetic_fitted_scan)
+    panel = main_window.scan_tracking_panel
+    sent: list = []
+    monkeypatch.setattr(
+        main_window, "_enqueue_pipeline",
+        lambda path, cmd: sent.append(cmd),
+    )
+    monkeypatch.setattr(main_window, "_show_tracking_progress", lambda *a, **k: None)
+    assert panel.window_size == 0 and panel.spin_window.specialValueText() == "off"
+    main_window._on_track_scan_requested(0.5, 3)
+    panel.spin_window.setValue(25)
+    main_window._on_track_scan_requested(0.5, 3)
+    assert [c.kwargs["window_size"] for c in sent] == [None, 25]
 
+    payload = _fake_payload()
+    payload.window_size = 25
+    panel.set_payload(payload, [(int(f), 0) for f in payload.frame_num])
+    assert "gap ≤ 25 frames" in panel.lbl_status.text()
+
+
+def test_save_official_figure_writes_upstreams_own_plot(
+    main_window, synthetic_fitted_scan, tmp_path,
+):
+    """'Save official figures' reruns track_peaks with the payload's
+    settings and saves plot_tracked_peaks to exactly the chosen path."""
+    pytest.importorskip("mlgidbase")
     _open(main_window, synthetic_fitted_scan)
     _install_fake(main_window)
-    seen: list = []
-    monkeypatch.setattr(
-        QMessageBox, "warning",
-        staticmethod(lambda *a, **k: seen.append(a)),
+    out = tmp_path / "tracks.png"
+    main_window._on_save_official_figures(str(out), "radius")
+    assert out.is_file() and out.stat().st_size > 0
+    assert "Saved the mlgidBASE tracking figure" in (
+        main_window.statusBar().currentMessage()
     )
-    monkeypatch.setattr(
-        phase_tracking, "available_memory_bytes", lambda: 1000
-    )
-    main_window._on_save_official_figures("/tmp/x.png", "radius")
-    assert len(seen) == 1
-    assert "phase-views" in seen[0][2]
+
+
+def test_save_official_figure_amplitude_axis_falls_back_to_radius(
+    main_window, synthetic_fitted_scan, tmp_path,
+):
+    pytest.importorskip("mlgidbase")
+    _open(main_window, synthetic_fitted_scan)
+    _install_fake(main_window)
+    out = tmp_path / "amp.png"
+    main_window._on_save_official_figures(str(out), "amplitude")
+    assert out.is_file()
+    assert "plotted radius" in main_window.statusBar().currentMessage()
 
 
 def test_delete_key_removes_track(
@@ -2370,3 +2332,517 @@ def test_export_dialog_modes(qtbot):
     assert data_dlg.selected_structures() is None  # no structure section
     assert not hasattr(data_dlg, "line_width")     # no style section
     assert data_dlg.selected_views() == []         # current tab disabled
+
+
+# -- single-frame data has nothing to track --------------------------------
+
+
+def _tracking_shown(window) -> bool:
+    return (not window._scan_tracking_dock.isHidden()
+            and window.workflow_rail.is_stage_visible("track"))
+
+
+def test_tracking_is_hidden_for_a_single_frame(
+        main_window, synthetic_nexus_single):
+    _open(main_window, synthetic_nexus_single)
+    assert main_window.viewer.n_frames == 1
+    dock = main_window._scan_tracking_dock
+    assert dock.isHidden()
+    assert not main_window.workflow_rail.is_stage_visible("track")
+    assert main_window._tracking_hidden_by_rule
+    # The View menu cannot bring it back.
+    action = dock.toggleViewAction()
+    assert not action.isEnabled()
+    action.trigger()
+    assert dock.isHidden()
+
+
+def test_tracking_is_shown_for_many_frames(main_window, synthetic_nexus):
+    _open(main_window, synthetic_nexus)
+    assert main_window.viewer.n_frames == 3
+    assert _tracking_shown(main_window)
+    assert main_window._scan_tracking_dock.toggleViewAction().isEnabled()
+
+
+def test_switching_sessions_hides_and_restores_tracking(
+        main_window, synthetic_nexus, synthetic_nexus_single):
+    many = _open(main_window, synthetic_nexus)
+    _open(main_window, synthetic_nexus_single)
+    assert not _tracking_shown(main_window)
+    main_window._set_active_session(many)
+    assert _tracking_shown(main_window)
+    assert main_window._scan_tracking_dock.toggleViewAction().isEnabled()
+
+
+@pytest.fixture
+def mixed_entries(tmp_path):
+    """entry_0000 with one frame, entry_0001 with three."""
+    import h5py
+
+    path = tmp_path / "mixed.h5"
+    with h5py.File(path, "w", track_order=True) as f:
+        for name, n_frames in (("entry_0000", 1), ("entry_0001", 3)):
+            data = f.create_group(f"{name}/data")
+            data.attrs["signal"] = "img_gid_q"
+            data.create_dataset(
+                "img_gid_q", data=np.ones((n_frames, 16, 24), np.float32))
+            data.create_dataset(
+                "q_xy", data=np.linspace(-1.0, 3.0, 24, dtype=np.float32))
+            data.create_dataset(
+                "q_z", data=np.linspace(0.0, 4.0, 16, dtype=np.float32))
+    return path
+
+
+def test_a_dock_the_user_closed_stays_closed(main_window, mixed_entries):
+    # Shown, so the View-menu action tracks the dock's visibility.
+    main_window.show()
+    _open(main_window, mixed_entries)
+    dock = main_window._scan_tracking_dock
+    assert dock.isHidden()                      # entry_0000: one frame
+    main_window._load_entry_into_viewer("entry_0001")
+    assert _tracking_shown(main_window)         # the rule hid it: back
+    dock.toggleViewAction().trigger()           # the user closes it
+    assert dock.isHidden()
+    main_window._load_entry_into_viewer("entry_0000")
+    assert not main_window._tracking_hidden_by_rule
+    main_window._load_entry_into_viewer("entry_0001")
+    assert dock.isHidden()                      # still the user's choice
+    assert main_window.workflow_rail.is_stage_visible("track")
+    assert dock.toggleViewAction().isEnabled()
+
+
+def test_the_structure_tab_does_not_bring_tracking_back(
+        main_window, synthetic_nexus_single):
+    _open(main_window, synthetic_nexus_single)
+    main_window._confirm_discard_changes = lambda session=None: True
+    main_window.show()
+    try:
+        main_window.tabs.setCurrentWidget(main_window.structure_panel)
+        main_window.tabs.setCurrentWidget(main_window.viewer)
+        assert not main_window._scan_tracking_dock.isVisible()
+        assert not main_window._profile_dock.isHidden()
+        assert not main_window._scan_tracking_dock.toggleViewAction().isEnabled()
+    finally:
+        if main_window._h5_edit_handle is not None:
+            main_window._h5_edit_handle.release()
+
+
+def test_the_structure_tab_round_trip_keeps_tracking_for_many_frames(
+        main_window, synthetic_nexus):
+    _open(main_window, synthetic_nexus)
+    main_window._confirm_discard_changes = lambda session=None: True
+    main_window.show()
+    try:
+        main_window.tabs.setCurrentWidget(main_window.structure_panel)
+        assert main_window._scan_tracking_dock.isHidden()
+        main_window.tabs.setCurrentWidget(main_window.viewer)
+        assert _tracking_shown(main_window)
+    finally:
+        if main_window._h5_edit_handle is not None:
+            main_window._h5_edit_handle.release()
+
+
+def test_a_raw_session_after_a_single_frame_re_enables_the_action(
+        main_window, synthetic_nexus_single, synthetic_raw):
+    from mlgidlab.session import RawSession
+
+    _open(main_window, synthetic_nexus_single)
+    raw = RawSession.open([synthetic_raw])
+    main_window._sessions.append(raw)
+    main_window._set_active_session(raw)
+    dock = main_window._scan_tracking_dock
+    assert dock.isHidden()                      # raw mode hides it
+    assert dock.toggleViewAction().isEnabled()
+    assert main_window.workflow_rail.is_stage_visible("track")
+    assert not main_window._tracking_hidden_by_rule
+
+
+def test_rings_stored_the_0_1_8_way_yield_one_ring_track_beside_the_spots(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    """pygidfit 0.1.8 stores a ring with angle 45 (not NaN) and an
+    infinite angular width, so upstream now links rings natively: it
+    clamps the width to 45 and the boxes overlap frame to frame. The GUI
+    drops those native ring components and tracks rings itself, so each
+    physical ring is still exactly ONE track and the spot track is
+    untouched."""
+    pytest.importorskip("mlgidbase")
+    import h5py
+
+    with h5py.File(synthetic_fitted_scan, "r+") as f:
+        for frame in range(6):
+            ds = f[f"{ENTRY}/data/analysis/frame{frame:05d}/fitted_peaks"]
+            rows = ds[()]
+            ring = np.zeros(1, dtype=rows.dtype)
+            ring["id"] = int(rows["id"].max()) + 1
+            ring["radius"] = 2.5
+            ring["radius_width"] = 0.2
+            ring["angle"] = 45.0
+            ring["angle_width"] = np.inf
+            ring["is_ring"] = True
+            ring["amplitude"] = 30.0
+            ring["q_xy"] = 2.5 * np.cos(np.deg2rad(45.0))
+            ring["q_z"] = 2.5 * np.sin(np.deg2rad(45.0))
+            data = np.concatenate([rows, ring])
+            parent = ds.parent
+            del parent["fitted_peaks"]
+            parent.create_dataset("fitted_peaks", data=data)
+
+    _open(main_window, synthetic_fitted_scan)
+    main_window._on_track_scan_requested(0.5, 3)
+    qtbot.waitUntil(
+        lambda: main_window._pipe_thread is None
+        and not main_window._pipeline_queue
+        and main_window._scan_payload is not None,
+        timeout=60000,
+    )
+    payload = main_window._scan_payload
+    ids = main_window._scan_member_ids
+    rings = sorted(main_window._scan_ring_tracks)
+    assert len(rings) == 1
+    ring_members = payload.track_members(rings[0])
+    assert len(ring_members) == 6
+    assert all(ids[int(i)][1] == 2 or ids[int(i)][1] == 1 for i in ring_members)
+    spot_tracks = [k for k in range(payload.n_tracks) if k not in rings]
+    assert len(spot_tracks) == 1
+    assert payload.track_span(spot_tracks[0])[:2] == (0, 5)
+
+
+# -- tracking the file already carries ------------------------------------
+# mlgidbase >= 0.1.11 saves its tracking table into the file; opening an
+# entry shows it without running anything (built off the GUI thread).
+
+
+_SAVED_DTYPE = np.dtype([
+    ("id", "i4"), ("CIF", "S64"), ("h", "f4"), ("k", "f4"), ("l", "f4"),
+    ("frame_list", __import__("h5py").vlen_dtype(np.int32)),
+    ("peak_list", __import__("h5py").vlen_dtype(np.int32)),
+])
+
+
+def _save_tracking(path, tracks, *, meta=True, old_layout=False):
+    """Write a tracking table the way mlgidbase 0.1.11 does. ``tracks`` is
+    a list of ``(frames, ids)``; ``old_layout`` uses the pre-0.1.11 field
+    names."""
+    import h5py
+
+    vlen = h5py.vlen_dtype(np.int32)
+    if old_layout:
+        dt = np.dtype([("id", "i4"), ("frames", vlen), ("peak_ids", vlen)])
+    else:
+        dt = _SAVED_DTYPE
+    arr = np.empty(len(tracks), dtype=dt)
+    for i, (frames, ids) in enumerate(tracks):
+        arr["id"][i] = i
+        if not old_layout:
+            arr["CIF"][i] = b"unmatched"
+            arr["h"][i] = arr["k"][i] = arr["l"][i] = np.nan
+        arr["frame_list" if not old_layout else "frames"][i] = np.asarray(
+            frames, dtype=np.int32)
+        arr["peak_list" if not old_layout else "peak_ids"][i] = np.asarray(
+            ids, dtype=np.int32)
+    with h5py.File(path, "r+") as f:
+        g = f.require_group(f"{ENTRY}/data/analysis/general")
+        g.create_dataset("tracked_peaks", data=arr)
+        if meta:
+            p = f.require_group(f"{ENTRY}/process/peak_tracking")
+            p.create_dataset("program", data=np.bytes_("mlgidbase"))
+            p.create_dataset("version", data=np.bytes_("0.1.11"))
+            p.create_dataset("date", data=np.bytes_("2026-10-23T12:18:55"))
+            p.create_dataset("threshold", data=0.4)
+            p.create_dataset("length", data=3)
+            p.create_dataset("window_size", data=4)
+    return path
+
+
+_PERSISTENT = ([0, 1, 2, 3, 4, 5], [0, 0, 0, 0, 0, 0])
+
+
+def _wait_loaded(window, qtbot, timeout=20000):
+    qtbot.waitUntil(lambda: window._scan_payload is not None, timeout=timeout)
+
+
+def test_a_saved_tracking_table_shows_up_when_the_file_opens(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    _save_tracking(synthetic_fitted_scan, [_PERSISTENT])
+    _open(main_window, synthetic_fitted_scan)
+    _wait_loaded(main_window, qtbot)
+    panel = main_window.scan_tracking_panel
+    payload = main_window._scan_payload
+    assert payload.n_tracks == 1
+    assert payload.track_span(0) == (0, 5, 6, 6)
+    assert panel._model.rowCount() == 1
+    assert main_window._scan_track_entry == ENTRY
+    # The settings the table was made with are shown, so a re-run starts
+    # from them, and the panel says where the tracks came from.
+    assert (panel.threshold, panel.min_length, panel.window_size) == (0.4, 3, 4)
+    assert not panel.lbl_saved.isHidden()
+    assert "saved by mlgidbase 0.1.11 on 2026-10-23" in panel.lbl_saved.text()
+    assert panel.btn_load_saved.isHidden()
+    assert panel.btn_views.isEnabled()
+    # Members are the exact (frame, id) pairs of the table.
+    members = payload.track_members(0)
+    assert [main_window._scan_member_ids[int(i)] for i in members] == [
+        (f, 0) for f in range(6)
+    ]
+
+
+def test_no_saved_table_means_no_tracks_and_no_note(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    _open(main_window, synthetic_fitted_scan)
+    qtbot.wait(300)
+    assert main_window._scan_payload is None
+    panel = main_window.scan_tracking_panel
+    assert panel.lbl_saved.isHidden() and panel.btn_load_saved.isHidden()
+
+
+def test_a_saved_table_that_no_longer_matches_waits_for_a_click(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    """Members naming fitted peaks that are gone mean the table was made
+    for other fits: it is not loaded on its own, the panel says so and
+    offers 'Load saved tracks', which loads it with those members left
+    out."""
+    _save_tracking(synthetic_fitted_scan, [(
+        [0, 1, 2, 3, 4, 5, 2], [0, 0, 0, 0, 0, 0, 99],
+    )])
+    _open(main_window, synthetic_fitted_scan)
+    panel = main_window.scan_tracking_panel
+    qtbot.waitUntil(lambda: not panel.btn_load_saved.isHidden(), timeout=20000)
+    assert main_window._scan_payload is None
+    assert "does not match" in panel.lbl_saved.text()
+    assert "1 of 7" in panel.lbl_saved.text()
+
+    qtbot.mouseClick(panel.btn_load_saved, Qt.MouseButton.LeftButton)
+    _wait_loaded(main_window, qtbot)
+    assert main_window._scan_payload.n_tracks == 1
+    assert main_window._scan_payload.track_span(0) == (0, 5, 6, 6)
+    assert "1 member(s) no longer match" in panel.lbl_saved.text()
+    assert panel.btn_load_saved.isHidden()
+
+
+def test_a_table_from_an_older_mlgidbase_is_named_not_loaded(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    _save_tracking(synthetic_fitted_scan, [_PERSISTENT], old_layout=True)
+    _open(main_window, synthetic_fitted_scan)
+    panel = main_window.scan_tracking_panel
+    qtbot.waitUntil(lambda: not panel.lbl_saved.isHidden(), timeout=20000)
+    assert main_window._scan_payload is None
+    assert "older mlgidbase" in panel.lbl_saved.text()
+    assert panel.btn_load_saved.isHidden()
+
+
+def test_a_reload_of_the_same_entry_does_not_look_again(
+    main_window, synthetic_fitted_scan, qtbot, monkeypatch,
+):
+    """Overlay reloads (peak edits, a pipeline run finishing) go through
+    the same install as an entry switch; the file is only looked at once
+    per entry shown."""
+    _open(main_window, synthetic_fitted_scan)
+    qtbot.wait(300)
+    calls: list = []
+    real = main_window._request_saved_tracking
+    monkeypatch.setattr(
+        main_window, "_request_saved_tracking",
+        lambda *a, **k: (calls.append((a, k)), real(*a, **k))[1],
+    )
+    main_window._load_entry_into_viewer(ENTRY, preserve_view=True)
+    main_window._load_entry_into_viewer(ENTRY, preserve_view=True)
+    assert calls == []
+
+
+def test_a_fresh_run_result_is_not_overwritten_by_a_late_load(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    _save_tracking(synthetic_fitted_scan, [_PERSISTENT])
+    _open(main_window, synthetic_fitted_scan)
+    _wait_loaded(main_window, qtbot)
+    mine = main_window._scan_payload
+    # A late/duplicate answer for the same entry changes nothing.
+    main_window._on_saved_tracking_loaded(
+        main_window._track_load_req_id, ENTRY, None, {"status": "stale",
+        "message": "x", "saved": None},
+    )
+    assert main_window._scan_payload is mine
+    assert main_window.scan_tracking_panel.btn_load_saved.isHidden()
+
+
+def test_refitting_forgets_the_saved_tracking_and_looks_again(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    _save_tracking(synthetic_fitted_scan, [_PERSISTENT])
+    _open(main_window, synthetic_fitted_scan)
+    _wait_loaded(main_window, qtbot)
+    main_window._invalidate_scan_tracks()
+    assert main_window._scan_payload is None
+    assert main_window._track_autoload_key is None
+    assert main_window.scan_tracking_panel.lbl_saved.isHidden()
+
+
+# -- edits to the tracks are edits of the saved table too -----------------
+
+
+def _saved_tracks(path):
+    import h5py
+
+    with h5py.File(path, "r") as f:
+        t = f[f"{ENTRY}/data/analysis/general/tracked_peaks"][()]
+        meta = f[f"{ENTRY}/process/peak_tracking"]
+        edited = meta.attrs.get("edited_by")
+    return [
+        (int(r["id"]), list(map(int, r["frame_list"])), list(map(int, r["peak_list"])))
+        for r in t
+    ], edited
+
+
+def test_deleting_a_track_rewrites_the_saved_table(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    """The edit is an edit of the file: the other tracks stay, are
+    renumbered 0..n-1 like upstream numbers them, and the session is
+    dirty so Save writes it."""
+    _save_tracking(synthetic_fitted_scan, [
+        ([0, 1, 2, 3, 4, 5], [0] * 6),
+        ([2], [1]),                       # the blip: a second, short track
+    ])
+    _open(main_window, synthetic_fitted_scan)
+    _wait_loaded(main_window, qtbot)
+    assert main_window._scan_payload.n_tracks == 2
+    # Loading what the file carries must not make the session dirty...
+    assert main_window.session.dirty is False
+    panel = main_window.scan_tracking_panel
+    panel._table.setFocus()
+    panel._table.selectRow(0)
+    qtbot.keyClick(panel._table, Qt.Key.Key_Delete)
+    assert main_window._scan_payload.n_tracks == 1
+    # ...but the edit does.
+    assert main_window.session.dirty is True
+    tracks, edited = _saved_tracks(main_window.session.temp_path)
+    assert tracks == [(0, [2], [1])]
+    assert str(edited).startswith("mlgidLAB")
+    assert "saved in the file" in main_window.statusBar().currentMessage()
+    # Reloading the entry from the file shows the edited result.
+    main_window._invalidate_scan_tracks()
+    main_window._request_saved_tracking(ENTRY)
+    _wait_loaded(main_window, qtbot)
+    assert main_window._scan_payload.n_tracks == 1
+
+
+def test_a_track_cannot_be_deleted_while_a_step_runs(
+    main_window, synthetic_fitted_scan, qtbot, monkeypatch,
+):
+    _save_tracking(synthetic_fitted_scan, [_PERSISTENT])
+    _open(main_window, synthetic_fitted_scan)
+    _wait_loaded(main_window, qtbot)
+    monkeypatch.setattr(main_window, "_is_busy", lambda: True)
+    main_window._on_scan_track_deleted(0)
+    assert main_window._scan_payload.n_tracks == 1
+    assert "Wait for the running step" in main_window.statusBar().currentMessage()
+    tracks, _ = _saved_tracks(main_window.session.temp_path)
+    assert len(tracks) == 1
+
+
+def test_gap_fills_are_written_into_the_saved_table(
+    main_window, synthetic_fitted_scan,
+):
+    file_model.delete_peak_row(synthetic_fitted_scan, ENTRY, 3, "fitted", 0)
+    _open(main_window, synthetic_fitted_scan)
+    _install_fake(main_window, _gap_payload())
+    with main_window._detached_silx_tree():
+        new_id = file_model.add_fitted_peak_row(
+            main_window.session.temp_path, ENTRY, 3,
+            radius=1.006, radius_width=0.05, angle=45.0, angle_width=5.0,
+            amplitude=103.0, is_ring=False,
+        )
+        main_window._interp_fill_result = [{
+            "track": 0, "frame": 3,
+            "detected_id": 99, "fitted_id": int(new_id),
+        }]
+        # As in production, applied while the tree is still detached.
+        main_window._apply_interp_fill_result()
+    tracks, edited = _saved_tracks(main_window.session.temp_path)
+    assert len(tracks) == 1
+    frames, ids = tracks[0][1], tracks[0][2]
+    assert (3, int(new_id)) in list(zip(frames, ids))      # the filled peak
+    assert frames == sorted(frames)
+    assert str(edited).startswith("mlgidLAB")
+
+
+def test_a_track_run_leaves_the_shown_tracks_in_the_working_file(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    """A (re)run of Track peaks replaces the table in the working file
+    with the result as shown and leaves the session dirty, so Save writes
+    it - not just whatever upstream saved during the run."""
+    pytest.importorskip("mlgidbase")
+    import h5py
+
+    # An older table from "a previous session" that the run replaces.
+    _save_tracking(synthetic_fitted_scan, [([0], [0]), ([1], [0]), ([2], [1])])
+    _open(main_window, synthetic_fitted_scan)
+    qtbot.waitUntil(lambda: main_window._scan_payload is not None, timeout=20000)
+    main_window._invalidate_scan_tracks()
+    main_window.session.dirty = False
+
+    main_window._on_track_scan_requested(0.5, 3)
+    qtbot.waitUntil(
+        lambda: main_window._pipe_thread is None
+        and not main_window._pipeline_queue
+        and main_window._scan_payload is not None,
+        timeout=60000,
+    )
+    assert main_window.session.dirty is True
+    tracks, edited = _saved_tracks(main_window.session.temp_path)
+    payload = main_window._scan_payload
+    assert len(tracks) == payload.n_tracks == 1
+    members = payload.track_members(0)
+    assert tracks[0][1] == [int(f) for f in payload.frame_num[members]]
+    assert tracks[0][2] == [int(i) for i in payload.peak_id[members]]
+    assert str(edited).startswith("mlgidLAB")
+    # Saving carries it to the user's file.
+    main_window.session.save()
+    with h5py.File(main_window.session.original_path, "r") as f:
+        saved = f[f"{ENTRY}/data/analysis/general/tracked_peaks"][()]
+    assert len(saved) == 1
+
+
+def test_a_track_run_writes_the_gui_ring_tracks_as_rows_once(
+    main_window, synthetic_fitted_scan, qtbot,
+):
+    """Upstream links the 0.1.8-style rings natively; the GUI replaces
+    those with its own ring tracks. The file must end up with exactly the
+    tracks on screen: one ring row, no duplicate from upstream."""
+    pytest.importorskip("mlgidbase")
+    import h5py
+
+    with h5py.File(synthetic_fitted_scan, "r+") as f:
+        for frame in range(6):
+            ds = f[f"{ENTRY}/data/analysis/frame{frame:05d}/fitted_peaks"]
+            rows = ds[()]
+            ring = np.zeros(1, dtype=rows.dtype)
+            ring["id"] = int(rows["id"].max()) + 1
+            ring["radius"], ring["radius_width"] = 2.5, 0.2
+            ring["angle"], ring["angle_width"] = 45.0, np.inf
+            ring["is_ring"] = True
+            ring["amplitude"] = 30.0
+            ring["q_xy"] = 2.5 * np.cos(np.deg2rad(45.0))
+            ring["q_z"] = 2.5 * np.sin(np.deg2rad(45.0))
+            parent = ds.parent
+            del parent["fitted_peaks"]
+            parent.create_dataset("fitted_peaks", data=np.concatenate([rows, ring]))
+
+    _open(main_window, synthetic_fitted_scan)
+    main_window._on_track_scan_requested(0.5, 3)
+    qtbot.waitUntil(
+        lambda: main_window._pipe_thread is None
+        and not main_window._pipeline_queue
+        and main_window._scan_payload is not None,
+        timeout=60000,
+    )
+    payload = main_window._scan_payload
+    tracks, _ = _saved_tracks(main_window.session.temp_path)
+    assert len(tracks) == payload.n_tracks == 2
+    assert len(main_window._scan_ring_tracks) == 1

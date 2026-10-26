@@ -90,6 +90,28 @@ def test_parse_hkl_forms_and_errors():
         sp.parse_hkl("0 0 0")
 
 
+def test_parse_hkl_accepts_digits_written_together():
+    """Indices are usually printed without spaces (010, -110). Three
+    single digits with optional signs parse the same; every form with
+    separators parses exactly as before."""
+    assert sp.parse_hkl("010") == (0, 1, 0)
+    assert sp.parse_hkl("-110") == (-1, 1, 0)
+    assert sp.parse_hkl("1-10") == (1, -1, 0)
+    assert sp.parse_hkl(" +1-1-1 ") == (1, -1, -1)
+    # Unchanged: separators, and multi-digit indices.
+    assert sp.parse_hkl("0 1 0") == (0, 1, 0)
+    assert sp.parse_hkl("-1,1,0") == (-1, 1, 0)
+    assert sp.parse_hkl("2;2;0") == (2, 2, 0)
+    assert sp.parse_hkl("10 0 0") == (10, 0, 0)
+    with pytest.raises(ValueError, match="random \\(powder\\) mode"):
+        sp.parse_hkl("000")
+    for bad in ("0001", "10", "1-1", "01a", "--110", "1 10"):
+        with pytest.raises(ValueError):
+            sp.parse_hkl(bad)
+    with pytest.raises(ValueError, match="e.g. 001"):
+        sp.parse_hkl("1111")
+
+
 def test_resolve_orientation_direction_equivalents():
     """Spellings differing by a common factor or an overall sign are
     the same texture direction: both sides compare gcd-reduced, so

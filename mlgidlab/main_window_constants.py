@@ -48,3 +48,13 @@ PEAK_LINK_KEY = "peakLinkFittedToDetected"
 PEAK_LINK_REVERSE_KEY = "peakLinkFittedDeleteRemovesDetected"
 DEFAULT_PEAK_LINK = True
 DEFAULT_PEAK_LINK_REVERSE = False
+
+# Mask the other peaks of the frame out of the selected peak's profiles
+# (``mlgidlab.profile_masking``). Read when the profiles are redrawn.
+PROFILE_MASK_NEIGHBOURS_KEY = "profile/mask_neighbours"
+DEFAULT_PROFILE_MASK_NEIGHBOURS = False
+
+# Zoom the image onto a detected / fitted peak when it is selected
+# (``GIWAXSImageViewer.zoom_to_peak``). Rings are never zoomed.
+ZOOM_TO_SELECTED_PEAK_KEY = "view/zoom_to_selected_peak"
+DEFAULT_ZOOM_TO_SELECTED_PEAK = True

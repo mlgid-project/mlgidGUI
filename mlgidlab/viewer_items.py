@@ -200,11 +200,11 @@ class SelectedPeak:
     # skip the row instead of showing a misleading zero.
     score: float | None = None
     # Peak amplitude (2D-Gaussian peak height). Populated for detected /
-    # fitted / matched selections; the profile viewer uses it to render
-    # the projection of the persisted 2D Gaussian onto the radial /
-    # angular axis (physics-audit F-06: "profile must reflect 2D fit").
-    # None for manual peaks (no fit yet), which fall back to the live
-    # 1D scipy fit on the integrated profile data.
+    # fitted / matched selections and shown in the parameter panel.
+    # The profile viewer does NOT use it for the curve: a saved peak is
+    # drawn from its stored centre and width, with the height read off
+    # the box-averaged profile (``fit.gaussian_at_stored_shape``).
+    # None for manual peaks (no fit yet).
     amplitude: float | None = None
     # When non-None, the selection represents a *matched structure*
     # rather than a single peak. The list holds every fitted-peak id
@@ -633,7 +633,7 @@ class _PeakShapeItem(pg.GraphicsObject):
             for i in range(len(peaks)):
                 clip = _clip_angle(
                     float(peaks.angle[i]), float(peaks.angle_width[i]),
-                    extent=extent,
+                    extent=extent, clip_finite=False,
                 )
                 if clip is None:
                     continue
@@ -653,7 +653,7 @@ class _PeakShapeItem(pg.GraphicsObject):
             for i in range(len(peaks)):
                 clip = _clip_angle(
                     float(peaks.angle[i]), float(peaks.angle_width[i]),
-                    extent=extent,
+                    extent=extent, clip_finite=False,
                 )
                 if clip is None:
                     continue
@@ -765,11 +765,17 @@ def _clip_angle(
     a_deg: float,
     da_deg: float,
     extent: tuple[float, float] | None = None,
+    clip_finite: bool = True,
 ) -> tuple[float, float] | None:
     """Clip a polar angular box to the viewer's visible range.
 
     Treats infinite or non-finite angle_width as 'spans the whole quadrant',
     so rings (whose angle_width is sometimes inf) still draw correctly.
+    A finite box is clipped to ``extent`` too unless ``clip_finite`` is
+    False, which the peak boxes pass so a box whose angular width
+    reaches past the image edge (below 0 degrees, say) is drawn in full
+    from its position and width; only a box with no finite width has
+    nothing but the extent to span.
     ``extent`` is the actual displayed angular axis of the active polar
     stack — pass it so ring overlays stop at the image edge instead of
     extending to the global ``[-180°, 180°]`` clipping bounds. When
@@ -789,8 +795,9 @@ def _clip_angle(
     else:
         a_lo = a_deg - da_deg / 2.0
         a_hi = a_deg + da_deg / 2.0
-    a_lo = max(a_lo, ext_lo)
-    a_hi = min(a_hi, ext_hi)
+    if clip_finite:
+        a_lo = max(a_lo, ext_lo)
+        a_hi = min(a_hi, ext_hi)
     if a_hi <= a_lo:
         return None
     return a_lo, a_hi

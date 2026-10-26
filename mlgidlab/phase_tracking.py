@@ -1,43 +1,49 @@
 """Adapter around mlgidBASE's official peak tracking (``track_peaks``).
 
-Upstream (mlgidbase, pinned >= 0.1.5) tracks FITTED peaks across a
-scan's frames: boxes ``(angle ± angle_width/2, radius ± radius_width/2)``
-for every fitted peak of every frame are IoU-compared all-against-all
-(``peak_operations.calculate_iou_matrix``), thresholded into a graph,
-and NetworkX connected components become the tracks; components with
-more than ``length`` members survive.
+Upstream (mlgidbase >= 0.1.11) tracks FITTED peaks across a scan's
+frames: boxes ``(angle ± angle_width/2, radius ± radius_width/2)`` for
+every fitted peak of every frame are IoU-compared (in bounded-memory row
+blocks), thresholded into a graph, and the connected components become
+the tracks; components with more than ``length`` members survive. An
+optional ``window_size`` drops links between peaks more than that many
+frames apart. The result is SAVED into the file as a ``tracked_peaks``
+table (one row per track: ``id``, the majority-vote ``CIF`` / ``h`` /
+``k`` / ``l``, and the parallel vlen arrays ``frame_list`` /
+``peak_list`` holding each member's frame and fitted-peak id) and
+returned.
 
-Upstream's return value carries per-track (axis, amplitude, frame)
-arrays but NO member coordinates or peak ids, and the full member-level
-data only flows into two matplotlib figures drawn by
-``mlgidbase.peak_operations._plot_tracked_peaks`` (module-level import
-in ``peak_operations``). ``capture_tracking`` therefore swaps that
-symbol for a recorder for the duration of one ``track_peaks`` call and
-rebuilds the data (``TrackingPayload``) from the recorder's arguments;
-no matplotlib executes. Run upstream with
-``plot_params={'plot_result': True, 'save_fig': False}`` (the hook only
-fires when one of the two is truthy) and ``axis='radius'``; per-member
-amplitudes are recovered from the return value
-(``amplitudes_from_track_result``).
+``payload_from_tracked_table`` turns that table into the
+``TrackingPayload`` the views consume: member arrays over ALL fitted
+peaks of the entry (read straight from the file, so every value is
+exact), the tracks as lists of member indices, and the members'
+``(frame, fitted id)`` carried along in ``peak_id`` so nothing has to be
+reconstructed. (Before mlgidbase 0.1.11 the member data was only
+reachable through a hook on a plotting call and the ids were guessed
+back from coordinates.)
 
 Everything else here is pure numpy/scipy helpers for the views: derived
 axes (convention pinned to ``mlgidlab.polar.polar_to_qxyz``: angle in
 degrees from +q_xy toward +q_z), per-track spans/means, amplitude
 smoothing (median filter + nanmax normalization, mirroring the
-prototype notebook), and best-effort reconstruction of each member's
-``(frame, fitted_peak_id)`` for table→image selection sync.
+prototype notebook), the GUI-side ring tracking, gap-fill planning and
+the track-to-phase attribution.
 """
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import h5py
 import numpy as np
 from scipy.ndimage import median_filter
 
-from mlgidlab.file_model import ANALYSIS_REL, FRAME_KEY_FMT, IMG_REL
+from mlgidlab.file_model import (
+    ANALYSIS_REL,
+    FRAME_KEY_FMT,
+    IMG_REL,
+    TRACKED_PEAKS_REL,
+    TRACKING_PROCESS_REL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,170 +59,19 @@ AXIS_LABELS = {
     "q_z": "q_z (Å⁻¹)",
 }
 
-# Peak memory of one upstream track_peaks run, measured against
-# mlgidbase 0.1.8: ``calculate_iou_matrix(box_all, box_all)`` keeps
-# eight (N, N) float64 arrays alive at once (the four corner grids
-# are still function locals while intersection, union, the broadcast
-# sum and the result quotient are built), so the run needs at least
-# 64 * N**2 bytes before the thresholding masks and the NetworkX
-# graph add their share. N is the scan's TOTAL fitted-peak count; a
-# 602-frame scan averaging 72 peaks/frame (N = 43645) needs ~122 GB
-# and gets the whole app OOM-killed on a 30 GB machine.
-TRACKING_BYTES_PER_PEAK_PAIR = 64
+def read_fitted_members(file_path, entry: str) -> dict:
+    """Every fitted peak of ``entry`` as parallel arrays, frames in
+    numeric order, rows verbatim (frames without a ``fitted_peaks``
+    dataset are skipped): ``angle``, ``angle_width``, ``radius``,
+    ``radius_width``, ``amplitude``, ``q_xy``, ``q_z``, ``frame`` and
+    ``peak_id``. These are the members a ``TrackingPayload`` indexes.
 
-
-def estimate_tracking_memory(file_path, entry: str) -> tuple[int, int]:
-    """Return ``(n_fitted_peaks, estimated_peak_bytes)`` for a run.
-
-    Counts fitted rows across the entry's analysis frame groups from
-    h5py shape metadata only (no dataset reads). Best-effort: an
-    unreadable file returns ``(0, 0)``, which callers treat as
-    "cannot estimate, do not block the run".
+    Reads the file with h5py only. Raises ``ValueError`` when the entry
+    has no fitted rows.
     """
-    n = 0
-    try:
-        with h5py.File(file_path, "r") as f:
-            ana = f.get(f"{entry}/data/analysis")
-            if isinstance(ana, h5py.Group):
-                for name in ana:
-                    grp = ana[name]
-                    if not isinstance(grp, h5py.Group):
-                        continue
-                    ds = grp.get("fitted_peaks")
-                    if isinstance(ds, h5py.Dataset):
-                        n += int(ds.shape[0])
-    except Exception:
-        logger.debug("estimate_tracking_memory failed", exc_info=True)
-        return 0, 0
-    return n, TRACKING_BYTES_PER_PEAK_PAIR * n * n
-
-
-def available_memory_bytes() -> int:
-    """``MemAvailable`` from /proc/meminfo, or 0 when unknown.
-
-    0 disables the pre-flight guard rather than blocking every run on
-    platforms without /proc.
-    """
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) * 1024
-    except Exception:
-        logger.debug("reading /proc/meminfo failed", exc_info=True)
-    return 0
-
-
-# When upstream's dense IoU would claim more than this fraction of
-# MemAvailable, the pipeline routes track_peaks to the blocked
-# computation below instead. Well under 1.0 on purpose: the dense run
-# competing with the GUI + OS for the last bytes of RAM thrashes long
-# before it OOMs.
-TRACKING_DENSE_MEM_FRACTION = 0.5
-
-# Working-set target for one row block of the blocked IoU: the block
-# holds TRACKING_BYTES_PER_PEAK_PAIR bytes per (row, peak) cell, so
-# rows-per-block = target // (64 * N). ~1 GB keeps the app responsive
-# while the worker computes.
-_TRACKING_BLOCK_TARGET_BYTES = 1_000_000_000
-
-# Sanity bound on the surviving edge list (int32 pairs, ~0.8 GB at the
-# cap). Only reachable with a near-zero IoU threshold that would also
-# have made upstream's NetworkX graph explode.
-_TRACKING_EDGE_CAP = 100_000_000
-
-
-def _blocked_iou_edges(
-    boxes: np.ndarray, threshold: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """Upper-triangle edge pairs ``(i, j)`` with ``IoU >= threshold``.
-
-    Streams upstream's ``calculate_iou_matrix(boxes, boxes)`` in row
-    blocks — identical arithmetic (float64, the +1e-6 union
-    regularizer, NaN treated as 0 before thresholding) — but never
-    materialises more than one ``block_rows x N`` slice, so peak
-    memory is ~``_TRACKING_BLOCK_TARGET_BYTES`` instead of 64 * N**2.
-    """
-    n = len(boxes)
-    block = int(max(16, min(
-        4096,
-        _TRACKING_BLOCK_TARGET_BYTES
-        // (TRACKING_BYTES_PER_PEAK_PAIR * max(n, 1)),
-    )))
-    n_blocks = (n + block - 1) // block
-    log_every = max(1, n_blocks // 10)
-    edges_i: list = []
-    edges_j: list = []
-    n_edges = 0
-    b = boxes[None, :, :]
-    for bi, start in enumerate(range(0, n, block)):
-        stop = min(start + block, n)
-        a = boxes[start:stop, None, :]
-        x_left = np.maximum(a[..., 0], b[..., 0])
-        y_top = np.maximum(a[..., 1], b[..., 1])
-        x_right = np.minimum(a[..., 2], b[..., 2])
-        y_bottom = np.minimum(a[..., 3], b[..., 3])
-        inter = (
-            np.maximum(0, x_right - x_left)
-            * np.maximum(0, y_bottom - y_top)
-        )
-        area_a = (a[..., 2] - a[..., 0]) * (a[..., 3] - a[..., 1])
-        area_b = (b[..., 2] - b[..., 0]) * (b[..., 3] - b[..., 1])
-        iou = inter / (area_a + area_b - inter + 1e-6)
-        # Upstream zeroes NaN before thresholding. ``>=`` on NaN is
-        # already False, but zeroing keeps the threshold == 0 corner
-        # identical too.
-        np.nan_to_num(iou, copy=False, nan=0.0)
-        ii, jj = np.nonzero(iou >= threshold)
-        keep = (ii + start) < jj
-        edges_i.append((ii[keep] + start).astype(np.int32))
-        edges_j.append(jj[keep].astype(np.int32))
-        n_edges += int(keep.sum())
-        if n_edges > _TRACKING_EDGE_CAP:
-            raise RuntimeError(
-                f"peak tracking aborted: more than "
-                f"{_TRACKING_EDGE_CAP:,} box overlaps at IoU threshold "
-                f"{threshold} — the threshold is too low for this scan."
-            )
-        if n_blocks >= 10 and bi % log_every == 0:
-            logger.info(
-                "blocked tracking IoU: %d%% (%s overlaps so far)",
-                round(100 * bi / n_blocks), f"{n_edges:,}",
-            )
-    return np.concatenate(edges_i), np.concatenate(edges_j)
-
-
-def track_peaks_blocked(
-    file_path, entry: str, threshold: float = 0.5, length: int = 10,
-) -> TrackingPayload:
-    """mlgidBASE ``track_peaks`` semantics in bounded memory.
-
-    Replicates upstream (mlgidbase 0.1.8
-    ``peak_operations._track_peaks``) exactly: same member order
-    (frames 0..n-1 numerically, rows verbatim, frames without a
-    ``fitted_peaks`` dataset skipped), same boxes (angle +-
-    angle_width/2 with inf angle_width clamped to 45, radius +-
-    radius_width/2), same IoU edge rule (``>= threshold``) and the
-    same strictly-greater ``length`` cut. The difference is purely
-    mechanical: the IoU streams in row blocks keeping only surviving
-    edges (see ``_blocked_iou_edges``) and components come from
-    scipy's sparse ``connected_components`` instead of a dense
-    NetworkX graph, so a 600-frame scan tracks in ~1 GB instead of
-    the 64 * N**2 bytes that got the app OOM-killed. Surviving tracks
-    are ordered by smallest member index — NetworkX's yield order
-    upstream, since it scans nodes 0..N-1.
-
-    Reads the file with h5py only — safe to call before any pygid r+
-    handle exists. Raises ``ValueError`` when the entry has no fitted
-    rows, mirroring upstream's ``np.vstack`` failure so callers wrap
-    both paths with the same remedy message.
-    """
-    from scipy.sparse import coo_matrix
-    from scipy.sparse.csgraph import connected_components
-
     cols: dict[str, list] = {
         "angle": [], "angle_width": [], "radius": [], "radius_width": [],
-        "amplitude": [], "q_xy": [], "q_z": [], "frame": [],
+        "amplitude": [], "q_xy": [], "q_z": [], "frame": [], "peak_id": [],
     }
     with h5py.File(file_path, "r") as f:
         sig = f.get(f"{entry}/{IMG_REL}")
@@ -234,59 +89,13 @@ def track_peaks_blocked(
             ):
                 cols[name].append(np.asarray(rows[name], dtype=float))
             cols["frame"].append(np.full(len(rows), frame, dtype=int))
+            cols["peak_id"].append(np.asarray(rows["id"], dtype=int))
     if not cols["frame"]:
-        raise ValueError(
-            f"entry {entry!r} has no fitted_peaks datasets"
-        )
-    angle = np.concatenate(cols["angle"])
-    angle_width = np.concatenate(cols["angle_width"])
-    radius = np.concatenate(cols["radius"])
-    radius_width = np.concatenate(cols["radius_width"])
-    amplitude = np.concatenate(cols["amplitude"])
-    q_xy = np.concatenate(cols["q_xy"])
-    q_z = np.concatenate(cols["q_z"])
-    frame_num = np.concatenate(cols["frame"])
-    if angle.size == 0:
+        raise ValueError(f"entry {entry!r} has no fitted_peaks datasets")
+    out = {k: np.concatenate(v) for k, v in cols.items()}
+    if out["angle"].size == 0:
         raise ValueError(f"entry {entry!r} has no fitted rows")
-
-    angle_width[np.isinf(angle_width)] = 45
-    boxes = np.column_stack((
-        angle - angle_width / 2,
-        radius - radius_width / 2,
-        angle + angle_width / 2,
-        radius + radius_width / 2,
-    )).astype(np.float64)
-
-    n = len(boxes)
-    logger.info(
-        "blocked tracking: %s fitted peaks across %d frames "
-        "(dense IoU would need ~%.0f GB)",
-        f"{n:,}", n_frames, TRACKING_BYTES_PER_PEAK_PAIR * n * n / 1e9,
-    )
-    edges_i, edges_j = _blocked_iou_edges(boxes, float(threshold))
-    adj = coo_matrix(
-        (np.ones(len(edges_i), dtype=np.int8), (edges_i, edges_j)),
-        shape=(n, n),
-    )
-    _, labels = connected_components(adj, directed=False)
-    order = np.argsort(labels, kind="stable")
-    boundaries = np.flatnonzero(np.diff(labels[order])) + 1
-    groups = [g for g in np.split(order, boundaries) if g.size > length]
-    groups.sort(key=lambda g: int(g[0]))
-    logger.info(
-        "blocked tracking: %s overlaps, %d surviving track(s)",
-        f"{len(edges_i):,}", len(groups),
-    )
-    return TrackingPayload(
-        entry=str(entry),
-        threshold=float(threshold),
-        length=int(length),
-        q_xy=q_xy,
-        q_z=q_z,
-        frame_num=frame_num,
-        amplitude=amplitude,
-        components=[g.tolist() for g in groups],
-    )
+    return out
 
 
 @dataclass
@@ -310,6 +119,17 @@ class TrackingPayload:
     frame_num: np.ndarray
     amplitude: np.ndarray
     components: list = field(default_factory=list)  # list[list[int]]
+    #: Fitted-peak id of every member (parallel to the arrays above).
+    #: Set by ``payload_from_tracked_table``; None only for hand-built
+    #: payloads (tests), where ``member_ids`` falls back to matching
+    #: coordinates.
+    peak_id: "np.ndarray | None" = None
+    #: Frame window the tracking was run with (None = unlimited).
+    window_size: "int | None" = None
+    #: Saved-table members that named no fitted row (see
+    #: ``payload_from_tracked_table``); 0 for a table made from the
+    #: current fits.
+    n_unresolved: int = 0
 
     def __post_init__(self) -> None:
         self.q_xy = np.asarray(self.q_xy, dtype=float)
@@ -324,6 +144,13 @@ class TrackingPayload:
                 f"frame_num={self.frame_num.size}, "
                 f"amplitude={self.amplitude.size}"
             )
+        if self.peak_id is not None:
+            self.peak_id = np.asarray(self.peak_id, dtype=int)
+            if self.peak_id.size != n:
+                raise ValueError(
+                    "TrackingPayload peak_id disagrees in length: "
+                    f"peak_id={self.peak_id.size}, q_xy={n}"
+                )
         self.components = [
             sorted(int(i) for i in comp) for comp in self.components
         ]
@@ -379,155 +206,393 @@ class TrackingPayload:
         return float(np.nanmean(vals))
 
 
-class UpstreamContractError(RuntimeError):
-    """Upstream ``track_peaks`` changed shape under us.
-
-    The GUI reads member-level tracking data through a capture hook on
-    ``mlgidbase.peak_operations._plot_tracked_peaks`` because upstream's
-    return value carries no member coordinates or ids. If this error
-    fires, the installed mlgidbase no longer matches the contract
-    verified at 0.1.8 — see mlgidLAB/docs/backend_compatibility.md.
-    """
-
-
-@contextmanager
-def capture_tracking():
-    """Swap upstream's plot call for a recorder for one run.
-
-    Usage::
-
-        with capture_tracking() as rec:
-            analysis.track_peaks(entry=..., threshold=..., length=...,
-                                 axis="radius",
-                                 plot_params={"plot_result": True,
-                                              "save_fig": False})
-        payload = build_payload(rec, entry, threshold, length)
-
-    The recorder never draws anything; the original symbol is restored
-    on exit even if the run raises.
-    """
-    import mlgidbase.peak_operations as po
-
-    if not hasattr(po, "_plot_tracked_peaks"):
-        raise UpstreamContractError(
-            "mlgidbase.peak_operations has no _plot_tracked_peaks — "
-            "the installed mlgidbase predates or diverged from the "
-            "peak-tracking implementation (need mlgidbase >= 0.1.5)."
-        )
-
-    rec: dict = {}
-    orig = po._plot_tracked_peaks
-
-    def _record(*args, **kwargs):
-        # Upstream calls positionally: (plot_defaults, q_xy_all,
-        # q_z_all, frame_num_all, G_comps_list, axis_arr, label,
-        # plot_params). Validate the arity so a silent upstream
-        # signature change becomes a loud, named failure.
-        if len(args) != 8 or kwargs:
-            raise UpstreamContractError(
-                "_plot_tracked_peaks was called with an unexpected "
-                f"signature ({len(args)} positional args, "
-                f"{sorted(kwargs)} kwargs); the capture contract is "
-                "pinned to mlgidbase 0.1.8."
-            )
-        rec["q_xy"] = np.asarray(args[1], dtype=float)
-        rec["q_z"] = np.asarray(args[2], dtype=float)
-        rec["frame_num"] = np.asarray(args[3], dtype=int)
-        rec["components"] = [list(c) for c in args[4]]
-        rec["axis_arr"] = np.asarray(args[5], dtype=float)
-        rec["label"] = str(args[6])
-
-    po._plot_tracked_peaks = _record
-    try:
-        yield rec
-    finally:
-        po._plot_tracked_peaks = orig
-
-
-def build_payload(
-    rec: dict, entry: str, threshold: float, length: int,
-    amplitudes: "np.ndarray | None" = None,
+def payload_from_tracked_table(
+    file_path, entry: str, tracked, threshold: float, length: int,
+    window_size: "int | None" = None,
 ) -> TrackingPayload:
-    """Build a ``TrackingPayload`` from a ``capture_tracking`` record.
+    """Build a ``TrackingPayload`` from upstream's ``tracked_peaks`` table.
 
-    ``amplitudes`` is the per-member amplitude array — in production it
-    comes from ``amplitudes_from_track_result`` (upstream's tracking
-    axis table has no ``'amplitude'`` entry, so amplitudes are not
-    obtainable through the capture). When ``amplitudes`` is None the
-    recorded ``axis_arr`` is used instead — only meaningful in tests
-    that exercise the capture contract on its own.
+    ``tracked`` is the structured array ``Analysis.track_peaks`` returned
+    (or ``read_tracked_peaks`` read back): one row per track with the
+    vlen int arrays ``frame_list`` and ``peak_list``. The members are
+    every fitted peak of the entry (``read_fitted_members``); each
+    track becomes the sorted list of the members its ``(frame, id)``
+    pairs name. Pairs naming no fitted row (a table older than the
+    current fits) are skipped, and a track left empty by that is
+    dropped. Track order is the table's row order, which is upstream's
+    (smallest member first).
+
+    Raises ``ValueError`` when the table lacks the 0.1.11 field names,
+    i.e. it was written by an older mlgidbase.
     """
-    if "q_xy" not in rec:
-        raise UpstreamContractError(
-            "track_peaks completed without invoking its plot hook — "
-            "either plot_params disabled plotting (the capture needs "
-            "plot_result=True) or upstream changed the call flow."
+    names = tracked.dtype.names or ()
+    if "frame_list" not in names or "peak_list" not in names:
+        raise ValueError(
+            "the tracked_peaks table predates the frames/peak_ids -> "
+            "frame_list/peak_list rename (mlgidbase < 0.1.11); run "
+            "tracking again to rebuild it."
         )
+    members = read_fitted_members(file_path, entry)
+    index = {
+        (int(fr), int(pid)): i
+        for i, (fr, pid) in enumerate(
+            zip(members["frame"], members["peak_id"])
+        )
+    }
+    components: list = []
+    unresolved = 0
+    for row in tracked:
+        keys = [
+            (int(fr), int(pid))
+            for fr, pid in zip(
+                np.atleast_1d(row["frame_list"]),
+                np.atleast_1d(row["peak_list"]),
+            )
+        ]
+        comp = sorted(index[key] for key in keys if key in index)
+        unresolved += len(keys) - len(comp)
+        if comp:
+            components.append(comp)
+    logger.info(
+        "tracking: %s fitted peaks across the entry, %d track(s)",
+        f"{members['frame'].size:,}", len(components),
+    )
     return TrackingPayload(
         entry=str(entry),
         threshold=float(threshold),
         length=int(length),
-        q_xy=rec["q_xy"],
-        q_z=rec["q_z"],
-        frame_num=rec["frame_num"],
-        amplitude=(
-            rec["axis_arr"] if amplitudes is None
-            else np.asarray(amplitudes, dtype=float)
-        ),
-        components=rec["components"],
+        q_xy=members["q_xy"],
+        q_z=members["q_z"],
+        frame_num=members["frame"],
+        amplitude=members["amplitude"],
+        components=components,
+        peak_id=members["peak_id"],
+        window_size=None if window_size is None else int(window_size),
+        n_unresolved=unresolved,
     )
 
 
-def amplitudes_from_track_result(ret, rec: dict) -> np.ndarray:
-    """Per-member amplitude array aligned with a ``capture_tracking``
-    record, recovered from ``track_peaks``' return value.
+@dataclass
+class SavedTracking:
+    """The tracking table an entry carries in the file, with the settings
+    mlgidbase recorded beside it (``process/peak_tracking``). Settings
+    are None when the file has no such record."""
 
-    mlgidbase (pinned >= 0.1.5) returns ``(axis_list, amplitude_list,
-    frame_num_list)`` — per-component arrays sorted by frame. Each
-    component's rows are matched back to the capture's members by
-    exact ``(frame, axis value)`` equality (the values come from the
-    same flat arrays, so they are bit-identical). Members that share
-    both frame AND axis value are exact duplicates; they are matched
-    in order, mirroring ``member_ids``' ambiguity policy.
+    table: np.ndarray
+    threshold: "float | None" = None
+    length: "int | None" = None
+    window_size: "int | None" = None
+    program: str = ""
+    version: str = ""
+    date: str = ""
 
-    Members outside every component get NaN — no view consumes them
-    (amplitude plots iterate component members only). Raises
-    ``UpstreamContractError`` when the return does not match the
-    per-component shape.
+
+def _text(value) -> str:
+    return value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+
+
+def read_saved_tracking(file_path, entry: str) -> "SavedTracking | None":
+    """The entry's saved ``tracked_peaks`` table, or None when there is
+    none or it was written before the 0.1.11 field rename (the caller
+    cannot use it either way; ``saved_tracking_problem`` says which)."""
+    with h5py.File(file_path, "r") as f:
+        ds = f.get(f"{entry}/{TRACKED_PEAKS_REL}")
+        if not isinstance(ds, h5py.Dataset):
+            return None
+        table = ds[()]
+        names = table.dtype.names or ()
+        if "frame_list" not in names or "peak_list" not in names:
+            return None
+        meta = f.get(f"{entry}/{TRACKING_PROCESS_REL}")
+        out = SavedTracking(table=table)
+        if isinstance(meta, h5py.Group):
+            def _get(key):
+                item = meta.get(key)
+                if isinstance(item, h5py.Dataset):
+                    return item[()]
+                return meta.attrs.get(key)
+            thr, length, window = _get("threshold"), _get("length"), _get("window_size")
+            out.threshold = None if thr is None else float(thr)
+            out.length = None if length is None else int(length)
+            # mlgidbase stores "no window" as the string/None-ish value;
+            # anything that is not a positive integer means unlimited.
+            try:
+                out.window_size = int(window) if window is not None and int(window) > 0 else None
+            except (TypeError, ValueError):
+                out.window_size = None
+            out.program = _text(_get("program") or "")
+            out.version = _text(_get("version") or "")
+            out.date = _text(_get("date") or "")
+        return out
+
+
+def saved_tracking_problem(file_path, entry: str) -> str:
+    """Why ``read_saved_tracking`` returned None: ``"none"`` (no table),
+    ``"old_layout"`` (a pre-0.1.11 table) or ``""`` (it is readable)."""
+    with h5py.File(file_path, "r") as f:
+        ds = f.get(f"{entry}/{TRACKED_PEAKS_REL}")
+        if not isinstance(ds, h5py.Dataset):
+            return "none"
+        names = ds.dtype.names or ()
+        if "frame_list" not in names or "peak_list" not in names:
+            return "old_layout"
+    return ""
+
+
+@dataclass
+class TrackingState:
+    """Everything the Scan-tracking panel and the phase views need from one
+    tracking result: the payload plus what is derived from it. Built by
+    ``build_tracking_state`` (thread-safe: h5py + numpy only), applied by
+    the GUI thread."""
+
+    payload: TrackingPayload
+    ids: list
+    tables: dict
+    ring_tracks: set
+    track_phases: dict
+    member_phases: dict
+    matched_tables: dict
+
+
+def ring_track_set(payload: TrackingPayload, ids: list, tables: dict) -> set:
+    """Indices of the tracks whose members are rings (any ring member;
+    rings and spots never share a component)."""
+    rings: set = set()
+    for k, comp in enumerate(payload.components):
+        for i in comp:
+            tagged = ids[int(i)]
+            if tagged is None:
+                continue
+            t = tables.get(int(tagged[0]))
+            if t is None or len(t) == 0:
+                continue
+            hits = np.flatnonzero(np.asarray(t.ids, dtype=int) == int(tagged[1]))
+            if hits.size == 1 and bool(t.is_ring[int(hits[0])]):
+                rings.add(k)
+                break
+    return rings
+
+
+def read_fitted_tables(file_path, entry: str, payload: TrackingPayload) -> dict:
+    """``{frame: fitted PeakTable}`` for every frame the payload touches,
+    read through one handle ({} on any error)."""
+    from mlgidlab import file_model
+
+    tables: dict = {}
+    try:
+        with h5py.File(file_path, "r") as f:
+            for frame in sorted({int(x) for x in payload.frame_num}):
+                tables[frame] = file_model.read_peaks(f, entry, frame)["fitted"]
+    except Exception:
+        logger.debug("read_fitted_tables failed", exc_info=True)
+        return {}
+    return tables
+
+
+def read_matched_tables(
+    file_path, entry: str, payload: TrackingPayload, fitted_tables: dict,
+) -> dict:
+    """``{frame: [MatchedStructure]}`` for the payload's frames (one
+    handle; {} on any error or before Matching has run)."""
+    from mlgidlab import file_model
+
+    out: dict = {}
+    try:
+        with h5py.File(file_path, "r") as f:
+            for frame in sorted({int(x) for x in payload.frame_num}):
+                out[frame] = file_model.read_matched_peaks(
+                    f, entry, frame, fitted_tables.get(frame),
+                )
+    except Exception:
+        logger.debug("read_matched_tables failed", exc_info=True)
+        return {}
+    return out
+
+
+def build_tracking_state(
+    file_path, entry: str, payload: TrackingPayload,
+) -> TrackingState:
+    """Derive a payload's display state: member ids, the GUI-side ring
+    tracks, and the matched phases.
+
+    Rings are tracked here by 1-D radial IoU (rings span the whole arc,
+    so radius intervals are the right overlap measure) and appended to
+    the payload. Upstream links rings natively since pygidfit 0.1.8
+    stores them with angle 45; those components are dropped first so
+    every physical ring yields exactly ONE track. Mutates
+    ``payload.components`` accordingly.
     """
-    frames = np.asarray(rec["frame_num"])
-    axis_vals = np.asarray(rec["axis_arr"], dtype=float)
-    components = rec["components"]
-    n = len(frames)
-
-    if not (isinstance(ret, tuple) and len(ret) == 3):
-        raise UpstreamContractError(
-            "track_peaks returned an unexpected value "
-            f"({type(ret).__name__}); the GUI expects the "
-            "per-component (axis, amplitude, frame) lists of "
-            "mlgidbase >= 0.1.5 — see docs/backend_compatibility.md."
+    tables = read_fitted_tables(file_path, entry, payload)
+    ids = (
+        member_ids(payload, tables) if tables else [None] * payload.n_members
+    )
+    if tables:
+        native_ring = ring_track_set(payload, ids, tables)
+        if native_ring:
+            payload.components = [
+                c for k, c in enumerate(payload.components)
+                if k not in native_ring
+            ]
+        ring_comps = track_rings(
+            payload, ids, tables, payload.threshold, payload.length,
         )
+        if ring_comps:
+            payload.components = payload.components + ring_comps
+    ring_tracks = ring_track_set(payload, ids, tables)
+    matched_tables = read_matched_tables(file_path, entry, payload, tables)
+    return TrackingState(
+        payload=payload,
+        ids=ids,
+        tables=tables,
+        ring_tracks=ring_tracks,
+        track_phases=match_tracks_to_structures(payload, ids, matched_tables),
+        member_phases=member_matched_phases(payload, ids, matched_tables),
+        matched_tables=matched_tables,
+    )
 
-    axis_l, amp_l, frame_l = ret
-    if not (len(axis_l) == len(amp_l) == len(frame_l) == len(components)):
-        raise UpstreamContractError(
-            "track_peaks returned per-component lists whose length "
-            f"({len(amp_l)}) does not match the captured component "
-            f"count ({len(components)})."
+
+def load_saved_tracking_state(
+    file_path, entry: str, *, force: bool = False,
+) -> tuple:
+    """Build the tracking state from the table saved in the file.
+
+    Returns ``(state, info)``. ``state`` is None when there is nothing to
+    show; ``info`` always says why or what was loaded:
+    ``{"status": "loaded" | "none" | "old_layout" | "stale" | "error",
+    "saved": SavedTracking | None, "n_tracks": int, "unresolved": int,
+    "members": int, "message": str}``.
+
+    A table whose members name fitted peaks that are no longer there
+    (``payload.n_unresolved`` > 0: written for other fits, or edited
+    outside the GUI) is ``"stale"`` and not loaded, unless ``force``.
+    Never raises on bad data. Thread-safe.
+    """
+    info: dict = {
+        "status": "none", "saved": None, "n_tracks": 0, "unresolved": 0,
+        "members": 0, "message": "",
+    }
+    try:
+        saved = read_saved_tracking(file_path, entry)
+        if saved is None:
+            info["status"] = saved_tracking_problem(file_path, entry)
+            return None, info
+        info["saved"] = saved
+        payload = payload_from_tracked_table(
+            file_path, entry, saved.table,
+            0.5 if saved.threshold is None else saved.threshold,
+            10 if saved.length is None else saved.length,
+            saved.window_size,
         )
-    amp = np.full(n, np.nan)
-    for comp, a_arr, amp_arr, f_arr in zip(components, axis_l, amp_l, frame_l):
-        a_arr = np.asarray(a_arr, dtype=float)
-        amp_arr = np.asarray(amp_arr, dtype=float)
-        f_arr = np.asarray(f_arr)
-        remaining = list(range(len(f_arr)))
-        for m in comp:
-            for pos in remaining:
-                if f_arr[pos] == frames[m] and a_arr[pos] == axis_vals[m]:
-                    amp[m] = amp_arr[pos]
-                    remaining.remove(pos)
-                    break
-    return amp
+        members = int(sum(len(np.atleast_1d(r["peak_list"])) for r in saved.table))
+        info.update(unresolved=payload.n_unresolved, members=members)
+        if payload.n_unresolved and not force:
+            info["status"] = "stale"
+            info["message"] = (
+                f"{payload.n_unresolved} of {members} saved track members "
+                "no longer match a fitted peak."
+            )
+            return None, info
+        state = build_tracking_state(file_path, entry, payload)
+        info.update(status="loaded", n_tracks=payload.n_tracks)
+        return state, info
+    except Exception as exc:
+        logger.debug("load_saved_tracking_state failed", exc_info=True)
+        info.update(status="error", message=str(exc))
+        return None, info
+
+
+#: Layout of the saved table, as mlgidbase >= 0.1.11 writes it
+#: (``peak_operations.build_tracked_peaks_dtype``): one row per track,
+#: ``frame_list`` / ``peak_list`` the parallel vlen arrays of each member's
+#: frame and fitted-peak id. Kept here so writing needs no backend.
+def tracked_peaks_dtype() -> np.dtype:
+    vlen = h5py.vlen_dtype(np.int32)
+    return np.dtype([
+        ("id", "i4"), ("CIF", "S64"), ("h", "f4"), ("k", "f4"), ("l", "f4"),
+        ("frame_list", vlen), ("peak_list", vlen),
+    ])
+
+
+def tracking_table_from_payload(
+    payload: TrackingPayload, ids: list, matched_tables: dict,
+) -> np.ndarray:
+    """The saved-table rows for the payload's CURRENT tracks.
+
+    Every track becomes one row (ids renumbered ``0..n-1`` in track
+    order, as upstream numbers them): members as the exact
+    ``(frame, fitted id)`` pairs of ``ids`` sorted by frame (members
+    without an id are left out), and the phase columns from a majority
+    vote over the members' matched structures - the structure that claims
+    most members wins, ties go to the higher probability, ``unmatched`` /
+    NaN when none does. This is upstream's own attribution rule, so a
+    table the GUI wrote reads like one mlgidbase wrote.
+    """
+    from collections import Counter
+
+    claims: dict = {}  # (frame, fitted id) -> [(key, probability)]
+    for frame, structures in matched_tables.items():
+        for st in structures or ():
+            key = (f"{st.cif}.cif", int(st.h), int(st.k), int(st.l))
+            for pid in np.asarray(st.peaks.ids, dtype=int):
+                claims.setdefault((int(frame), int(pid)), []).append(
+                    (key, float(st.probability))
+                )
+    rows = np.empty(len(payload.components), dtype=tracked_peaks_dtype())
+    for k, comp in enumerate(payload.components):
+        pairs = sorted(
+            (int(ids[int(i)][0]), int(ids[int(i)][1]))
+            for i in comp if ids[int(i)] is not None
+        )
+        votes: Counter = Counter()
+        best: dict = {}
+        for pair in pairs:
+            for key, prob in claims.get(pair, ()):
+                votes[key] += 1
+                best[key] = max(prob, best.get(key, -1.0))
+        rows["id"][k] = k
+        rows["CIF"][k] = b"unmatched"
+        rows["h"][k] = rows["k"][k] = rows["l"][k] = np.nan
+        if votes:
+            cif, h, kk, ll = max(votes, key=lambda key: (votes[key], best[key]))
+            rows["CIF"][k] = cif.encode()[:64]
+            rows["h"][k], rows["k"][k], rows["l"][k] = h, kk, ll
+        rows["frame_list"][k] = np.asarray([p[0] for p in pairs], dtype=np.int32)
+        rows["peak_list"][k] = np.asarray([p[1] for p in pairs], dtype=np.int32)
+    return rows
+
+
+def write_saved_tracking(
+    file_path, entry: str, payload: TrackingPayload, ids: list,
+    matched_tables: dict,
+) -> int:
+    """Replace the entry's saved ``tracked_peaks`` table with the payload's
+    current tracks (``tracking_table_from_payload``) and note in
+    ``process/peak_tracking`` that mlgidLAB edited it. Returns the number
+    of tracks written. Needs the file free of read handles (``r+``)."""
+    from mlgidlab import __version__
+
+    table = tracking_table_from_payload(payload, ids, matched_tables)
+    with h5py.File(file_path, "r+") as f:
+        ana = f.require_group(f"{entry}/{ANALYSIS_REL}")
+        general = ana.require_group("general")
+        if "tracked_peaks" in general:
+            del general["tracked_peaks"]
+        general.create_dataset(
+            "tracked_peaks", data=table, dtype=table.dtype,
+        )
+        meta = f.require_group(f"{entry}/{TRACKING_PROCESS_REL}")
+        meta.attrs.setdefault("NX_class", "NXprocess")
+        for key, value in (
+            ("threshold", float(payload.threshold)),
+            ("length", int(payload.length)),
+            ("window_size", int(payload.window_size or 0)),
+        ):
+            if key in meta:
+                del meta[key]
+            meta.create_dataset(key, data=value)
+        meta.attrs["edited_by"] = f"mlgidLAB {__version__}"
+    return int(len(table))
 
 
 def smooth_normalize_amplitude(
@@ -769,21 +834,34 @@ def track_rings(
 def member_ids(
     payload: TrackingPayload, fitted_tables: dict
 ) -> list:
-    """Best-effort ``(frame, fitted_peak_id)`` per payload member.
+    """``(frame, fitted_peak_id)`` per payload member.
 
-    Upstream's plot hook carries no peak ids, so they are reconstructed
-    by matching each member's ``(q_xy, q_z)`` — plus its amplitude as a
+    A payload built from upstream's table (``payload_from_tracked_table``)
+    carries each member's id, so this is exact: a member whose frame has
+    no fitted table, or whose id is not in it, yields ``None``.
+
+    A hand-built payload without ``peak_id`` (tests) falls back to
+    matching each member's ``(q_xy, q_z)`` — plus its amplitude as a
     duplicate-breaker — against the frame's fitted ``PeakTable``
-    (``fitted_tables`` maps frame -> PeakTable or None). Both sides
-    read the same HDF5 columns, so exact float equality is expected;
-    ``np.isclose`` is the fallback. The amplitude participates only
-    when it is finite: since the 0.1.4 upstream rework amplitudes come
-    from ``track_peaks``' per-component return value, so members
-    outside every track carry NaN and must resolve by coordinates
-    alone. A member with no match or an ambiguous match yields
+    (``fitted_tables`` maps frame -> PeakTable or None): exact float
+    equality first, ``np.isclose`` second, the amplitude only when it is
+    finite. A member with no match or an ambiguous match yields
     ``None`` (the caller degrades to jump-to-frame-only).
     """
     out: list = []
+    if payload.peak_id is not None:
+        id_sets: dict = {}
+        for i in range(payload.n_members):
+            frame = int(payload.frame_num[i])
+            pid = int(payload.peak_id[i])
+            if frame not in id_sets:
+                table = fitted_tables.get(frame)
+                id_sets[frame] = (
+                    set() if table is None or len(table) == 0
+                    else {int(v) for v in table.ids}
+                )
+            out.append((frame, pid) if pid in id_sets[frame] else None)
+        return out
     for i in range(payload.n_members):
         frame = int(payload.frame_num[i])
         table = fitted_tables.get(frame)

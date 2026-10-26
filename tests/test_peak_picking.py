@@ -579,3 +579,38 @@ def test_the_readout_reports_a_stacked_cursor(main_window):
     main_window._on_status_cursor_moved(
         {"mode": "polar", "r": 2.0, "theta": 30.0, "intensity": 5.0})
     assert "boxes here" not in main_window._sb_cursor.text()
+
+
+# -- Boxes are drawn in full, past the image edge --------------------------
+
+def test_a_finite_box_past_the_image_edge_is_drawn_in_full():
+    from mlgidlab.viewer_items import _PeakShapeItem
+
+    class _T:                                   # one row: angle 3, width 10
+        angle, angle_width = [3.0], [10.0]
+        radius, radius_width = [1.0], [0.2]
+
+        def __len__(self):
+            return 1
+
+    item = _PeakShapeItem("#fff", Qt.PenStyle.SolidLine, 1)
+    item.set_polar(_T(), extent=(0.0, 90.0))
+    rect = item.boundingRect()
+    assert rect.top() == pytest.approx(-2.0)    # not clipped at 0
+    assert rect.bottom() == pytest.approx(8.0)
+    item.set_cartesian(_T(), extent=(0.0, 90.0))
+    assert item.boundingRect().top() < 0.0      # below the q_xy axis (q_z < 0)
+
+
+def test_a_ring_without_a_finite_width_still_stops_at_the_image_edge():
+    from mlgidlab.viewer_items import _clip_angle
+
+    assert _clip_angle(45.0, float("inf"), extent=(0.0, 90.0), clip_finite=False) == (0.0, 90.0)
+    assert _clip_angle(float("nan"), float("inf"), extent=(0.0, 90.0)) == (0.0, 90.0)
+
+
+def test_clip_angle_still_clips_a_finite_box_by_default():
+    from mlgidlab.viewer_items import _clip_angle
+
+    assert _clip_angle(3.0, 10.0, extent=(0.0, 90.0)) == (0.0, 8.0)
+    assert _clip_angle(3.0, 10.0, extent=(0.0, 90.0), clip_finite=False) == (-2.0, 8.0)

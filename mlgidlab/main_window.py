@@ -43,6 +43,8 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QAbstractSlider,
     QAbstractSpinBox,
     QApplication,
     QButtonGroup,
@@ -77,6 +79,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QTabWidget,
     QTextBrowser,
+    QTextEdit,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -93,6 +96,7 @@ from mlgidlab import peak_clipboard
 from mlgidlab import pipeline
 from mlgidlab import update_check
 from mlgidlab.pen_picker import PenPopup
+from mlgidlab.preview_fit import PreviewFitRunner
 from mlgidlab.controls_help import ControlsDialog
 from mlgidlab.image_viewer import (
     GIWAXSImageViewer,
@@ -138,6 +142,7 @@ from mlgidlab.workers import (
     ImportWorker,
     PipelineWorker,
     PrefetchWorker,
+    TrackingLoadWorker,
 )
 
 import logging
@@ -180,6 +185,16 @@ from mlgidlab.widgets import make_pen_swatch as _make_pen_swatch
 
 
 
+# Widgets that use Up / Down themselves. The peak-step shortcut leaves
+# them the key (see ``MainWindow.eventFilter``): a spin box steps its
+# value, a combo box and a list or table move their current item, a
+# slider moves its handle, a text field moves its caret.
+_ARROW_KEY_WIDGETS = (
+    QAbstractItemView, QAbstractSlider, QAbstractSpinBox, QComboBox,
+    QLineEdit, QPlainTextEdit, QTextEdit,
+)
+
+
 class MainWindow(
     SimOverlayMixin,
     MatchedLegendMixin,
@@ -210,6 +225,10 @@ class MainWindow(
     # trailing tuple carries the user's registered extra peak lists so the
     # worker's overlay read covers them too. See ``_load_entry_async``.
     _entryLoadRequest = Signal(str, str, int, object)
+    # Queued request to the TrackingLoadWorker: (file_path, entry,
+    # request_id, force). Builds the Scan-tracking state from the table
+    # the entry carries in the file; see ``_request_saved_tracking``.
+    _trackLoadRequest = Signal(str, str, int, bool)
     # Raw-mode counterpart: (RawEntry, request_id) → ``raw_loaded`` with a
     # ready LazyRawStack. Shares the same request-id counter so raw and
     # NeXus switches supersede each other. See ``_load_raw_entry_into_viewer``.
@@ -228,6 +247,8 @@ class MainWindow(
     _LAST_SEEN_VERSION_KEY = "lastSeenVersion"
     # Opt-in: install a newer release automatically on launch (Help menu).
     _AUTO_UPDATE_KEY = "autoUpdate"
+    # Set once the "mlgidLAB is becoming mlgidGUI" notice has been shown.
+    _RENAME_NOTICE_KEY = "renameNoticeSeen"
 
 
     def __init__(self) -> None:
@@ -299,6 +320,7 @@ class MainWindow(
         # and on any fitted mutation — see _invalidate_scan_tracks.
         self._scan_payload: phase_tracking.TrackingPayload | None = None
         self._scan_member_ids: list | None = None
+        self._scan_matched_tables: dict = {}
         self._scan_track_entry: str | None = None
         # Fitted tables read during member-id reconstruction, kept for
         # the only-tracked display options (gap interpolation anchors,
@@ -380,6 +402,9 @@ class MainWindow(
         # Docks folded away because the Structure tab is in front, to be
         # restored on the way back to Image or Data.
         self._structure_folded_docks: set[str] = set()
+        # Scan tracking was hidden because the data has a single frame
+        # (``_sync_scan_tracking_visibility``), not closed by the user.
+        self._tracking_hidden_by_rule = False
         # Set when a structural edit landed while the File browser was
         # folded away: rebuilding a tree nobody can see is a teardown for
         # nothing, so it is paid once, on the way out.
@@ -459,6 +484,15 @@ class MainWindow(
         # late result from a superseded switch is dropped, not rendered.
         self._entry_load_thread: QThread | None = None
         self._entry_load_worker: EntryLoadWorker | None = None
+        # Persistent TrackingLoadWorker (saved tracking table -> panel),
+        # spawned on first use; ``_track_load_req_id`` drops superseded
+        # results, ``_track_autoload_key`` remembers which (session,
+        # entry) already had its automatic look so overlay reloads of
+        # the same entry do not repeat it.
+        self._track_load_thread: QThread | None = None
+        self._track_load_worker: TrackingLoadWorker | None = None
+        self._track_load_req_id: int = 0
+        self._track_autoload_key: tuple | None = None
         self._entry_req_id: int = 0
 
         # Frame step per play-tick. Stays at 1 unless the requested
@@ -491,6 +525,13 @@ class MainWindow(
         # selection-tick. ``None`` value means pygidfit ran but
         # didn't converge — cached so we don't retry the same fail.
         self._2d_preview_cache: dict[tuple, object] = {}
+        # The fits themselves run on a background thread (see
+        # ``preview_fit``); results come back through ``done``.
+        self._preview_runner = PreviewFitRunner(self)
+        self._preview_runner.done.connect(self._on_preview_fit_done)
+        self._preview_status_shown = False
+        # The Add to fitted (2D) click waiting on a background fit.
+        self._add_fitted_wait: dict | None = None
 
         self.setWindowTitle(APP_NAME)
         self.resize(*self._default_window_size())
@@ -516,6 +557,10 @@ class MainWindow(
         # works even when the viewer has unconventional focus
         # handling.
         self._install_frame_shortcuts()
+        # Down / Up select the next / previous peak (see the method).
+        self._install_peak_step_shortcuts()
+        # Ctrl+Return runs Add to fitted (see the method).
+        self._install_add_to_fitted_shortcut()
         # Make undo/redo fire even when a third-party widget registers the
         # same standard shortcuts (see ``eventFilter``). Installed on the
         # application so it sees key events regardless of focus.
@@ -618,6 +663,17 @@ class MainWindow(
             return True
         if et not in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress):
             return super().eventFilter(obj, ev)
+        if (
+            et == QEvent.Type.ShortcutOverride
+            and ev.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down)
+            and ev.modifiers() == Qt.KeyboardModifier.NoModifier
+        ):
+            # A widget that uses Up / Down keeps them: accepting the
+            # override stops the peak-step shortcut and delivers the key.
+            focus = QApplication.focusWidget()
+            if isinstance(focus, _ARROW_KEY_WIDGETS) and focus.window() is self:
+                ev.accept()
+                return True
         fw = QApplication.focusWidget()
         if fw is not None:
             if fw.window() is not self:
@@ -722,6 +778,8 @@ class MainWindow(
         # Past the point of no return — mark closed so a re-entrant or
         # pytest-qt second close() short-circuits above.
         self._closed = True
+        # A preview fit still running must not hold the window open.
+        self._preview_runner.shutdown()
         # Drop the app-wide undo/redo event filter so a closed window
         # (which may linger under the test session's gc.disable) stops
         # receiving key events.
@@ -784,6 +842,14 @@ class MainWindow(
             self._entry_load_worker = None
             self._entry_load_thread.deleteLater()
             self._entry_load_thread = None
+        if self._track_load_worker is not None:
+            self._track_load_req_id += 1
+            self._track_load_thread.quit()
+            self._track_load_thread.wait()
+            self._track_load_worker.deleteLater()
+            self._track_load_worker = None
+            self._track_load_thread.deleteLater()
+            self._track_load_thread = None
         for s in list(self._sessions):
             # Inactive sessions may hold a stashed (parked) FrameSource —
             # release the handle before the temp file is deleted.

@@ -206,3 +206,128 @@ def test_the_rail_catches_up_when_a_run_s_results_land(main_window,
     main_window._on_pipeline_finished(None, None)
 
     assert main_window.workflow_rail.chips["detect"].state.text() == "5 this frame"
+
+
+# -- stages that do not apply ----------------------------------------------
+
+
+def _shown_arrows(rail) -> list[str]:
+    """Keys of the stages whose trailing arrow is showing."""
+    return [key for (key, _l, _g), block in zip(STAGES, rail._blocks)
+            if not block.isHidden() and block.arrow is not None
+            and not block.arrow.isHidden()]
+
+
+def test_hiding_the_last_stage_leaves_no_dangling_arrow(rail):
+    assert _shown_arrows(rail) == ["convert", "detect", "fit", "match"]
+    rail.set_stage_visible("track", False)
+    assert rail._blocks[-1].isHidden()
+    assert not rail.is_stage_visible("track")
+    assert _shown_arrows(rail) == ["convert", "detect", "fit"]
+    rail.set_stage_visible("track", True)
+    assert not rail._blocks[-1].isHidden()
+    assert _shown_arrows(rail) == ["convert", "detect", "fit", "match"]
+
+
+def test_hiding_a_middle_stage_keeps_the_arrow_before_it(rail):
+    rail.set_stage_visible("fit", False)
+    assert rail._blocks[2].isHidden()
+    # Detect still points on, to Match.
+    assert _shown_arrows(rail) == ["convert", "detect", "match"]
+
+
+def test_expanding_the_strip_keeps_a_hidden_stage_hidden(rail):
+    rail.set_stage_visible("track", False)
+    rail.set_expanded(False)
+    assert all(block.isHidden() for block in rail._blocks)
+    rail.set_expanded(True)
+    assert rail._blocks[-1].isHidden()
+    assert not any(block.isHidden() for block in rail._blocks[:-1])
+
+
+# -- the run glyph brings its dock forward ---------------------------------
+
+
+@pytest.fixture
+def run_opens_dock():
+    """Drop the setting around a test, so it starts from the default."""
+    from PySide6.QtCore import QSettings
+
+    from mlgidlab.main_window_build import RAIL_RUN_OPENS_DOCK_KEY
+
+    QSettings().remove(RAIL_RUN_OPENS_DOCK_KEY)
+    yield RAIL_RUN_OPENS_DOCK_KEY
+    QSettings().remove(RAIL_RUN_OPENS_DOCK_KEY)
+
+
+def _fake_track_button(main_window, monkeypatch, enabled: bool) -> list:
+    """Driven through "track": backend-less, the Pipeline panel is a stub
+    with no run buttons."""
+    clicked: list = []
+    button = main_window._rail_run_button("track")
+    monkeypatch.setattr(button, "isEnabled", lambda: enabled)
+    monkeypatch.setattr(button, "click", lambda: clicked.append("track"))
+    return clicked
+
+
+def test_the_run_glyph_opens_its_dock(main_window, monkeypatch, run_opens_dock):
+    clicked = _fake_track_button(main_window, monkeypatch, enabled=True)
+    dock = main_window._scan_tracking_dock
+    dock.hide()
+    glyph = main_window.workflow_rail.chips["track"].run_button
+    glyph.setEnabled(True)
+    glyph.click()
+    assert clicked == ["track"]
+    assert not dock.isHidden()
+
+
+def test_the_run_glyph_leaves_the_dock_when_the_setting_is_off(
+        main_window, monkeypatch, run_opens_dock):
+    from PySide6.QtCore import QSettings
+
+    QSettings().setValue(run_opens_dock, False)
+    clicked = _fake_track_button(main_window, monkeypatch, enabled=True)
+    dock = main_window._scan_tracking_dock
+    dock.hide()
+    main_window._on_rail_stage_run("track")
+    assert clicked == ["track"]
+    assert dock.isHidden()
+
+
+def test_a_disabled_run_button_opens_nothing(
+        main_window, monkeypatch, run_opens_dock):
+    clicked = _fake_track_button(main_window, monkeypatch, enabled=False)
+    dock = main_window._scan_tracking_dock
+    dock.hide()
+    main_window._on_rail_stage_run("track")
+    assert clicked == []
+    assert dock.isHidden()
+
+
+def test_a_name_click_still_only_opens_the_dock(
+        main_window, monkeypatch, run_opens_dock):
+    from PySide6.QtCore import QSettings
+
+    QSettings().setValue(run_opens_dock, False)
+    clicked = _fake_track_button(main_window, monkeypatch, enabled=True)
+    dock = main_window._scan_tracking_dock
+    dock.hide()
+    main_window.workflow_rail.chips["track"].button.click()
+    assert not dock.isHidden()
+    assert clicked == []
+
+
+def test_the_settings_dialog_round_trips_the_option(
+        main_window, run_opens_dock):
+    from PySide6.QtCore import QSettings
+
+    from mlgidlab.main_window_dialogs import _SettingsDialog
+    from mlgidlab.peak_link import read_bool
+
+    dlg = _SettingsDialog(main_window)
+    assert dlg._chk_rail_run_opens_dock.isChecked()     # default on
+    dlg._chk_rail_run_opens_dock.setChecked(False)
+    dlg.save_to_qsettings()
+    QSettings().sync()
+    assert read_bool(run_opens_dock, True) is False
+    assert not _SettingsDialog(main_window)._chk_rail_run_opens_dock.isChecked()

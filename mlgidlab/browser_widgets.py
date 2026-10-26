@@ -159,6 +159,36 @@ class _MlgidHdf5TreeModel(Hdf5TreeModel):
         root = self.nodeFromIndex(QModelIndex())
         self.insertNode(-1, _ImageFileNode(path, self._raw_icon, parent=root))
 
+    def remove_file_rows(self, paths) -> int:
+        """Remove the top-level rows of the files in ``paths``; return how
+        many went.
+
+        silx offers no remove-by-name, and rebuilding the whole tree to
+        drop one file would collapse every other open file and re-insert
+        a several-thousand-image batch. Each removal goes through silx's
+        ``removeIndex``, which closes a file the model owns.
+        """
+        from PySide6.QtCore import QModelIndex
+
+        wanted = {str(p) for p in paths}
+        root = self.nodeFromIndex(QModelIndex())
+        removed = 0
+        row = 0
+        while row < root.childCount():
+            node = root.child(row)
+            name = getattr(node, "local_filename", None)
+            if name is None:
+                try:
+                    name = node.obj.file.filename
+                except Exception:
+                    name = None
+            if name is not None and str(name) in wanted:
+                self.removeIndex(self.index(row, 0, QModelIndex()))
+                removed += 1
+            else:
+                row += 1
+        return removed
+
     def clear(self) -> None:  # type: ignore[override]
         """Empty the model in ONE reset instead of silx's per-row loop.
 

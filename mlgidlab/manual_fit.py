@@ -73,6 +73,22 @@ class ManualFitResult:
 # pygidfit would re-introduce the drift the wrapper exists to remove.
 _PYGIDFIT_POLAR_SHAPE = (512, 1024)
 
+#: The fit settings a bare ``mlgidBASE.run_fitting()`` uses since mlgidbase
+#: 0.1.11 (it was 10 / 10 before). The Pipeline panel starts from these,
+#: and every place that needs a fallback for the same settings takes them
+#: from here instead of repeating the numbers.
+DEFAULT_CLUSTERING_DISTANCE_PEAKS = 2.0
+DEFAULT_CLUSTERING_DISTANCE_RINGS = 2.0
+DEFAULT_CLUSTERING_EXTEND = 2
+
+#: pygidfit's per-ROI hot-pixel filter: pixels above this percentile of
+#: their own ROI are masked before a spot cluster is fitted
+#: (``fit_data(hot_pixel_percentile=...)``, new in pygidfit 0.1.8 with 99.9
+#: as its default). mlgidbase's ``run_fitting`` never passes it, so the
+#: pipeline runs with the default; the manual 2D fit passes the SAME value
+#: explicitly so that parity cannot drift if the default ever moves.
+HOT_PIXEL_PERCENTILE = 99.9
+
 
 @dataclass(frozen=True)
 class PeakBox:
@@ -91,8 +107,9 @@ def _px_box(
     box: PeakBox, q_abs_max: float, polar_shape: tuple[int, int],
 ) -> tuple[float, float, int, int]:
     """Box limits in pygidfit's polar pixel grid, mirroring
-    ``pygidfit.box_utils.boxes_preprocessing`` exactly (including its
-    radial ``radius ± radius_width`` — note *not* ``/2`` — and the
+    ``pygidfit.box_utils.boxes_preprocessing`` (pygidfit >= 0.1.8:
+    including its radial ``radius ± radius_width`` — note *not* ``/2`` —
+    the ``N - 1`` pixel scale of the ``np.linspace(.., N)`` grid, and the
     ±1 px rounding pad, then clipping into the image).
 
     Returns ``(r1, r2, t1, t2)``; the angular pair is integral because
@@ -100,11 +117,11 @@ def _px_box(
     the two for equality.
     """
     n_ang, n_rad = int(polar_shape[0]), int(polar_shape[1])
-    r1 = round((box.radius - box.radius_width) / q_abs_max * n_rad) - 1
-    r2 = round((box.radius + box.radius_width) / q_abs_max * n_rad) + 1
+    r1 = round((box.radius - box.radius_width) / q_abs_max * (n_rad - 1)) - 1
+    r2 = round((box.radius + box.radius_width) / q_abs_max * (n_rad - 1)) + 1
     half_a = abs(box.angle_width) / 2.0
-    t1 = int(round((box.angle - half_a) / 90.0 * n_ang)) - 1
-    t2 = int(round((box.angle + half_a) / 90.0 * n_ang)) + 1
+    t1 = int(round((box.angle - half_a) / 90.0 * (n_ang - 1))) - 1
+    t2 = int(round((box.angle + half_a) / 90.0 * (n_ang - 1))) + 1
     return (
         float(min(max(r1, 0), n_rad)), float(min(max(r2, 0), n_rad)),
         int(min(max(t1, 0), n_ang)), int(min(max(t2, 0), n_ang)),
@@ -132,8 +149,8 @@ def select_neighbour_boxes(
     *,
     q_abs_max: float,
     polar_shape: tuple[int, int] = _PYGIDFIT_POLAR_SHAPE,
-    clustering_distance_peaks: float = 10.0,
-    clustering_extend: int = 2,
+    clustering_distance_peaks: float = DEFAULT_CLUSTERING_DISTANCE_PEAKS,
+    clustering_extend: int = DEFAULT_CLUSTERING_EXTEND,
 ) -> list[PeakBox]:
     """Pick the peaks that must travel with ``target`` into ``fit_data``.
 
@@ -250,10 +267,11 @@ def fit_one_peak(
     ai_deg: float = 0.0,
     crit_angle: float = 0.0,
     theta_fixed: bool = True,
-    clustering_distance_peaks: float = 10.0,
-    clustering_distance_rings: float = 10.0,
-    clustering_extend: int = 2,
+    clustering_distance_peaks: float = DEFAULT_CLUSTERING_DISTANCE_PEAKS,
+    clustering_distance_rings: float = DEFAULT_CLUSTERING_DISTANCE_RINGS,
+    clustering_extend: int = DEFAULT_CLUSTERING_EXTEND,
     neighbours: "list[PeakBox] | None" = None,
+    hot_pixel_percentile: "float | None" = HOT_PIXEL_PERCENTILE,
 ) -> ManualFitResult:
     """Run ``pygidfit.fit_data`` on a single user-drawn box.
 
@@ -403,6 +421,7 @@ def fit_one_peak(
             multiprocessing=False,
             peaks_pool=None,
             ai=float(ai_deg),
+            hot_pixel_percentile=hot_pixel_percentile,
         )
     except Exception as exc:
         raise ManualFitError(

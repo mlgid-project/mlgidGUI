@@ -91,6 +91,13 @@ CONTROL_SECTIONS: tuple[Section, ...] = (
         (("Ctrl+A",), "key",
          "Select every peak of the current kind on the frame — fitted "
          "if a fitted peak is primary, otherwise detected."),
+        (("↓ / ↑",), "key",
+         "Select the next / previous peak of the same kind (detected or "
+         "fitted, by id) on the frame, zooming like a click. Spin boxes, "
+         "lists and tables keep Up / Down for themselves."),
+        (("T",), "key",
+         "Switch the selection from a detected peak to its fitted peak "
+         "(same id), or back. Needs the peak link in Settings."),
         (("Drag ROI edges",), "mouse",
          "Resize the selected <b>manual or detected</b> peak. Fitted "
          "and matched selections show a box but are not editable."),
@@ -114,6 +121,9 @@ CONTROL_SECTIONS: tuple[Section, ...] = (
     ("Manual peak workflow", (
         (("Ctrl+Alt-drag",), "mouse",
          "Draw a manual peak rectangle (polar mode only)."),
+        (("Ctrl+Return",), "key",
+         "Add to fitted for the selected manual or detected peak (one "
+         "peak only; the status bar says why when it cannot run)."),
         (("Add to detected / Add to fitted",), "ui",
          "Commit the box as a detected peak, or 1D-Gaussian-fit it into "
          "fitted. Tick <b>Save fitted as ring</b> first to widen the "
@@ -146,8 +156,8 @@ CONTROL_SECTIONS: tuple[Section, ...] = (
         (("Click a scan-tracking row",), "mouse",
          "Jump the viewer to that track's frame and select its peak."),
         (("Delete (tracking table)",), "key",
-         "Remove the selected track from the tracking results — "
-         "display only, no peaks are deleted from the file."),
+         "Remove the selected track from the tracking results and from "
+         "the tracking table saved in the file. No peaks are deleted."),
     )),
     ("Tracking views", (
         (("Click a trajectory point",), "mouse",

@@ -7,6 +7,8 @@ suite is headless and hermetic:
 * ``XDG_CONFIG_HOME`` redirected to a temp dir — QSettings (recent
   files, theme, playback) cannot read or clobber the real user config,
   so construction starts from a clean slate every run.
+* ``MLGIDLAB_LOG_DIR`` redirected into the same temp dir, so the update
+  log is never written to the real per-user log directory.
 * ``HDF5_USE_FILE_LOCKING=FALSE`` — mirrors ``mlgidlab.__init__.main``;
   matters once the file-open increments land, set here for parity.
 
@@ -29,6 +31,9 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 # so without an explicit rmtree these would pile up in /tmp run after run.
 _CONFIG_ROOT = tempfile.mkdtemp(prefix="mlgidlab-test-config-")
 os.environ["XDG_CONFIG_HOME"] = _CONFIG_ROOT
+# Same for the crash / update logs (mlgidlab.diagnostics): never the real
+# per-user log directory.
+os.environ["MLGIDLAB_LOG_DIR"] = os.path.join(_CONFIG_ROOT, "logs")
 
 import gc  # noqa: E402
 import sys  # noqa: E402
@@ -368,11 +373,20 @@ def synthetic_nexus(tmp_path):
     Imports are local so the conftest environment lockdown is fully
     applied before h5py touches HDF5.
     """
+    return _write_synthetic_nexus(tmp_path / "synthetic.h5", n_frames=3)
+
+
+@pytest.fixture
+def synthetic_nexus_single(tmp_path):
+    """``synthetic_nexus`` with a single frame: nothing to track across."""
+    return _write_synthetic_nexus(tmp_path / "synthetic_single.h5", n_frames=1)
+
+
+def _write_synthetic_nexus(path, n_frames):
     import h5py
     import numpy as np
 
-    path = tmp_path / "synthetic.h5"
-    n_frames, n_qz, n_qxy = 3, 16, 24
+    n_qz, n_qxy = 16, 24
     rng = np.random.default_rng(0)
     with h5py.File(path, "w", track_order=True) as f:
         data = f.create_group("entry_0000/data")

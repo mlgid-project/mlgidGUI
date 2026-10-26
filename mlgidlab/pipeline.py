@@ -448,7 +448,13 @@ def _execute_peak_injection(
     import numpy as np
 
     from mlgidlab import file_model
-    from mlgidlab.manual_fit import ManualFitError, fit_one_peak
+    from mlgidlab.manual_fit import (
+        DEFAULT_CLUSTERING_DISTANCE_PEAKS,
+        DEFAULT_CLUSTERING_DISTANCE_RINGS,
+        DEFAULT_CLUSTERING_EXTEND,
+        ManualFitError,
+        fit_one_peak,
+    )
 
     log = _logging.getLogger("mlgidBASE")
     entry = str(kwargs.get("entry") or "")
@@ -531,15 +537,17 @@ def _execute_peak_injection(
                     angle_width=float(spec["angle_width"]),
                     crit_angle=float(fit_params.get("crit_angle", 0.0)),
                     theta_fixed=bool(fit_params.get("theta_fixed", True)),
-                    clustering_distance_peaks=float(
-                        fit_params.get("clustering_distance_peaks", 10.0)
-                    ),
-                    clustering_distance_rings=float(
-                        fit_params.get("clustering_distance_rings", 10.0)
-                    ),
-                    clustering_extend=int(
-                        fit_params.get("clustering_extend", 2)
-                    ),
+                    clustering_distance_peaks=float(fit_params.get(
+                        "clustering_distance_peaks",
+                        DEFAULT_CLUSTERING_DISTANCE_PEAKS,
+                    )),
+                    clustering_distance_rings=float(fit_params.get(
+                        "clustering_distance_rings",
+                        DEFAULT_CLUSTERING_DISTANCE_RINGS,
+                    )),
+                    clustering_extend=int(fit_params.get(
+                        "clustering_extend", DEFAULT_CLUSTERING_EXTEND,
+                    )),
                     **geom,
                 )
             except ManualFitError as exc:
@@ -727,12 +735,32 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
                 file_path, exc,
             )
 
+    # Matching: bring the existing ``matched_*`` datasets of the scope
+    # into id form (stamped ``peak_list_kind``) BEFORE the run. The run
+    # rewrites only the datasets of its own peaks_type, and rewritten
+    # datasets come back unstamped; an older positional dataset of the
+    # other type — or of this type, when the run finds no solution and
+    # writes nothing — must already carry its own stamp by then, or the
+    # post-run stamp below would mislabel it.
+    _stamp_new_matches = False
+    if command.op_name == "run_matching":
+        from mlgidlab.file_model import KIND_ID
+
+        _new_kind = backend_peak_list_kind()
+        _stamp_new_matches = True
+        if _new_kind == KIND_ID:
+            _normalise_matched_scope(
+                file_path, command.kwargs.get("entry"),
+                command.kwargs.get("frame_num"),
+            )
+
     # Physics-audit F-04 closure: invalidate every ``matched_*`` row
     # on the scope we're about to refit. pygidFIT replaces an entry's
-    # ``fitted_peaks`` wholesale and gives no index-stability
-    # guarantee — old ``peak_list`` integer indices that survive
-    # ``load_matched_peaks``'s read-side clamp (``file_model.py``)
-    # could silently mis-render against re-ordered fitted positions.
+    # ``fitted_peaks`` wholesale — since 0.1.8 under the detected ids,
+    # but a refit can still drop or add rows — so old ``peak_list``
+    # entries that survive ``load_matched_peaks``'s read-side clamp
+    # (``file_model.py``) could silently mis-render against a changed
+    # fitted table.
     # Clearing matches before the run gives the user a clean slate
     # and forces a deliberate re-match. The clear lands in the same
     # write window as the silx detach the caller has already done.
@@ -749,7 +777,7 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
     )
     if command.op_name == "run_fitting" and not _fitted_redirected:
         try:
-            from mlgidlab.file_model import clear_peaks
+            from mlgidlab.file_model import clear_peaks, clear_tracked_peaks
             entry_arg = command.kwargs.get("entry")
             frame_arg = command.kwargs.get("frame_num")
             frame_to_clear = int(frame_arg) if isinstance(frame_arg, int) else None
@@ -762,6 +790,10 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
                 total_removed += clear_peaks(
                     file_path, ent, "matched", frame=frame_to_clear
                 )
+                # A saved tracking table describes the fits being
+                # replaced; keep it and it names peaks that may no
+                # longer be there (mlgidbase saves it per entry).
+                clear_tracked_peaks(file_path, ent)
             if total_removed > 0:
                 logging.getLogger("mlgidBASE").info(
                     "Invalidated %d stale matched-peak row(s) before "
@@ -777,51 +809,14 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
                 Path(file_path).name, exc,
             )
 
-    # Big scans: upstream track_peaks builds a dense all-against-all
-    # IoU matrix over the scan's total fitted-peak count N and needs
-    # ~64 * N**2 bytes — the kernel OOM-kills the whole app when that
-    # exceeds RAM (observed at 602 frames / 43645 peaks = ~122 GB on
-    # a 30 GB machine). When the estimate says the dense run would not
-    # fit comfortably, run the GUI's blocked equivalent instead:
-    # identical boxes, IoU rule and length cut, bounded memory (see
-    # phase_tracking.track_peaks_blocked). Placed BEFORE the mlgidbase
-    # import so it reads via h5py only and never competes with a pygid
-    # r+ handle on the same file.
-    if command.op_name == "track_peaks":
-        from mlgidlab.phase_tracking import (
-            TRACKING_DENSE_MEM_FRACTION,
-            available_memory_bytes,
-            estimate_tracking_memory,
-            track_peaks_blocked,
+    # Tracking reads the matched peak lists to attribute each track to a
+    # structure (and mlgidbase >= 0.1.11 reads them as fitted ids), so
+    # older positional datasets are converted first. Scan-wide, one file
+    # open, before mlgidbase takes its own handle.
+    if command.op_name == "track_peaks" and backend_peak_list_kind() == "id":
+        _normalise_matched_scope(
+            file_path, command.kwargs.get("entry"), None,
         )
-
-        track_entry = str(command.kwargs.get("entry") or "")
-        n_peaks, needed = estimate_tracking_memory(file_path, track_entry)
-        mem_available = available_memory_bytes()
-        if (
-            needed and mem_available
-            and needed > mem_available * TRACKING_DENSE_MEM_FRACTION
-        ):
-            logging.getLogger("mlgidBASE").info(
-                "track_peaks: %s fitted peaks would need ~%.0f GB with "
-                "the upstream dense IoU (%.0f GB available) — running "
-                "the memory-safe blocked computation instead "
-                "(identical result).",
-                f"{n_peaks:,}", needed / 1e9, mem_available / 1e9,
-            )
-            try:
-                return track_peaks_blocked(
-                    file_path,
-                    track_entry,
-                    threshold=float(command.kwargs.get("threshold", 0.5)),
-                    length=int(command.kwargs.get("length", 10)),
-                )
-            except ValueError as exc:
-                raise RuntimeError(
-                    f"track_peaks found no fitted peaks in entry "
-                    f"{command.kwargs.get('entry')!r} — run Fitting "
-                    f"(all frames) first. ({exc})"
-                ) from exc
 
     # Pre-flight: make sure the detection weights are cached and intact
     # *before* mlgidbase opens the file. mlgidDETECT ships no ``.onnx``
@@ -887,8 +882,8 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
         # AttributeError.
         raise RuntimeError(
             "The installed mlgidbase has no track_peaks — peak tracking "
-            "needs mlgidbase >= 0.1.5 (the [pipeline] extra pins "
-            "0.1.8). See mlgidLAB/docs/backend_compatibility.md."
+            "needs mlgidbase >= 0.1.11 (the [pipeline] extra pins "
+            "0.1.11). See mlgidLAB/docs/backend_compatibility.md."
         )
     method = getattr(analysis, command.op_name)
     # Only detection and fitting ever carry a plan (``swap_plan``
@@ -907,39 +902,34 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
         ), detection_on_gpu(), safe_console():
             result = method(**kwargs)
     elif command.op_name == "track_peaks":
-        # The member-level tracking data is recovered through the
-        # capture hook (see phase_tracking.capture_tracking); the
-        # amplitudes come from the RETURN value, whose axis table has
-        # no 'amplitude' entry. Force the capture contract regardless
-        # of what the caller put in kwargs: plot_result must be truthy
-        # for the hook to fire (no matplotlib runs — the recorder
-        # replaces the plot call) and axis='radius' is always valid.
-        from mlgidlab.phase_tracking import (
-            amplitudes_from_track_result,
-            build_payload,
-            capture_tracking,
-        )
+        # mlgidbase >= 0.1.11 saves the tracked_peaks table into the file
+        # and returns it; the GUI payload is built from that table plus
+        # the entry's fitted rows (exact ids, no reconstruction).
+        from mlgidlab.phase_tracking import payload_from_tracked_table
 
-        kwargs["axis"] = "radius"
-        kwargs["plot_params"] = {"plot_result": True, "save_fig": False}
+        track_entry = str(kwargs.get("entry") or "")
+        threshold = float(kwargs.get("threshold", 0.5))
+        length = int(kwargs.get("length", 10))
+        window = kwargs.get("window_size")
+        window = None if window in (None, 0) else int(window)
         try:
-            with capture_tracking() as rec:
-                ret = method(**kwargs)
+            tracked = method(
+                entry=track_entry, threshold=threshold, length=length,
+                window_size=window,
+            )
         except ValueError as exc:
-            # np.vstack on an empty box list — the entry has no fitted
+            # np.concatenate on an empty list -- the entry has no fitted
             # peaks at all. Name the actual remedy instead of leaking
             # "need at least one array to concatenate".
             raise RuntimeError(
                 f"track_peaks found no fitted peaks in entry "
-                f"{kwargs.get('entry')!r} — run Fitting (all frames) "
+                f"{track_entry!r} — run Fitting (all frames) "
                 f"first. ({exc})"
             ) from exc
-        result = build_payload(
-            rec,
-            entry=str(kwargs.get("entry") or ""),
-            threshold=float(kwargs.get("threshold", 0.5)),
-            length=int(kwargs.get("length", 10)),
-            amplitudes=amplitudes_from_track_result(ret, rec),
+        if isinstance(tracked, dict):
+            tracked = tracked[track_entry]
+        result = payload_from_tracked_table(
+            file_path, track_entry, tracked, threshold, length, window,
         )
     else:
         with _swapped_tables(
@@ -969,8 +959,117 @@ def execute(file_path: Path, command: PipelineCommand) -> Any:
                 "Could not dedupe matched groups in %s: %s",
                 file_path, exc,
             )
+        if _stamp_new_matches:
+            from mlgidlab.file_model import stamp_matched_kind
+
+            try:
+                _for_frames_of(
+                    file_path, command.kwargs.get("entry"),
+                    command.kwargs.get("frame_num"),
+                    lambda path, ent, fr: stamp_matched_kind(
+                        path, ent, fr, _new_kind,
+                    ),
+                )
+            except Exception as exc:
+                logging.getLogger("mlgidBASE").warning(
+                    "Could not stamp matched peak lists in %s: %s",
+                    file_path, exc,
+                )
 
     return result
+
+
+def _normalise_matched_scope(file_path, entry, frame_num) -> None:
+    """Put the ``matched_*`` datasets a command is about to read or
+    extend into id form (stamped), best-effort: a failure is logged and
+    the run goes on (readers still decide each dataset's kind)."""
+    from mlgidlab.file_model import (
+        normalise_matched_entry,
+        normalise_matched_to_ids,
+    )
+
+    try:
+        if frame_num is None:
+            if entry:
+                entries = [entry]
+            else:
+                import h5py
+
+                from mlgidlab.file_model import entry_group_names
+
+                with h5py.File(file_path, "r") as f:
+                    entries = sorted(entry_group_names(f))
+            for ent in entries:
+                normalise_matched_entry(file_path, ent)
+        else:
+            _for_frames_of(file_path, entry, frame_num, normalise_matched_to_ids)
+    except Exception as exc:
+        logging.getLogger("mlgidBASE").warning(
+            "Could not normalise matched peak lists in %s: %s",
+            file_path, exc,
+        )
+
+
+def backend_peak_list_kind() -> str:
+    """What the installed mlgidbase writes into ``matched_*`` ``peak_list``:
+    fitted ids from 0.1.11 on, row positions before."""
+    from mlgidlab.file_model import KIND_ID, KIND_POSITION
+
+    try:
+        from importlib.metadata import version
+
+        parts = []
+        for piece in version("mlgidbase").split(".")[:3]:
+            digits = "".join(ch for ch in piece if ch.isdigit())
+            parts.append(int(digits) if digits else 0)
+        return KIND_ID if tuple(parts) >= (0, 1, 11) else KIND_POSITION
+    except Exception:
+        # Unknown install: assume the pinned (current) behaviour.
+        return KIND_ID
+
+
+def _for_frames_of(file_path, entry, frame_num, func) -> None:
+    """Call ``func(file_path, entry, frame)`` for every frame a pipeline
+    command's ``entry`` / ``frame_num`` kwargs address (None = all)."""
+    from mlgidlab.file_model import entry_group_names
+
+    if entry:
+        entries = [entry]
+    else:
+        import h5py
+
+        with h5py.File(file_path, "r") as f:
+            entries = sorted(entry_group_names(f))
+    if isinstance(frame_num, (list, tuple)):
+        frames: list = [int(n) for n in frame_num]
+    elif frame_num is None:
+        frames = [None]
+    else:
+        frames = [int(frame_num)]
+    for ent in entries:
+        for fr in frames:
+            if fr is None:
+                for n in _frame_numbers(file_path, ent):
+                    func(file_path, ent, n)
+            else:
+                func(file_path, ent, fr)
+
+
+def _frame_numbers(file_path, entry) -> list[int]:
+    """Frame numbers that have an analysis group under ``entry``."""
+    import h5py
+
+    from mlgidlab.file_model import ANALYSIS_REL
+
+    out: list[int] = []
+    with h5py.File(file_path, "r") as f:
+        ana = f.get(f"{entry}/{ANALYSIS_REL}")
+        if ana is None:
+            return out
+        for key in ana.keys():
+            if key.startswith("frame") and key[5:].isdigit():
+                out.append(int(key[5:]))
+    return sorted(out)
 
 
 def _backfill_fitted_peaks_polar_to_cartesian(

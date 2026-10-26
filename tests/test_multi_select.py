@@ -271,3 +271,128 @@ def test_selectionsChanged_emits_full_list(
 
     v._toggle_selected(s0)  # demotes primary; no extras → empty
     assert captured[-1] == []
+
+
+# -- Up / Down step through the peaks of the selected kind ----------------
+
+def _sel_kind(window, kind: str, idx: int) -> SelectedPeak:
+    table = (window.viewer._frame_peaks.get(0) or {})[kind]
+    sel = window.viewer._row_selection(kind, table, idx, 0)
+    window.viewer._set_selected(sel)
+    return sel
+
+
+def _now(v):
+    s = v.selected_peak
+    return None if s is None else (s.kind, s.peak_id)
+
+
+def test_step_selection_walks_detected_ids_and_stops_at_the_ends(
+    main_window, synthetic_nexus_with_peaks,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    v = main_window.viewer
+    _sel_kind(main_window, "detected", 0)
+    assert v.step_selection(+1) and _now(v) == ("detected", 1)
+    assert v.step_selection(+1) and _now(v) == ("detected", 2)
+    assert not v.step_selection(+1) and _now(v) == ("detected", 2)
+    assert v.step_selection(-1) and _now(v) == ("detected", 1)
+    assert v.step_selection(-1) and _now(v) == ("detected", 0)
+    assert not v.step_selection(-1) and _now(v) == ("detected", 0)
+
+
+def test_step_selection_skips_gaps_in_the_ids(
+    main_window, synthetic_nexus_with_peaks,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    v = main_window.viewer
+    v._frame_peaks[0]["detected"].ids[:] = [0, 5, 9]
+    _sel_kind(main_window, "detected", 0)
+    assert v.step_selection(+1) and _now(v) == ("detected", 5)
+    assert v.step_selection(+1) and _now(v) == ("detected", 9)
+    assert v.step_selection(-1) and _now(v) == ("detected", 5)
+
+
+def test_step_selection_stays_within_the_fitted_kind(
+    main_window, synthetic_nexus_with_peaks,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    v = main_window.viewer
+    _sel_kind(main_window, "fitted", 0)
+    assert v.step_selection(+1) and _now(v) == ("fitted", 1)
+    assert not v.step_selection(+1)                   # fitted has only 0, 1
+
+
+def test_step_selection_skips_fitted_rows_the_tracking_filter_hides(
+    main_window, synthetic_nexus_with_peaks,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    v = main_window.viewer
+    _sel_kind(main_window, "fitted", 0)
+    v._fitted_visible_only = {0: {0}}                 # fitted 1 is hidden
+    assert not v.step_selection(+1)
+    assert _now(v) == ("fitted", 0)
+
+
+def test_step_selection_needs_exactly_one_detected_or_fitted_peak(
+    main_window, synthetic_nexus_with_peaks,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    v = main_window.viewer
+    assert not v.step_selection(+1)                   # nothing selected
+    v._select_all_of_kind_on_frame("detected")
+    before = [(s.kind, s.peak_id) for s in v.selected_peaks()]
+    assert not v.step_selection(+1)                   # a multi-selection
+    assert [(s.kind, s.peak_id) for s in v.selected_peaks()] == before
+
+
+def test_step_selection_zooms_like_a_click(
+    main_window, synthetic_nexus_with_peaks, monkeypatch,
+):
+    _open(main_window, synthetic_nexus_with_peaks)
+    v = main_window.viewer
+    _sel_kind(main_window, "detected", 0)
+    zoomed = []
+    monkeypatch.setattr(v, "zoom_to_peak", lambda sel: zoomed.append(sel.peak_id))
+    v.step_selection(+1)
+    assert zoomed == [1]
+
+
+def _activate(window, qtbot) -> None:
+    """Window shortcuts only fire in the active window; offscreen needs
+    the activation asked for."""
+    window.show()
+    qtbot.waitExposed(window)
+    window.activateWindow()
+    qtbot.wait(50)
+    assert window.isActiveWindow()
+
+
+def test_down_and_up_keys_step_the_selection(
+    main_window, synthetic_nexus_with_peaks, qtbot,
+):
+    w = main_window
+    _activate(w, qtbot)
+    _open(w, synthetic_nexus_with_peaks)
+    _sel_kind(w, "detected", 0)
+    w.viewer.setFocus()                  # where a click on the image leaves it
+    qtbot.keyClick(w, Qt.Key.Key_Down)
+    assert _now(w.viewer) == ("detected", 1)
+    qtbot.keyClick(w, Qt.Key.Key_Up)
+    assert _now(w.viewer) == ("detected", 0)
+
+
+def test_up_and_down_stay_with_a_spin_box(
+    main_window, synthetic_nexus_with_peaks, qtbot, monkeypatch,
+):
+    """A widget that uses Up / Down keeps them: the frame spin box steps
+    its value and the peak selection does not move."""
+    w = main_window
+    _activate(w, qtbot)
+    _open(w, synthetic_nexus_with_peaks)
+    calls = []
+    monkeypatch.setattr(w.viewer, "step_selection", lambda d: calls.append(d))
+    w.frame_spin.setFocus()
+    qtbot.keyClick(w.frame_spin, Qt.Key.Key_Up)
+    assert calls == []
+    assert w.frame_spin.value() == 1

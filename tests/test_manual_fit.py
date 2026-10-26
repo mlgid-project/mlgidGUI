@@ -420,3 +420,98 @@ def test_far_neighbours_do_not_change_the_fit():
     assert with_far.radius == pytest.approx(alone.radius, abs=1e-12)
     assert with_far.angle == pytest.approx(alone.angle, abs=1e-12)
     assert with_far.amplitude == pytest.approx(alone.amplitude, abs=1e-12)
+
+
+# -- the 0.1.8 stack: defaults, hot-pixel parity, N-1 box scale -------------
+
+
+def test_the_shared_fit_defaults_follow_mlgidbase():
+    """The Pipeline panel and every fallback take the clustering numbers
+    from manual_fit; they must be what a bare run_fitting() uses."""
+    import inspect
+
+    mlgidbase = pytest.importorskip("mlgidbase")
+    from mlgidlab import manual_fit
+
+    sig = inspect.signature(mlgidbase.mlgidBASE.run_fitting)
+    assert sig.parameters["clustering_distance_peaks"].default == (
+        manual_fit.DEFAULT_CLUSTERING_DISTANCE_PEAKS
+    )
+    assert sig.parameters["clustering_distance_rings"].default == (
+        manual_fit.DEFAULT_CLUSTERING_DISTANCE_RINGS
+    )
+    assert sig.parameters["clustering_extend"].default == (
+        manual_fit.DEFAULT_CLUSTERING_EXTEND
+    )
+
+
+def test_the_hot_pixel_percentile_is_the_pipelines():
+    """mlgidbase never passes hot_pixel_percentile, so the pipeline runs
+    with fit_data's default; the manual fit passes the same value
+    explicitly. If pygidfit changes its default this fails and the
+    parity contract has to be re-decided."""
+    import inspect
+
+    from pygidfit.process_scans import fit_data
+
+    from mlgidlab import manual_fit
+
+    default = inspect.signature(fit_data).parameters[
+        "hot_pixel_percentile"
+    ].default
+    assert manual_fit.HOT_PIXEL_PERCENTILE == default
+    assert inspect.signature(fit_one_peak).parameters[
+        "hot_pixel_percentile"
+    ].default == default
+
+
+def test_fit_one_peak_hands_the_hot_pixel_percentile_to_pygidfit(monkeypatch):
+    import mlgidlab.manual_fit as mf
+
+    seen: dict = {}
+    import pygidfit.process_scans as ps
+
+    def _spy(*a, **kw):
+        seen.update(kw)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(ps, "fit_data", _spy)
+    cart, q_xy, q_z = _synthetic_cartesian_with_gaussian(
+        centre_r=1.5, centre_a=45.0, sigma_r=0.04, sigma_a=3.0,
+        amplitude=120.0,
+    )
+    for pct in (mf.HOT_PIXEL_PERCENTILE, None):
+        with pytest.raises(ManualFitError):
+            fit_one_peak(
+                cart, q_xy, q_z, radius=1.5, radius_width=0.1,
+                angle=45.0, angle_width=7.0, wavelength_angstrom=1.0,
+                q_xy_max=3.0, q_z_max=3.0, hot_pixel_percentile=pct,
+            )
+        assert seen["hot_pixel_percentile"] == pct
+
+
+def test_px_box_matches_pygidfits_boxes_preprocessing():
+    """pygidfit >= 0.1.8 scales boxes by N - 1; the GUI's pixel box
+    must agree with it to the pixel."""
+    from pygidfit.box_utils import boxes_preprocessing
+    from pygidfit.process_scans import DetectedPeaks
+
+    from mlgidlab.manual_fit import PeakBox, _px_box
+
+    shape = (512, 1024)
+    q_abs_max = 4.2
+    for box in (
+        PeakBox(1.5, 0.06, 45.0, 7.0),
+        PeakBox(0.4, 0.02, 3.0, 4.0),
+        PeakBox(3.9, 0.1, 87.0, 9.0),
+        PeakBox(2.0, 0.05, 30.0, 12.5),
+    ):
+        det = DetectedPeaks(
+            radius=np.array([box.radius]),
+            radius_width=np.array([box.radius_width]),
+            angle=np.array([box.angle]),
+            angle_width=np.array([box.angle_width]),
+        )
+        ref = boxes_preprocessing(det, shape, 1.0, q_abs_max, 3.0, 3.0, 0.0)[0]
+        xmin, ymin, xmax, ymax = (float(v) for v in ref.limits)
+        assert _px_box(box, q_abs_max, shape) == (xmin, xmax, int(ymin), int(ymax))

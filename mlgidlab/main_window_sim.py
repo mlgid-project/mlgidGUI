@@ -1221,10 +1221,11 @@ class SimOverlayMixin:
         CIF, the user's picks under the specific-CIFs scope, or every
         swept structure for the all-frames sweep. Everything else is
         rolled back: fitted row deleted, ``matched_*`` peak_list
-        positions remapped (they index fitted rows positionally),
-        detected row deleted. Afterwards the pre-run matched snapshot
-        is union-merged back so identifications the re-match failed to
-        reproduce are never lost. Runs at chain completion, before the
+        entries for it dropped (``prepare_fitted_delete`` /
+        ``remap_matched_peak_lists``), detected row deleted.
+        Afterwards the pre-run matched snapshot is union-merged back so
+        identifications the re-match failed to reproduce are never
+        lost. Runs at chain completion, before the
         queue-drain reload — silx is still detached, so the r+ writes
         are safe.
         """
@@ -1248,9 +1249,10 @@ class SimOverlayMixin:
         # each frame's solutions from scratch, and the (temporarily)
         # larger peak set can push a previously identified structure
         # below the matcher's threshold — the user's existing results
-        # must survive an Add/sweep. Snapshot rows keep valid
-        # positional peak_lists: injected rows are appended and only
-        # appended rows are rolled back.
+        # must survive an Add/sweep. The snapshot's peak_lists are
+        # fitted ids (``read_matched_raw``), which stay valid: injected
+        # rows are appended under fresh ids and only appended rows are
+        # rolled back.
         snapshot = stash.get("snapshot") or {}
         restored = 0
         for fr, snap in sorted(snapshot.items()):
@@ -1311,9 +1313,10 @@ class SimOverlayMixin:
             kept += len(recs) - len(drop)
             if not drop:
                 continue
-            # Positions BEFORE deleting — peak_list entries are
-            # positional indices into the pre-delete fitted table.
-            positions = file_model.fitted_positions_for_ids(
+            # Positions BEFORE deleting (this also puts the frame's
+            # matched peak_lists into id form, which needs the
+            # pre-delete fitted table).
+            positions = file_model.prepare_fitted_delete(
                 path, entry, fr, [int(r["fitted_id"]) for r in drop]
             )
             for r in drop:

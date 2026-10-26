@@ -224,6 +224,7 @@ def execute(
                 "exclusive."
             )
         _validate_append_target(cfg, raw_file_outputs)
+        _drop_stale_tracking(cfg, raw_file_outputs)
 
     # Single-entry mode: every scan's frames land in ONE fresh
     # ``entry_NNNN`` of the shared output file. The first scan creates
@@ -367,9 +368,10 @@ def import_converted_stack(
     those datasets, but detection consumes only image + q axes,
     fitting additionally only wavelength + ai (pygidfit's missing-
     wedge / critical-angle math), and matching only fitted peaks + q
-    maxima — verified against mlgidbase 0.1.8 / pygidfit 0.1.4, and
-    recorded in docs/backend_compatibility.md so future backend bumps
-    re-check it. The placeholders carry a ``placeholder`` attr so the
+    maxima — first verified against mlgidbase 0.1.8 / pygidfit 0.1.4 (the
+    tripwire test ``test_imported_geometry_loads_through_pygid`` also
+    passes on 0.1.11 / 0.1.8 / pygid 0.2.20), and recorded in
+    docs/backend_compatibility.md so future backend bumps re-check it. The placeholders carry a ``placeholder`` attr so the
     file stays honest. Without a wavelength (or with pixel axes) no
     geometry is written and the GUI refuses pipeline ops with a clear
     message; a ``process/mlgidlab`` note records the provenance either
@@ -544,6 +546,36 @@ def _warn_if_frames_diverted(
             "entries (check that every selected image has the same "
             "detector size).",
             n, expected, group,
+        )
+
+
+def _drop_stale_tracking(
+    cfg: ConversionConfig, raw_file_outputs: dict[Path, Path]
+) -> None:
+    """Remove the target entry's saved tracking table before frames are
+    appended to it.
+
+    The table belongs to the scan as it was (mlgidbase saves it under
+    ``analysis/general``), so it is stale once the scan grows. More
+    importantly pygid numbers the new frames by counting EVERY group
+    under ``analysis``, so a leftover ``general`` group would shift
+    every appended frame's number by one. Best-effort: a failure is
+    logged and the append goes on.
+    """
+    from mlgidlab import file_model
+
+    target = next(iter(set(raw_file_outputs.values())))
+    try:
+        if file_model.clear_tracked_peaks(target, cfg.append_entry):
+            logger.info(
+                "Append frames: removed the saved peak-tracking table of "
+                "%s (stale once frames are added).", cfg.append_entry,
+            )
+    except Exception:
+        logger.warning(
+            "Append frames: could not remove the saved tracking table of "
+            "%s; new frame numbers may be off by one.", cfg.append_entry,
+            exc_info=True,
         )
 
 

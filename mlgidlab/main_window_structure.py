@@ -1582,11 +1582,20 @@ class StructureMixin:
         self._apply_structure_pending_entry()
         if not self._structure_folded_docks:
             return
+        # Showing the docks one by one brings each forward in turn, so
+        # the right-hand tab that was in front is put back afterwards.
+        front = getattr(self, "_right_front_dock", None)
         for name in self._structure_folded_docks:
             dock = getattr(self, name, None)
             if dock is not None:
                 dock.show()
         self._structure_folded_docks.clear()
+        if front is not None and not front.isHidden():
+            front.raise_()
+            self._right_front_dock = front
+        # The loop above shows Scan tracking too, which the single-frame
+        # rule may need to take away again.
+        self._sync_scan_tracking_visibility()
         self._settle_dock_chrome()
 
     def _browser_is_hidden(self) -> bool:
