@@ -31,10 +31,10 @@ conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
 
 # GUI only
-pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
+pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
 
 # or, full pipeline (detection / fitting / matching + raw conversion)
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
 ```
 
 ### From a local clone (for development)

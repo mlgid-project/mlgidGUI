@@ -14,7 +14,6 @@ from PySide6.QtCore import (
     QSignalBlocker,
     QThread,
     Qt,
-    Slot,
 )
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -636,7 +635,7 @@ class FramesMixin:
         # _prefetchUpdate.
         self._prefetchUpdate.emit(self.viewer.current_frame, False, 1)
 
-    @Slot(int, object, object, object, object)
+    # Undecorated on purpose: see the note on _on_update_check_finished.
     def _on_prefetched(
         self,
         idx: int,

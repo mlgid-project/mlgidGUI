@@ -16,7 +16,7 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 
 from PySide6.QtWidgets import QApplication
 
-__version__ = "0.1.0a22"
+__version__ = "0.1.0a23"
 
 
 def _enable_crash_log() -> None:

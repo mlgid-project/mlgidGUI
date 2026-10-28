@@ -4,6 +4,29 @@ All notable changes to mlgidLAB are recorded here. Versions follow
 [PEP 440](https://peps.python.org/pep-0440/); `aN` suffixes are alpha
 pre-releases.
 
+## 0.1.0a23 — twenty-third alpha (2026-10-28)
+
+A fix for the in-app update, found when updating from a21 to a22. No new
+features.
+
+### Fixed
+
+- **The window froze after "Update now" and never offered the restart.**
+  The install had finished, but the handler that closes the progress box
+  and asks to restart ran on the install's worker thread instead of the
+  window's own, and stopped there. The handler of the update check (the
+  banner, the status message, and the confirmation of Update now) and the
+  one that stores prefetched frames had the same flaw. All three run on
+  the window's thread now. Updates started from this version work. An
+  update run by a21 or a22 can still freeze once, after pip has finished:
+  the new version is installed, so close the window and start it again.
+
+### Changed
+
+- Internal: the test suite grew by three tests. They run a real worker
+  thread and check where its handlers run, and one of them fails on any
+  decorated slot left in a mixin that is not a QObject.
+
 ## 0.1.0a22 — twenty-second alpha (2026-10-28)
 
 A bug-finding and speed pass before the rename to mlgidGUI. No new

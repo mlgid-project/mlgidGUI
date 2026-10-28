@@ -28,7 +28,7 @@
   <a href="https://github.com/mlgid-project/mlgidLAB/issues">Issues</a>
 </p>
 
-> **Alpha (`v0.1.0a22`).** The detect, fit, match and edit loop works end to end. Expect
+> **Alpha (`v0.1.0a23`).** The detect, fit, match and edit loop works end to end. Expect
 > rough edges and please report issues. See [`CHANGELOG.md`](CHANGELOG.md) for
 > highlights.
 
@@ -79,7 +79,7 @@ conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
 
 # full pipeline (detection / fitting / matching + raw conversion)
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
 mlgidlab
 ```
 

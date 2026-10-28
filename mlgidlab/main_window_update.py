@@ -6,7 +6,7 @@ source split.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QProcess, QSettings, QThread, QUrl, Qt, Slot
+from PySide6.QtCore import QProcess, QSettings, QThread, QUrl, Qt
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -352,7 +352,13 @@ class UpdateMixin:
         self._update_thread = None
         self._update_worker = None
 
-    @Slot(object)
+    # No @Slot here, and on the handlers of the other worker signals: this
+    # class is a plain mixin, not a QObject, so PySide cannot register a
+    # decorated method on the window and calls it on the thread that emits
+    # (even through a queued connection). The handler then ran on the worker
+    # thread and closed the progress dialog from there, which froze the
+    # window after every in-app update. Undecorated, the connection is
+    # queued onto the GUI thread. tests/test_mixin_slots.py guards this.
     def _on_update_check_finished(self, result) -> None:
         from mlgidlab import __version__ as current
 
@@ -465,7 +471,6 @@ class UpdateMixin:
         self._install_thread = None
         self._install_worker = None
 
-    @Slot(int, str)
     def _on_update_install_finished(self, returncode: int, output: str) -> None:
         progress = getattr(self, "_install_progress", None)
         if progress is not None:

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mlgidLAB v0.1.0a22 — manual test plan</title>
+<title>mlgidLAB v0.1.0a23 — manual test plan</title>
 <style>
   :root { --fg:#1b1b1b; --muted:#666; --line:#ddd; --accent:#1763b6; --warn:#b35a00; --pass:#1a7f37; --fail:#c0392b; }
   * { box-sizing: border-box; }
@@ -59,7 +59,7 @@
   <span class="count">Progress autosaves in this browser.</span>
 </div>
 
-<h1>mlgidLAB v0.1.0a22 — manual test plan</h1>
+<h1>mlgidLAB v0.1.0a23 — manual test plan</h1>
 <p class="sub">Mark each step <b>pass</b> or <b>fail</b> as you go (leave it
 blank if you didn't test it), and set an overall result per section. At
 the end, click <b>Copy results</b> and email the summary to me — it lists
@@ -71,7 +71,7 @@ every failed step by name. About 30-45 min for a full pass.</p>
   terminal output is the most useful thing to send me).
   <pre>conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
 mlgidlab</pre>
   <b>The test files are hosted once</b> on the
   <a href="https://github.com/mlgid-project/mlgidLAB/releases/tag/v0.1.0a9">v0.1.0a9
@@ -81,7 +81,7 @@ mlgidlab</pre>
   <code>example/</code> folder sits alongside it — you don't need to hunt
   anything down. You're welcome to try your own files too, but nothing
   else is required. Full install detail:
-  <a href="https://github.com/mlgid-project/mlgidLAB/blob/v0.1.0a22/docs/getting_started.md">docs/getting_started.md</a>.
+  <a href="https://github.com/mlgid-project/mlgidLAB/blob/v0.1.0a23/docs/getting_started.md">docs/getting_started.md</a>.
 </div>
 
 <h2>Reference files (in <code>example/</code>)</h2>
@@ -308,6 +308,7 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c13_8"> After an in-app update from a21, the "What's new" window opens on the first start of a22 and lists the a22 changes (it never showed for installed copies before a22)</label></li>
     <li><label><input type="checkbox" id="c13_9"> Right-click several nodes in the Structure tab, use New group and Cancel a few times, then paste to a frame range and run Fit selected (2D): everything works as before and nothing stays on screen afterwards</label></li>
     <li><label><input type="checkbox" id="c13_10"> In a multi-frame file with tracks that have gaps (MAPbI3_MAPbBr3_0001_scan0006.h5, after Track peaks), press Interpolate track: the status bar says how many gap peaks were filled, the track table and the phase views show the filled peaks right away, and no error is printed in the terminal</label></li>
+    <li><label><input type="checkbox" id="c13_11"> Updating from the app (Update now): the progress box closes when pip has finished, the &ldquo;Restart now?&rdquo; prompt appears, and the window stays responsive. Can only be checked on the first update after this version (a21 and a22 froze here)</label></li>
   </ul>
   <textarea id="n13" placeholder="Notes for area 13"></textarea>
 </div>
@@ -467,7 +468,7 @@ email together with the logs, and send to
 
   document.getElementById("copyBtn").addEventListener("click", function () {
     var L = [];
-    L.push("mlgidLAB v0.1.0a22 — manual test results");
+    L.push("mlgidLAB v0.1.0a23 — manual test results");
     L.push("Name: " + (val("t_name") || "(none)"));
     L.push("OS: " + (val("t_os") || "(none)") +
            "   Python: " + (val("t_py") || "(none)"));
