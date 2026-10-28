@@ -808,6 +808,8 @@ class TrackingMixin:
             payload.amplitude = np.append(
                 payload.amplitude, float(table.amplitude[j])
             )
+            if payload.peak_id is not None:
+                payload.peak_id = np.append(payload.peak_id, fid)
             comp = list(payload.components[track])
             comp.append(new_index)
             payload.components[track] = comp

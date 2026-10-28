@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mlgidLAB v0.1.0a21 — manual test plan</title>
+<title>mlgidLAB v0.1.0a22 — manual test plan</title>
 <style>
   :root { --fg:#1b1b1b; --muted:#666; --line:#ddd; --accent:#1763b6; --warn:#b35a00; --pass:#1a7f37; --fail:#c0392b; }
   * { box-sizing: border-box; }
@@ -59,7 +59,7 @@
   <span class="count">Progress autosaves in this browser.</span>
 </div>
 
-<h1>mlgidLAB v0.1.0a21 — manual test plan</h1>
+<h1>mlgidLAB v0.1.0a22 — manual test plan</h1>
 <p class="sub">Mark each step <b>pass</b> or <b>fail</b> as you go (leave it
 blank if you didn't test it), and set an overall result per section. At
 the end, click <b>Copy results</b> and email the summary to me — it lists
@@ -71,7 +71,7 @@ every failed step by name. About 30-45 min for a full pass.</p>
   terminal output is the most useful thing to send me).
   <pre>conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a21"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
 mlgidlab</pre>
   <b>The test files are hosted once</b> on the
   <a href="https://github.com/mlgid-project/mlgidLAB/releases/tag/v0.1.0a9">v0.1.0a9
@@ -81,7 +81,7 @@ mlgidlab</pre>
   <code>example/</code> folder sits alongside it — you don't need to hunt
   anything down. You're welcome to try your own files too, but nothing
   else is required. Full install detail:
-  <a href="https://github.com/mlgid-project/mlgidLAB/blob/v0.1.0a21/docs/getting_started.md">docs/getting_started.md</a>.
+  <a href="https://github.com/mlgid-project/mlgidLAB/blob/v0.1.0a22/docs/getting_started.md">docs/getting_started.md</a>.
 </div>
 
 <h2>Reference files (in <code>example/</code>)</h2>
@@ -181,6 +181,7 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c4_3"> Convert runs; progress streams in Logs; converted file opens automatically</label></li>
     <li><label><input type="checkbox" id="c4_4"> Both output modes work; "Overwrite off" appends entries</label></li>
     <li><label><input type="checkbox" id="c4_6"> Output sits right under Selection and starts open; with Directory left empty, Convert is enabled, the empty field names the raw file's folder, and the converted file lands there (Logs says where)</label></li>
+    <li><label><input type="checkbox" id="c4_7"> Import converted images over an existing <code>&lt;folder&gt;_imported.h5</code> with one image of a different size mixed in: an error names the file, and the earlier <code>_imported.h5</code> still opens unchanged, with no <code>.&hellip;mlgidlab-import</code> leftover next to it</label></li>
   </ul>
   <textarea id="n4" placeholder="Notes for area 4"></textarea>
 </div>
@@ -241,6 +242,7 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c8_4"> Ctrl+Shift+V with a range like 0-2,5 lands peaks on each of those frames</label></li>
     <li><label><input type="checkbox" id="c8_5"> Fit selected (2D) on 2+ detected peaks runs a progress dialog, adds a fit each</label></li>
     <li><label><input type="checkbox" id="c8_6"> Select 2+ peaks, Delete: one confirmation, all removed</label></li>
+    <li><label><input type="checkbox" id="c8_7"> On a frame with many peaks (a few hundred or more), Ctrl+A on the image selects them all and the Peaks table shows the same rows selected at once, without a pause</label></li>
   </ul>
   <textarea id="n8" placeholder="Notes for area 8"></textarea>
 </div>
@@ -303,6 +305,9 @@ Not tested. The per-step marks are what tell us exactly which parts broke.</p>
     <li><label><input type="checkbox" id="c13_5"> Start with a fresh settings profile (Linux: <code>XDG_CONFIG_HOME=$(mktemp -d) mlgidlab</code>): a box "mlgidLAB is becoming mlgidGUI" appears once, says nothing has to be done now, and OK closes it; start again with the same profile: it does not come back</label></li>
     <li><label><input type="checkbox" id="c13_6"> Help &rarr; mlgidLAB is becoming mlgidGUI&hellip; shows the same box again; "More information" opens the releases page in the browser, OK does not</label></li>
     <li><label><input type="checkbox" id="c13_7"> After an in-app update, answering Yes to the "Restart now?" prompt relaunches the app (it raised an error and stayed open before a21)</label></li>
+    <li><label><input type="checkbox" id="c13_8"> After an in-app update from a21, the "What's new" window opens on the first start of a22 and lists the a22 changes (it never showed for installed copies before a22)</label></li>
+    <li><label><input type="checkbox" id="c13_9"> Right-click several nodes in the Structure tab, use New group and Cancel a few times, then paste to a frame range and run Fit selected (2D): everything works as before and nothing stays on screen afterwards</label></li>
+    <li><label><input type="checkbox" id="c13_10"> In a multi-frame file with tracks that have gaps (MAPbI3_MAPbBr3_0001_scan0006.h5, after Track peaks), press Interpolate track: the status bar says how many gap peaks were filled, the track table and the phase views show the filled peaks right away, and no error is printed in the terminal</label></li>
   </ul>
   <textarea id="n13" placeholder="Notes for area 13"></textarea>
 </div>
@@ -462,7 +467,7 @@ email together with the logs, and send to
 
   document.getElementById("copyBtn").addEventListener("click", function () {
     var L = [];
-    L.push("mlgidLAB v0.1.0a21 — manual test results");
+    L.push("mlgidLAB v0.1.0a22 — manual test results");
     L.push("Name: " + (val("t_name") || "(none)"));
     L.push("OS: " + (val("t_os") || "(none)") +
            "   Python: " + (val("t_py") || "(none)"));

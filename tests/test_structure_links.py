@@ -64,6 +64,9 @@ def _stub_link_dialog(monkeypatch, kind, name, target, filename=""):
         def __init__(self, *a, **k):
             self.kwargs = k
 
+        def deleteLater(self):
+            pass
+
         def exec(self):
             return QDialog.DialogCode.Accepted
 
@@ -78,6 +81,9 @@ def _cancel_link_dialog(monkeypatch):
 
     class _Stub:
         def __init__(self, *a, **k):
+            pass
+
+        def deleteLater(self):
             pass
 
         def exec(self):

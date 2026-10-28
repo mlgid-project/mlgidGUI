@@ -338,7 +338,10 @@ class UpdateMixin:
         self._update_thread.started.connect(self._update_worker.run)
         self._update_worker.finished.connect(self._on_update_check_finished)
         self._update_worker.finished.connect(self._update_thread.quit)
-        self._update_thread.finished.connect(self._update_worker.deleteLater)
+        # No worker.deleteLater on thread.finished: the worker is owned by
+        # its Python reference, which _clear_update_thread drops on the GUI
+        # thread. A deleteLater runs on the finishing worker thread at the
+        # same moment, so the two raced into a double delete (segfault).
         self._update_thread.finished.connect(self._clear_update_thread)
         self._update_thread.start()
 
@@ -450,7 +453,8 @@ class UpdateMixin:
         self._install_thread.started.connect(self._install_worker.run)
         self._install_worker.finished.connect(self._on_update_install_finished)
         self._install_worker.finished.connect(self._install_thread.quit)
-        self._install_thread.finished.connect(self._install_worker.deleteLater)
+        # Released by _clear_install_thread, not deleteLater: see
+        # _start_update_check.
         self._install_thread.finished.connect(self._clear_install_thread)
         self._install_thread.start()
 

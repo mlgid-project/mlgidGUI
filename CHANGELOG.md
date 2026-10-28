@@ -4,6 +4,67 @@ All notable changes to mlgidLAB are recorded here. Versions follow
 [PEP 440](https://peps.python.org/pep-0440/); `aN` suffixes are alpha
 pre-releases.
 
+## 0.1.0a22 — twenty-second alpha (2026-10-28)
+
+A bug-finding and speed pass before the rename to mlgidGUI. No new
+features.
+
+### Fixed
+
+- **The update check could crash the app.** Two parts of the app both
+  deleted the update worker when its thread finished, and when they
+  overlapped the process died with a segmentation fault. The startup
+  update check runs this on every launch. One owner remains.
+- **A failed image import no longer destroys an earlier one.** Importing
+  converted images wrote straight into the output file, so a wrong-sized
+  image or a wrong number of angles part-way left a truncated file, and
+  re-importing into the default `<folder>_imported.h5` replaced the
+  earlier import first. The stack is now written to a temporary file and
+  moved into place only when every frame is in.
+- **Ctrl+A on the image no longer freezes the Peaks table.** Selecting
+  every peak on a frame took 0.5 s for 1000 peaks and 2.2 s for 2000; it
+  now takes a few hundredths of a second.
+- **"Add from HDF5..." in the Conversion metadata no longer reads the
+  whole dataset.** Picking the detector stack read all of it (tens of GB
+  on a beamtime file) to show one number. It reads one value.
+- **"What's new" now appears after an in-app update.** The changelog was
+  not part of the installed package, so the window never had anything to
+  show. It ships with the package now.
+- **Recovering an interrupted pipeline run no longer overwrites an
+  earlier recovery.** When an interrupted run left its tables behind with
+  no swap marker, the recovery saved them as `__mlgidlab_orphan__<name>`;
+  a second recovery for the same table replaced the first. Later ones are
+  saved as `__mlgidlab_orphan__<name>_2`, `_3`, and so on.
+- **Settings could fail to apply after a peak list was removed.** A
+  logging call in the error path used a name that was never defined.
+- **Interpolate tracks no longer leaves the tracking panel stale.** After
+  the gaps were filled, the update of the phase information raised an
+  `IndexError` (the filled peaks were added to the track but their ids
+  were not), so the panel and the phase views did not show the filled
+  tracks, and the saved tracks in the file did not get them either. The
+  filled peaks themselves were saved as fitted peaks.
+- **Hidden dialogs and menus no longer pile up.** The Structure tab's
+  right-click menu, the New group / field / link, Retarget link, Pick
+  node, array editor and New attribute dialogs, and the progress dialogs
+  of Paste to frames and Fit selected (2D) stayed behind, hidden, after
+  every use for the rest of the session.
+- **Windows: the clean-up of leftover temporary folders is switched off.**
+  The check for whether the owning process still runs does not work on
+  Windows, where it could send Ctrl+C to another process. Folders left
+  by a crashed session stay until Windows clears the temp folder.
+
+### Changed
+
+- The README is redesigned, with the three demo clips (conversion,
+  detect/fit/match, tracking) shown separately. Each is attached to the
+  release as its own mp4, recorded against this version.
+- `packaging` is now a declared dependency (the updater uses it).
+- Opening a CIF pickle runs the code inside it; the docs now say to
+  open only pickles you made or trust.
+- Internal: the restart-prompt test now expects only its own error, test
+  comments name symbols instead of line numbers, and the test suite grew
+  by fifteen tests.
+
 ## 0.1.0a21 — twenty-first alpha (2026-10-26)
 
 ### Added

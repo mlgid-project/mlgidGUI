@@ -89,6 +89,9 @@ def _stub_group_dialog(monkeypatch, name, nx_class="", template=None):
         def __init__(self, *a, **k):
             pass
 
+        def deleteLater(self):
+            pass
+
         def exec(self):
             return QDialog.DialogCode.Accepted
 
@@ -106,6 +109,9 @@ def _stub_dataset_dialog(
 
     class _Stub:
         def __init__(self, *a, **k):
+            pass
+
+        def deleteLater(self):
             pass
 
         def exec(self):
@@ -628,6 +634,53 @@ def _menu_labels(window, h5_path):
     node = _FakeNode(window.session.temp_path, h5_path)
     window._structure_context_actions(_MenuEvent(node, menu))
     return [a.text() for a in menu.actions() if a.text()]
+
+
+def test_the_structure_tab_menu_is_not_kept_after_it_closes(
+    editing, monkeypatch,
+):
+    """Each right-click builds a fresh menu parented to the window; it
+    has to go once it closes, or every click leaves one behind."""
+    from PySide6.QtCore import QCoreApplication, QEvent, QPoint
+    from PySide6.QtWidgets import QMenu
+
+    import mlgidlab.main_window_structure as mws
+
+    shown = []
+
+    class _ShownMenu(QMenu):
+        def exec(self, *args):
+            shown.append(self)
+
+    monkeypatch.setattr(mws, "QMenu", _ShownMenu)
+    before = len(editing.findChildren(QMenu))
+    for _ in range(3):
+        editing._on_structure_tree_context(
+            str(editing.session.temp_path), "/entry_0000", QPoint(0, 0))
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert len(shown) == 3
+    assert len(editing.findChildren(QMenu)) == before
+
+
+def test_a_closed_structure_dialog_is_not_kept(editing, monkeypatch):
+    """The New group / field / link dialogs are parented to the window
+    and used once; each use has to leave nothing behind."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QDialog
+
+    import mlgidlab.main_window_structure as mws
+
+    class _Cancelled(mws.NewGroupDialog):
+        def exec(self):
+            return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(mws, "NewGroupDialog", _Cancelled)
+    before = len(editing.findChildren(mws.NewGroupDialog))
+    for _ in range(3):
+        editing._on_structure_new_group(_target(editing, "/entry_0000"))
+    assert len(editing.findChildren(mws.NewGroupDialog)) == before + 3
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert len(editing.findChildren(mws.NewGroupDialog)) == before
 
 
 #: What only a group can offer, since only a group holds children.

@@ -206,7 +206,7 @@ def test_restart_prompt_logs_the_request(main_window, monkeypatch, tmp_path):
     monkeypatch.setattr(
         mwu.QProcess, "startDetached",
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("stop")))
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="stop"):
         main_window._prompt_restart()
     text = Path(tmp_path / diagnostics.UPDATE_LOG_NAME).read_text("utf-8")
     assert "=== restart requested" in text

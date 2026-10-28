@@ -1226,7 +1226,10 @@ class StructurePanel(QWidget):
     def _on_add_attribute(self) -> None:
         node = self._info.path if self._info is not None else ""
         dialog = NewAttributeDialog(self, node_name=node)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         name, type_name, value = dialog.result_values()
         if name:

@@ -50,7 +50,9 @@ _STASH_PREFIX = "__mlgidlab_stash__"
 #: Where the swapped-in data goes when a stash is found with no marker
 #: to say what it belongs to. Never overwritten, never deleted: the
 #: sweep's job is to make the standard tables right again without
-#: destroying whatever the interrupted run had put in their place.
+#: destroying whatever the interrupted run had put in their place. A
+#: second recovery for the same table gets ``_2``, ``_3``, ... after the
+#: name (``_orphan_name``), so the first one survives.
 _ORPHAN_PREFIX = "__mlgidlab_orphan__"
 #: In-entry, NOT top-level: ``pygid.NexusFile`` opens ``/<name>/data``
 #: for every root key, so a stray top-level group is exactly the
@@ -97,6 +99,19 @@ def _move(group, src: str, dst: str) -> bool:
         del group[dst]
     group.move(src, dst)
     return True
+
+
+def _orphan_name(group, standard: str) -> str:
+    """The first unused ``__mlgidlab_orphan__<standard>[_N]`` in ``group``.
+
+    ``_move`` replaces an existing destination, which for the orphan
+    name would delete an earlier recovery's data."""
+    name = f"{_ORPHAN_PREFIX}{standard}"
+    n = 2
+    while name in group:
+        name = f"{_ORPHAN_PREFIX}{standard}_{n}"
+        n += 1
+    return name
 
 
 def _swap_in(file_path: Path, entry: str, frame: Any, plan: dict) -> None:
@@ -243,7 +258,7 @@ def recover_swaps(file_path: Path) -> int:
                         if not key.startswith(_STASH_PREFIX):
                             continue
                         standard = key[len(_STASH_PREFIX):]
-                        _move(group, standard, f"{_ORPHAN_PREFIX}{standard}")
+                        _move(group, standard, _orphan_name(group, standard))
                         _move(group, key, standard)
                         touched = True
                 if touched:
@@ -1357,7 +1372,10 @@ def parse_cif_input(
       • ``CifPattern`` for raw .cif paths or a CIF folder (slow — simulates
         every CIF; the GUI runs this in a worker thread so the parsing
         cost is paid once, then reused for every Run-Matching).
-      • ``CifPattern`` for a pickle (loaded via ``pickle.load``).
+      • ``CifPattern`` for a pickle (loaded via ``pickle.load``, which
+        runs whatever code the file contains: the file is chosen by the
+        user and never loaded automatically, so it must be one they
+        made or trust).
 
     Either result can be passed verbatim to ``mlgidBASE.run_matching`` as
     ``cif_prepr`` — ``load_cif_prepr`` accepts a ``CifPattern`` and a

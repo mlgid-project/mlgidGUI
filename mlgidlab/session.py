@@ -4,6 +4,7 @@ import atexit
 import os
 import re
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -55,7 +56,17 @@ def cleanup_registered_temp_dirs() -> None:
 
 
 def _pid_alive(pid: int) -> bool:
-    """True if a process with ``pid`` exists (signal 0 probes without sending)."""
+    """True if a process with ``pid`` exists (signal 0 probes without sending).
+
+    Always True on Windows: there ``os.kill(pid, 0)`` is ``CTRL_C_EVENT``,
+    which sends Ctrl+C to a console process group instead of probing, and
+    its failure for a dead pid is an ``OSError`` that this function reads
+    as "exists". A probe that cannot tell would only ever delay the sweep
+    (its folders stay until the OS clears the temp dir) while risking an
+    interrupt for a live process, so the sweep is skipped there.
+    """
+    if sys.platform == "win32":
+        return True
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

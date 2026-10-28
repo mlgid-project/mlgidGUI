@@ -439,12 +439,20 @@ def restore_launchers(renames: list[tuple[Path, Path]]) -> None:
 # Changelog (offline, from the bundled CHANGELOG.md)
 # --------------------------------------------------------------------- #
 def _changelog_path() -> Path | None:
-    """Locate the repo/package ``CHANGELOG.md`` (``None`` if absent)."""
+    """Locate the bundled ``CHANGELOG.md`` (``None`` if absent).
+
+    An installed wheel carries it inside the package (``setup.py`` copies
+    it there at build time); a source checkout or editable install has it
+    at the repository root.
+    """
     try:
         import mlgidlab
 
-        p = Path(mlgidlab.__file__).resolve().parent.parent / "CHANGELOG.md"
-        return p if p.is_file() else None
+        pkg = Path(mlgidlab.__file__).resolve().parent
+        for p in (pkg / "CHANGELOG.md", pkg.parent / "CHANGELOG.md"):
+            if p.is_file():
+                return p
+        return None
     except Exception:  # pragma: no cover - defensive
         logger.debug("update check: changelog path lookup failed", exc_info=True)
         return None

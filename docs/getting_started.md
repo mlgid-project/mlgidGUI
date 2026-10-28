@@ -31,10 +31,10 @@ conda create -n mlgidlab python=3.12 -y
 conda activate mlgidlab
 
 # GUI only
-pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a21"
+pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
 
 # or, full pipeline (detection / fitting / matching + raw conversion)
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a21"
+pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a22"
 ```
 
 ### From a local clone (for development)
@@ -118,7 +118,8 @@ is kept across an update when it is installed.
 4. **Detect / fit / match** (NeXus file): Pipeline dock → **Run
    Detection** → **Run Fitting**; set a CIF source (or load the bundled
    `example/prepr_cifs.pickle`) → **Run Matching**. Overlays and the
-   Peaks tables populate.
+   Peaks tables populate. Only load a pickle you made yourself or got
+   from someone you trust: opening a pickle runs the code inside it.
 5. **Edit peaks**: click a peak to select; drag ROI edges to resize;
    `Ctrl+Alt`-drag a new manual box (polar mode) and **Add to
    detected** / **Add to fitted**. Overlapping boxes follow one rule:

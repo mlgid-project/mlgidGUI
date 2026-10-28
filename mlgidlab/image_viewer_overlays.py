@@ -6,6 +6,8 @@ source split.
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
@@ -35,6 +37,8 @@ from mlgidlab.viewer_styles import (
     _sim_marker_size,
     matched_pen_for,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ViewerOverlaysMixin:

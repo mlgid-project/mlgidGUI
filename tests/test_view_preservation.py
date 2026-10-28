@@ -1,6 +1,6 @@
 """``show_stack(preserve_view=...)`` frame + viewbox-range behavior.
 
-Source: image_viewer.py:1010-1105. ``preserve_view=True`` clamps and
+Source: ``GIWAXSImageViewer.show_stack``. ``preserve_view=True`` clamps and
 keeps ``current_frame`` and restores the viewbox range via
 ``getViewBox().setRange(...padding=0)``; ``False`` resets to frame 0
 with autorange. ``show_stack`` requires a ``_LazyImageStack``-backed

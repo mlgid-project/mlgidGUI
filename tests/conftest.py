@@ -152,8 +152,8 @@ def pytest_unconfigure(config):
 # before any numpy/h5py import). Field set + order is the ground truth
 # from mlgidLAB itself, NOT pygid (absent from this checkout): it mirrors
 # the ``fields`` dict written by ``add_fitted_peak_row``
-# (file_model.py:840-858) and the names read by
-# ``PeakTable.from_dataset`` (file_model.py:93-104).
+# (``file_model.add_fitted_peak_row``) and the names read by
+# ``PeakTable.from_dataset``.
 PYGID_PEAK_DTYPE = [
     ("amplitude", "f4"),
     ("angle", "f4"),
@@ -358,9 +358,9 @@ def synthetic_nexus(tmp_path):
 
     * ``file_model`` constants ``IMG_REL='data/img_gid_q'``,
       ``QXY_REL='data/q_xy'``, ``QZ_REL='data/q_z'``
-      (``file_model.py:42-44``).
+      (``file_model``).
     * ``list_entries`` keeps an entry only if its ``data`` group has a
-      ``signal`` attr equal to ``"img_gid_q"`` (``file_model.py:132``)
+      ``signal`` attr equal to ``"img_gid_q"``
       and the group name passes ``is_entry_group_name``
       (``entry``/``entry_0000``/``entry_horiz`` all valid).
 
@@ -414,7 +414,7 @@ def synthetic_nexus_with_peaks(tmp_path):
     layout matches what the read path expects, verified against source:
 
     * group path ``entry_0000/data/analysis/frame00000/<kind>_peaks``
-      (``ANALYSIS_REL`` / ``FRAME_KEY_FMT``, file_model.py:21,44).
+      (``file_model.ANALYSIS_REL`` / ``FRAME_KEY_FMT``).
     * the structured dtype is ``PYGID_PEAK_DTYPE`` (see its comment).
     * frames 1 & 2 get *no* analysis group, so ``load_peaks`` returns
       ``{detected:None, fitted:None}`` (``file_model.read_peaks``).
@@ -486,7 +486,7 @@ def synthetic_fitted_scan(tmp_path):
     (frames 0-5, id 0 each) plus one single-frame blip on frame 2
     (id 1). Built for the phase-tracking tests: the ``axes`` attr on
     the data group is REQUIRED — ``pygid.NexusFile.get_entry_type``
-    rejects entries without it (nexus_reader.py:526), and mlgidBASE's
+    rejects entries without it (``pygid/nexus_reader.py::get_entry_type``), and mlgidBASE's
     ``track_peaks`` opens the file through pygid. The blip forms a
     1-member IoU component, so upstream's ``length`` cut (strictly
     greater) drops it for any ``length >= 1``.
@@ -550,7 +550,7 @@ def synthetic_raw(tmp_path):
 
     ``list_raw_entries`` keeps a dataset only if it is 3-D with both
     spatial dims ≥ ``RAW_MIN_DETECTOR_HW`` (==32) and a numeric dtype
-    (file_model.py:595,634-640). This file deliberately includes two
+    (``file_model.list_raw_entries``). This file deliberately includes two
     datasets that must be *filtered out* so the size / ndim guards are
     exercised, and carries no ``entry_*`` groups so the open flow
     (``CopyWorker``'s inline classification) reads it as ``raw``

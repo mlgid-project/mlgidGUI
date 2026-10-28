@@ -120,6 +120,29 @@ def test_import_pixel_fallback_flip_and_mismatch(tmp_path):
         )
 
 
+def test_failed_import_leaves_the_output_path_as_it_was(tmp_path):
+    """An import that fails part-way writes nothing: no truncated file at
+    a new path, and an earlier import at the same path survives intact
+    (re-importing a folder reuses the default ``<folder>_imported.h5``)."""
+    tifs = _write_float_tiffs(tmp_path / "maps", n=2)
+    small = _write_float_tiffs(tmp_path / "small", n=1, h=8, w=9)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    with pytest.raises(ValueError, match="does not match"):
+        import_converted_stack([tifs[0], small[0]], out / "new.h5")
+    assert list(out.iterdir()) == []
+
+    earlier = import_converted_stack(tifs, out / "maps_imported.h5")
+    before = earlier.read_bytes()
+    with pytest.raises(ValueError, match="does not match"):
+        import_converted_stack([tifs[0], small[0]], earlier)
+    with pytest.raises(ValueError, match="2 angles.*1 image"):
+        import_converted_stack([tifs[0]], earlier, ai=[0.1, 0.2])
+    assert earlier.read_bytes() == before
+    assert list(out.iterdir()) == [earlier]
+
+
 def test_import_with_wavelength_writes_pipeline_geometry(
     main_window, tmp_path
 ):

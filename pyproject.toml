@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlgidlab"
-version = "0.1.0a21"
+version = "0.1.0a22"
 description = "mlgidLAB: graphical interface for the mlgidBASE GIWAXS analysis pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -53,6 +53,10 @@ dependencies = [
     # present transitively via silx[full]/pyFAI; pinned here so the image
     # open path has an explicit floor.
     "fabio>=2024.1",
+    # update_check parses release tags with packaging.version. It arrives
+    # through silx and matplotlib today; declared because the GUI imports
+    # it directly, so a future change in those does not break the updater.
+    "packaging>=21",
 ]
 
 [project.optional-dependencies]

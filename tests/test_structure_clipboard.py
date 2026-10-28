@@ -438,6 +438,9 @@ def test_paste_from_file_picks_a_node_and_copies_it(
         def __init__(self, *a, **k):
             pass
 
+        def deleteLater(self):
+            pass
+
         def exec(self):
             return QDialog.DialogCode.Accepted
 
@@ -462,6 +465,9 @@ def test_paste_from_file_cancelled_at_the_picker_does_nothing(
 
     class _Picker:
         def __init__(self, *a, **k):
+            pass
+
+        def deleteLater(self):
             pass
 
         def exec(self):

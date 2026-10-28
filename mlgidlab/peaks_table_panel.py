@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import numpy as np
 from PySide6.QtCore import (
+    QItemSelection,
     QItemSelectionModel,
     QModelIndex,
     QSortFilterProxyModel,
@@ -454,15 +455,22 @@ class PeaksTablePanel(QWidget):
                 | QItemSelectionModel.SelectionFlag.Rows
             )
             first_idx = None
+            # One pass over the model and one select() call, not one of
+            # each per selected peak: Ctrl+A hands over every peak on the
+            # frame, and both made this quadratic (2000 peaks took
+            # seconds).
+            rows_by_id = _rows_by_id_in_model(model)
+            selection = QItemSelection()
             for sel in sels:
-                src_row = _find_row_for_id_in_model(model, sel.peak_id)
+                src_row = rows_by_id.get(int(sel.peak_id))
                 if src_row is None:
                     continue
                 proxy_idx = proxy.mapFromSource(model.index(src_row, 0))
-                selection_model.select(proxy_idx, flags)
+                selection.select(proxy_idx, proxy_idx)
                 if first_idx is None:
                     first_idx = proxy_idx
             if first_idx is not None:
+                selection_model.select(selection, flags)
                 # The primary drives the scroll and the current index,
                 # matching what the image calls the primary.
                 selection_model.setCurrentIndex(
@@ -890,6 +898,20 @@ def _find_row_for_id_in_model(
         if v is not None and int(v) == int(peak_id):
             return r
     return None
+
+
+def _rows_by_id_in_model(model: QStandardItemModel) -> dict[int, int]:
+    """``{peak_id: source-model row}`` for every ID-column item, the
+    first row winning, as ``_find_row_for_id_in_model`` would."""
+    rows: dict[int, int] = {}
+    for r in range(model.rowCount()):
+        item = model.item(r, 0)
+        if item is None:
+            continue
+        v = item.data(_ROLE_PEAK_ID)
+        if v is not None:
+            rows.setdefault(int(v), r)
+    return rows
 
 
 def _selected_from_table(

@@ -322,6 +322,8 @@ class StructureMixin:
         )
         if not menu.isEmpty():
             menu.exec(position)
+        # Parented to the window for its style, so nothing else frees it.
+        menu.deleteLater()
 
     #: The action row's verbs, and the handler each one calls. The same
     #: handlers the context menu uses, so the two surfaces can never
@@ -1003,7 +1005,10 @@ class StructureMixin:
             return
         handle, parent_path = opened
         dialog = NewGroupDialog(self, parent_path=parent_path)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         name, nx_class, template_key = dialog.result_values()
         if not name:
@@ -1033,7 +1038,10 @@ class StructureMixin:
             return
         handle, parent_path = opened
         dialog = NewDatasetDialog(self, parent_path=parent_path)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         name, dtype, shape_text, value_text, units, resizable = dialog.result_values()
         if not name:
@@ -1730,7 +1738,10 @@ class StructureMixin:
             return
         handle, parent_path = opened
         dialog = NewLinkDialog(self, parent_path=parent_path)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         kind, name, link_target, filename = dialog.result_values()
         if not name or not link_target:
@@ -1782,7 +1793,10 @@ class StructureMixin:
             self, parent_path=path, kind=before.kind, name=name,
             target=before.target, filename=before.filename, retarget=True,
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         kind, _, link_target, filename = dialog.result_values()
         if not link_target:
@@ -1946,7 +1960,10 @@ class StructureMixin:
         if not path:
             return
         dialog = PickNodeDialog(path, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         source = dialog.selected_path()
         if not source:
@@ -2173,7 +2190,10 @@ class StructureMixin:
             self, path=path, array=array, editable=editable,
             read_only_reason=reason,
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Parented for its style, so nothing else frees it.
+        dialog.deleteLater()
+        if not accepted:
             return
         self._apply_grid_result(handle, path, array, dialog.result_array())
 

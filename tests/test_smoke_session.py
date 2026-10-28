@@ -17,6 +17,11 @@ exercises the same load logic deterministically.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+
+from mlgidlab import session as session_mod
 from mlgidlab.session import NexusSession
 
 
@@ -116,3 +121,45 @@ def test_close_event_is_idempotent(main_window, synthetic_nexus):
     main_window.close()
     main_window.close()
     assert main_window._closed is True
+
+
+def test_pid_alive_probes_on_posix(monkeypatch):
+    if sys.platform == "win32":
+        return
+    assert session_mod._pid_alive(os.getpid()) is True
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert session_mod._pid_alive(child.pid) is False
+
+
+def test_stale_sweep_leaves_everything_alone_on_windows(tmp_path, monkeypatch):
+    """On Windows ``os.kill(pid, 0)`` is Ctrl+C, not a probe. The check
+    must not call it and must report "alive", so the sweep removes
+    nothing rather than interrupt a live process."""
+    monkeypatch.setattr(session_mod.sys, "platform", "win32")
+
+    def _no_kill(pid, sig):
+        raise AssertionError("os.kill must not run on Windows")
+
+    monkeypatch.setattr(session_mod.os, "kill", _no_kill)
+    monkeypatch.setattr(session_mod.tempfile, "gettempdir", lambda: str(tmp_path))
+    leftover = tmp_path / "mlgidlab_999999_abcd"
+    leftover.mkdir()
+    assert session_mod._pid_alive(999999) is True
+    assert session_mod.sweep_stale_temp_dirs() == 0
+    assert leftover.is_dir()
+
+
+def test_stale_sweep_removes_dead_pid_dirs_on_posix(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        return
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    monkeypatch.setattr(session_mod.tempfile, "gettempdir", lambda: str(tmp_path))
+    dead = tmp_path / f"mlgidlab_{child.pid}_x"
+    mine = tmp_path / f"mlgidlab_{os.getpid()}_x"
+    dead.mkdir()
+    mine.mkdir()
+    assert session_mod.sweep_stale_temp_dirs() == 1
+    assert not dead.exists()
+    assert mine.is_dir()

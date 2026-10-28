@@ -244,3 +244,25 @@ def test_batch_fit_partial_failure_continues(
     )["fitted"])
     # 2 successes (peaks 1 and 3) + 1 failure (peak 2) → 2 new rows.
     assert n_after == n_before + 2
+
+
+def test_batch_fit_leaves_no_progress_dialog_behind(
+    main_window, synthetic_nexus_with_peaks, monkeypatch, peak_link_off,
+):
+    """The progress dialog is parented to the window; once the batch is
+    done it has to go, or every batch leaves one behind."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QProgressDialog
+
+    _open(main_window, synthetic_nexus_with_peaks)
+    _select_all_three_detected(main_window)
+    monkeypatch.setattr(
+        main_window, "_run_pygidfit_for_selection",
+        lambda sel, entry, frame: (_StubFitResult(
+            radius=float(sel.radius), angle=float(sel.angle),
+        ), None),
+    )
+    before = len(main_window.findChildren(QProgressDialog))
+    main_window._on_batch_fit_2d()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert len(main_window.findChildren(QProgressDialog)) == before

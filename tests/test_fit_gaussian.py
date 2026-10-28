@@ -3,7 +3,7 @@
 Recovery is asserted on a synthetic Gaussian + linear background with
 fixed-seed noise; only the *deterministic* None guards are asserted
 (scipy non-convergence is matrix-flaky and never asserted). Source:
-fit.py:110-244.
+``mlgidlab/fit.py`` (``fit_gaussian_on_axis`` and its helpers).
 """
 
 from __future__ import annotations

@@ -290,9 +290,14 @@ class _Hdf5MetaPicker(QDialog):
             return
         node = nodes[0]
         try:
-            ds_path = node.h5py_object.name
-            file_name = Path(node.h5py_object.file.filename).name
-            data = node.h5py_object[()]
+            ds = node.h5py_object
+            ds_path = ds.name
+            file_name = Path(ds.file.filename).name
+            # Only the first element is kept, so read only that: the
+            # picker lists raw files, whose detector stack can be tens
+            # of GB.
+            data = ds[()] if ds.ndim == 0 else ds[(0,) * ds.ndim]
+            size = ds.size
         except Exception as exc:
             logger.debug("suppressed exception in _Hdf5MetaPicker._on_accept", exc_info=True)
             self._result = (str(node.local_name or "value"),
@@ -301,19 +306,21 @@ class _Hdf5MetaPicker(QDialog):
             return
         # Coerce to a single string value. Prefer the scalar form if the
         # dataset is 0D; otherwise show the first element with a hint.
-        value = self._coerce_scalar(data)
+        value = self._coerce_scalar(data, size)
         suggested_key = ds_path.rsplit("/", 1)[-1] or "value"
         source = f"{file_name}:{ds_path}"
         self._result = (suggested_key, value, source)
         self.accept()
 
     @staticmethod
-    def _coerce_scalar(data) -> str:
+    def _coerce_scalar(data, size: int | None = None) -> str:
         try:
             import numpy as np
         except ImportError:
             return repr(data)
         arr = np.asarray(data)
+        if size is None:
+            size = arr.size
         if arr.ndim == 0:
             v = arr[()]
         elif arr.size == 1:
@@ -322,8 +329,8 @@ class _Hdf5MetaPicker(QDialog):
             v = arr.flat[0]
         if isinstance(v, bytes):
             v = v.decode("utf-8", errors="replace")
-        if arr.size > 1:
-            return f"{v} (first of {arr.size}; full array not stored)"
+        if size > 1:
+            return f"{v} (first of {size}; full array not stored)"
         return str(v)
 
     @classmethod

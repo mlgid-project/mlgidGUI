@@ -206,6 +206,9 @@ def _stub_grid(monkeypatch, transform, *, accept=True):
             self.editable = editable
             self.reason = read_only_reason
 
+        def deleteLater(self):
+            pass
+
         def exec(self):
             return (QDialog.DialogCode.Accepted if accept
                     else QDialog.DialogCode.Rejected)
@@ -368,6 +371,9 @@ def test_a_large_dataset_opens_read_only(editing, monkeypatch):
                      editable=True, read_only_reason=""):
             captured["editable"] = editable
             captured["reason"] = read_only_reason
+
+        def deleteLater(self):
+            pass
 
         def exec(self):
             return QDialog.DialogCode.Rejected

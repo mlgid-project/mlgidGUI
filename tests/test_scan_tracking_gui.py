@@ -673,18 +673,22 @@ def test_restrict_cif_source_forms(main_window, tmp_path):
     assert w(object(), {"PbI2"}) is None
 
 
+@pytest.mark.parametrize("with_peak_ids", [False, True])
 def test_interp_fill_result_appends_members(
-    main_window, synthetic_fitted_scan,
+    main_window, synthetic_fitted_scan, with_peak_ids,
 ):
     """Applying a gap-fill result makes the new fitted peak a member of
     its origin track: payload arrays grow, the component gains the new
     index, member ids resolve to the new row, and the only-tracked
-    whitelist now covers the gap frame."""
+    whitelist now covers the gap frame. A payload from a real run
+    carries ``peak_id``, which has to grow with the other arrays."""
     # Carve the gap by emptying frame 3's fitted rows (dataset stays, as
     # after a real fitting run) so the fill can be written back.
     file_model.delete_peak_row(synthetic_fitted_scan, ENTRY, 3, "fitted", 0)
     _open(main_window, synthetic_fitted_scan)
     payload = _install_fake(main_window, _gap_payload())
+    if with_peak_ids:
+        payload.peak_id = np.zeros(payload.n_members, dtype=int)
     panel = main_window.scan_tracking_panel
     panel.chk_only_tracked.setChecked(True)
     assert 3 not in main_window.viewer._fitted_visible_only
@@ -705,6 +709,9 @@ def test_interp_fill_result_appends_members(
 
     assert payload.n_members == 6
     assert 5 in payload.components[0]                    # new member index
+    if with_peak_ids:
+        assert payload.peak_id.size == 6
+        assert int(payload.peak_id[5]) == int(new_id)
     assert main_window._scan_member_ids[5] == (3, int(new_id))
     # The former gap frame is now whitelisted with the new fitted id.
     assert main_window.viewer._fitted_visible_only[3] == {int(new_id)}

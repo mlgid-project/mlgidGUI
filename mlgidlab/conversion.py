@@ -381,6 +381,7 @@ def import_converted_stack(
     ``ValueError`` naming the offending file. Overwrites ``out_path``.
     """
     import datetime
+    import os
 
     import fabio
     import h5py
@@ -412,107 +413,121 @@ def import_converted_stack(
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with h5py.File(out_path, "w") as f:
-        f.attrs["NX_class"] = "NXroot"
-        f.attrs["default"] = entry_name
-        entry = f.create_group(entry_name)
-        entry.attrs["NX_class"] = "NXentry"
-        entry.attrs["default"] = "data"
-        entry["title"] = entry_name
+    # Written to a sibling temp and moved into place only once every
+    # frame is in: a failure part-way (a mismatched image, an unreadable
+    # file) must not leave a truncated scan at ``out_path``, nor destroy
+    # the file an earlier import put there.
+    staging = out_path.with_name(f".{out_path.name}.mlgidlab-import")
+    try:
+        with h5py.File(staging, "w") as f:
+            f.attrs["NX_class"] = "NXroot"
+            f.attrs["default"] = entry_name
+            entry = f.create_group(entry_name)
+            entry.attrs["NX_class"] = "NXentry"
+            entry.attrs["default"] = "data"
+            entry["title"] = entry_name
 
-        data = entry.create_group("data")
-        data.attrs["NX_class"] = "NXdata"
-        data.attrs["signal"] = "img_gid_q"
-        data.attrs["axes"] = ["frame_ind", "q_z", "q_xy"]
+            data = entry.create_group("data")
+            data.attrs["NX_class"] = "NXdata"
+            data.attrs["signal"] = "img_gid_q"
+            data.attrs["axes"] = ["frame_ind", "q_z", "q_xy"]
 
-        img = data.create_dataset(
-            "img_gid_q",
-            shape=(n, h, w),
-            maxshape=(None, h, w),
-            chunks=(1, h, w),
-            dtype=np.float32,
-        )
-        for ax_name, vec in (("q_xy", q_xy), ("q_z", q_z)):
-            ds = data.create_dataset(ax_name, data=vec.astype(np.float64))
-            ds.attrs["interpretation"] = "axis"
-            if qxy_range is not None or qz_range is not None:
-                ds.attrs["units"] = "1/Angstrom"
-        data.create_dataset(
-            "frame_ind",
-            data=np.arange(n, dtype=np.float32),
-            maxshape=(None,),
-        )
-        data["filename"] = [str(p) for p in paths]
-        data["frame_num"] = np.arange(n, dtype=np.int64)
-        analysis = data.create_group("analysis")
-        analysis.attrs["NX_class"] = "NXparameters"
-        for i in range(n):
-            g = analysis.create_group(file_model.FRAME_KEY_FMT.format(i))
-            g.attrs["NX_class"] = "NXparameters"
+            img = data.create_dataset(
+                "img_gid_q",
+                shape=(n, h, w),
+                maxshape=(None, h, w),
+                chunks=(1, h, w),
+                dtype=np.float32,
+            )
+            for ax_name, vec in (("q_xy", q_xy), ("q_z", q_z)):
+                ds = data.create_dataset(ax_name, data=vec.astype(np.float64))
+                ds.attrs["interpretation"] = "axis"
+                if qxy_range is not None or qz_range is not None:
+                    ds.attrs["units"] = "1/Angstrom"
+            data.create_dataset(
+                "frame_ind",
+                data=np.arange(n, dtype=np.float32),
+                maxshape=(None,),
+            )
+            data["filename"] = [str(p) for p in paths]
+            data["frame_num"] = np.arange(n, dtype=np.int64)
+            analysis = data.create_group("analysis")
+            analysis.attrs["NX_class"] = "NXparameters"
+            for i in range(n):
+                g = analysis.create_group(file_model.FRAME_KEY_FMT.format(i))
+                g.attrs["NX_class"] = "NXparameters"
 
-        instrument = entry.create_group("instrument")
-        instrument.attrs["NX_class"] = "NXinstrument"
-        instrument["angle_of_incidence"] = _ai_per_frame(ai, n)
+            instrument = entry.create_group("instrument")
+            instrument.attrs["NX_class"] = "NXinstrument"
+            instrument["angle_of_incidence"] = _ai_per_frame(ai, n)
 
-        with_geometry = (
-            wavelength_A is not None
-            and wavelength_A > 0
-            and qxy_range is not None
-            and qz_range is not None
-        )
-        if with_geometry:
-            mono = instrument.create_group("monochromator")
-            mono.attrs["NX_class"] = "NXmonochromator"
-            mono["wavelength"] = float(wavelength_A) * 1e-10  # Å → m
-            det = instrument.create_group("detector")
-            det.attrs["NX_class"] = "NXdetector"
-            for field in (
-                "distance", "x_pixel_size", "y_pixel_size",
-                "beam_center_x", "beam_center_y", "polar_angle",
-                "aequatorial_angle", "rotation_angle",
-            ):
-                ds = det.create_dataset(field, data=0.0)
-                ds.attrs["placeholder"] = (
-                    "imported data — true value unknown; unused by "
-                    "detection/fitting/matching"
+            with_geometry = (
+                wavelength_A is not None
+                and wavelength_A > 0
+                and qxy_range is not None
+                and qz_range is not None
+            )
+            if with_geometry:
+                mono = instrument.create_group("monochromator")
+                mono.attrs["NX_class"] = "NXmonochromator"
+                mono["wavelength"] = float(wavelength_A) * 1e-10  # Å → m
+                det = instrument.create_group("detector")
+                det.attrs["NX_class"] = "NXdetector"
+                for field in (
+                    "distance", "x_pixel_size", "y_pixel_size",
+                    "beam_center_x", "beam_center_y", "polar_angle",
+                    "aequatorial_angle", "rotation_angle",
+                ):
+                    ds = det.create_dataset(field, data=0.0)
+                    ds.attrs["placeholder"] = (
+                        "imported data — true value unknown; unused by "
+                        "detection/fitting/matching"
+                    )
+
+            process = entry.create_group("process")
+            process.attrs["NX_class"] = "NXprocess"
+            prov = process.create_group("mlgidlab")
+            prov.attrs["NX_class"] = "NXprocess"
+            prov["program"] = "mlgidlab"
+            prov["version"] = __version__
+            prov["date"] = datetime.datetime.now().isoformat(timespec="seconds")
+            if with_geometry:
+                prov["NOTE"] = (
+                    "Imported from pre-converted image files. Wavelength "
+                    "and incidence angle are user-supplied; the detector "
+                    "fields are zero placeholders (unused by "
+                    "detection/fitting/matching, which consume only the "
+                    "image, q axes, wavelength and incidence angle)."
+                )
+            else:
+                prov["NOTE"] = (
+                    "Imported from pre-converted image files; no detector "
+                    "geometry available. Pipeline operations "
+                    "(detection/fit/match) require re-importing with q "
+                    "ranges and a wavelength, or a real conversion."
                 )
 
-        process = entry.create_group("process")
-        process.attrs["NX_class"] = "NXprocess"
-        prov = process.create_group("mlgidlab")
-        prov.attrs["NX_class"] = "NXprocess"
-        prov["program"] = "mlgidlab"
-        prov["version"] = __version__
-        prov["date"] = datetime.datetime.now().isoformat(timespec="seconds")
-        if with_geometry:
-            prov["NOTE"] = (
-                "Imported from pre-converted image files. Wavelength "
-                "and incidence angle are user-supplied; the detector "
-                "fields are zero placeholders (unused by "
-                "detection/fitting/matching, which consume only the "
-                "image, q axes, wavelength and incidence angle)."
-            )
-        else:
-            prov["NOTE"] = (
-                "Imported from pre-converted image files; no detector "
-                "geometry available. Pipeline operations "
-                "(detection/fit/match) require re-importing with q "
-                "ranges and a wavelength, or a real conversion."
-            )
+            for i, p in enumerate(paths):
+                frame = np.asarray(fabio.open(str(p)).data)
+                if frame.shape != (h, w):
+                    raise ValueError(
+                        f"{Path(p).name}: shape {frame.shape} does not match "
+                        f"the first frame's {(h, w)} — all imported images "
+                        "must share one detector size"
+                    )
+                if flip_vertical:
+                    frame = np.flipud(frame)
+                img[i] = frame.astype(np.float32, copy=False)
+                if progress is not None:
+                    progress(i + 1, n)
 
-        for i, p in enumerate(paths):
-            frame = np.asarray(fabio.open(str(p)).data)
-            if frame.shape != (h, w):
-                raise ValueError(
-                    f"{Path(p).name}: shape {frame.shape} does not match "
-                    f"the first frame's {(h, w)} — all imported images "
-                    "must share one detector size"
-                )
-            if flip_vertical:
-                frame = np.flipud(frame)
-            img[i] = frame.astype(np.float32, copy=False)
-            if progress is not None:
-                progress(i + 1, n)
+        os.replace(staging, out_path)
+    except Exception:
+        try:
+            staging.unlink()
+        except OSError:
+            pass
+        raise
 
     return out_path
 

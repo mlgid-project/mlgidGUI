@@ -890,3 +890,42 @@ def test_the_append_target_follows_the_default_directory(
     _scans, cfg = panel._collect_run_inputs()
     assert cfg.append_entry == "entry_0001"
     assert cfg.output_dir == raw_dir
+
+
+def test_hdf5_metadata_picker_reads_only_the_first_element(
+        qtbot, tmp_path, monkeypatch):
+    """Picking a dataset as a metadata value keeps its first element, so
+    only that element is read: the picker lists raw files, and a click
+    on the detector stack used to load all of it on the GUI thread."""
+    import tracemalloc
+
+    import numpy as np
+
+    from mlgidlab.conversion_panel import _Hdf5MetaPicker
+
+    path = tmp_path / "raw.h5"
+    with h5py.File(path, "w") as f:
+        f["entry/instrument/detector/data"] = np.full(
+            (32, 256, 256), 7.0)                     # 16 MB of float64
+    dlg = _Hdf5MetaPicker(None, [path])
+    qtbot.addWidget(dlg)
+
+    with h5py.File(path, "r") as f:
+        class _Node:
+            h5py_object = f["entry/instrument/detector/data"]
+            local_name = "data"
+
+        monkeypatch.setattr(dlg._tree, "selectedH5Nodes", lambda: [_Node()])
+        tracemalloc.start()
+        try:
+            dlg._on_accept()
+            _current, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+    assert peak < 1024 * 1024
+    assert dlg._result == (
+        "data",
+        f"7.0 (first of {32 * 256 * 256}; full array not stored)",
+        "raw.h5:/entry/instrument/detector/data",
+    )

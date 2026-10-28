@@ -1453,13 +1453,16 @@ class PeaksMixin:
                     QApplication.processEvents()
             except KeyError as exc:
                 dialog.close()
+                dialog.deleteLater()
                 QMessageBox.warning(self, "Paste to frames", str(exc))
                 return
             except Exception as exc:
                 dialog.close()
+                dialog.deleteLater()
                 QMessageBox.critical(self, "Paste to frames", str(exc))
                 return
         dialog.close()
+        dialog.deleteLater()
 
         if not per_frame_ids:
             return
@@ -1743,6 +1746,7 @@ class PeaksMixin:
                     {**d, "frame": int(sel.frame)} for d in replaced
                 )
         dialog.close()
+        dialog.deleteLater()
 
         if not added_ids:
             QMessageBox.warning(

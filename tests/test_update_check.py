@@ -92,6 +92,22 @@ def test_whats_new_none_when_changelog_missing(monkeypatch):
     assert uc.whats_new("0.1.0a10", "0.1.0a8") is None
 
 
+def test_changelog_path_prefers_the_copy_inside_the_package(tmp_path, monkeypatch):
+    """A wheel carries CHANGELOG.md inside ``mlgidlab/``; a checkout has
+    it one level up. The package copy wins, the repo root is the
+    fallback, and with neither the lookup is ``None``."""
+    import mlgidlab
+
+    pkg = tmp_path / "mlgidlab"
+    pkg.mkdir()
+    monkeypatch.setattr(mlgidlab, "__file__", str(pkg / "__init__.py"))
+    assert uc._changelog_path() is None
+    (tmp_path / "CHANGELOG.md").write_text("root", encoding="utf-8")
+    assert uc._changelog_path() == (tmp_path / "CHANGELOG.md").resolve()
+    (pkg / "CHANGELOG.md").write_text("packaged", encoding="utf-8")
+    assert uc._changelog_path() == (pkg / "CHANGELOG.md").resolve()
+
+
 class _FakeResp:
     def __init__(self, payload: bytes) -> None:
         self._payload = payload
@@ -663,8 +679,8 @@ def test_confirm_dialog_explains_the_move_for_the_renamed_release(
 
 def _start_install_with_stubs(main_window, monkeypatch, tag):
     """Run ``_start_update_install(tag)`` with a stub thread and worker, so
-    nothing actually runs (and no real ``QThread`` is involved: an instant
-    worker plus real thread teardown crashed intermittently, 1 run in 8).
+    nothing actually runs (real thread teardown is covered by
+    ``test_update_threads_survive_an_instant_worker``).
     Returns ``(commands_seen, progress_calls)``."""
     import mlgidlab.main_window_update as mwu
 
@@ -731,6 +747,97 @@ def test_start_install_hands_the_worker_the_whole_command_list(
     (commands,) = seen
     assert len(commands) == 1 and commands[0][-1].endswith("@v0.1.0a22")
     assert progress == [("Updating mlgidLAB", "Updating mlgidLAB to v0.1.0a22…")]
+
+
+# Child-process body for the thread-teardown test below: real QThreads,
+# workers that finish the moment they start, many start/finish cycles.
+_INSTANT_WORKERS_SCRIPT = r'''
+import os
+import sys
+import time
+
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal, Slot
+from PySide6.QtWidgets import QApplication
+
+import mlgidlab.main_window_update as mwu
+
+
+class InstantCheck(QObject):
+    finished = Signal(object)
+
+    @Slot()
+    def run(self):
+        self.finished.emit(None)
+
+
+class InstantInstall(QObject):
+    finished = Signal(int, str)
+
+    def __init__(self, commands):
+        super().__init__()
+
+    @Slot()
+    def run(self):
+        self.finished.emit(0, "")
+
+
+mwu._UpdateCheckWorker = InstantCheck
+mwu._UpdateInstallWorker = InstantInstall
+mwu.make_progress_dialog = lambda *args, **kwargs: None
+
+
+class Host(QObject, mwu.UpdateMixin):
+    done = 0
+
+    @Slot(object)
+    def _on_update_check_finished(self, result):
+        Host.done += 1
+
+    @Slot(int, str)
+    def _on_update_install_finished(self, returncode, output):
+        Host.done += 1
+
+
+def drain(attr):
+    deadline = time.monotonic() + 10
+    while getattr(host, attr) is not None and time.monotonic() < deadline:
+        app.processEvents()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+app = QApplication([])
+host = Host()
+for _ in range(int(sys.argv[1])):
+    host._start_update_check()
+    drain("_update_thread")
+    host._start_update_install("v0.1.0a99")
+    drain("_install_thread")
+print("finished", Host.done)
+sys.stdout.flush()
+os._exit(0)
+'''
+
+
+def test_update_threads_survive_an_instant_worker(tmp_path):
+    """Starting and finishing the check / install threads must not crash.
+
+    The worker used to be deleted twice: by a ``deleteLater`` that runs
+    on the worker thread as it finishes, and by the GUI thread dropping
+    the last Python reference in ``_clear_*_thread`` at the same moment.
+    That segfaulted within the first few cycles. Run in a child process
+    so a crash fails this test instead of ending the whole session.
+    """
+    import subprocess
+    import sys
+
+    script = tmp_path / "instant_update_workers.py"
+    script.write_text(_INSTANT_WORKERS_SCRIPT, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(script), "100"],
+        capture_output=True, text=True, timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "finished 200" in proc.stdout
 
 
 def test_failure_dialog_lists_every_manual_command(main_window, monkeypatch):

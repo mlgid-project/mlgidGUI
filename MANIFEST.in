@@ -1,0 +1,3 @@
+# The wheel build copies CHANGELOG.md into the package (see setup.py),
+# so an sdist has to carry it.
+include CHANGELOG.md

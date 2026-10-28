@@ -378,6 +378,28 @@ def test_unregistering_a_list_takes_its_layer_away(
     assert window._peak_list_rows_layout.count() == 0
 
 
+def test_unregistering_survives_a_view_box_that_refuses_the_item(
+    qtbot, monkeypatch,
+):
+    """Taking the item off the view box is best-effort: when that raises
+    (its C++ half already gone) the failure is logged and the layer is
+    still dropped, rather than the handler dying on its own log call."""
+    from mlgidlab.image_viewer import GIWAXSImageViewer
+
+    viewer = GIWAXSImageViewer()
+    qtbot.addWidget(viewer)
+    spec = peak_lists.PeakListSpec(dataset=EXTRA, label="Bromine")
+    viewer.set_peak_list_specs([spec])
+    assert spec.kind in viewer._list_items
+
+    def _refuse(item):
+        raise RuntimeError("Internal C++ object already deleted.")
+
+    monkeypatch.setattr(viewer._plot.getViewBox(), "removeItem", _refuse)
+    viewer.set_peak_list_specs([])
+    assert spec.kind not in viewer._list_items
+
+
 # --- the off-thread reads ---------------------------------------------
 #
 # Peaks for the frame an entry lands on are read by a WORKER, not by

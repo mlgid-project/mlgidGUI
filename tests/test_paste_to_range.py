@@ -421,3 +421,24 @@ def test_paste_to_range_selection_only_for_current_frame(
     assert len(sels) == 1
     assert sels[0].kind == "detected"
     assert int(sels[0].frame) == 2
+
+
+def test_paste_to_range_leaves_no_progress_dialog_behind(
+    main_window, synthetic_nexus_with_peaks, monkeypatch,
+):
+    """The progress dialog is parented to the window; once the paste is
+    done it has to go, or every paste leaves one behind."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QProgressDialog
+
+    _seed_analysis_groups(synthetic_nexus_with_peaks, "entry_0000", [1])
+    _open(main_window, synthetic_nexus_with_peaks)
+    _copy_n_detected(main_window, 0, n=2)
+    monkeypatch.setattr(
+        QInputDialog, "getText",
+        staticmethod(lambda *a, **kw: ("0-1", True)),
+    )
+    before = len(main_window.findChildren(QProgressDialog))
+    main_window._on_paste_peaks_to_range()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert len(main_window.findChildren(QProgressDialog)) == before

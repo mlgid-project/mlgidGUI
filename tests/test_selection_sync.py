@@ -1,11 +1,11 @@
 """Image-driven selection mirrored onto the peaks table tabs.
 
-``PeaksTablePanel`` constructs standalone (peaks_table_panel.py:182).
-``set_external_selection`` (:320-355) clears all three tables first,
+``PeaksTablePanel`` constructs standalone.
+``set_external_selection`` clears all three tables first,
 then for a non-manual/non-None selection switches to the matching tab
 *before* row selection — so the tab switch is observable even with
 empty models. ``_TAB_BY_KIND`` is {detected:0, fitted:1, matched:2}
-(:52-61). Wiring is at main_window.py:2299.
+(``peaks_table_panel``). Wiring is in ``main_window_build``.
 """
 
 from __future__ import annotations
@@ -76,3 +76,56 @@ def test_viewer_selection_signal_is_wired_to_panel(
 
     main_window.viewer.selectionChanged.emit(_sel("detected"))
     assert main_window.peaks_table_panel._tabs.currentIndex() == 0
+
+
+def test_mirroring_a_large_multi_selection_is_one_pass(qtbot):
+    """Ctrl+A on the image hands the table every peak on the frame. Each
+    one used to rescan the whole model and select its row on its own,
+    so the work grew with the square of the peak count; now the model is
+    read once and the rows are selected in one go."""
+    import numpy as np
+
+    from mlgidlab.file_model import PeakTable
+
+    n = 300
+    zeros = np.zeros(n, dtype=float)
+    table = PeakTable(
+        q_xy=zeros, q_z=zeros, angle=np.full(n, 45.0),
+        radius=1.0 + np.arange(n) * 1e-3,
+        angle_width=np.ones(n), radius_width=np.full(n, 0.1),
+        is_ring=np.zeros(n, dtype=bool), ids=np.arange(n),
+        score=np.ones(n), amplitude=zeros,
+    )
+    panel = PeaksTablePanel()
+    qtbot.addWidget(panel)
+    panel.set_frame_peaks(0, table, None, [])
+
+    model = panel._detected_model
+    reads = []
+    real_item = model.item
+    model.item = lambda *args: reads.append(args) or real_item(*args)
+    changes = []
+    panel._detected_table.selectionModel().selectionChanged.connect(
+        lambda *_: changes.append(1)
+    )
+    sels = [
+        SelectedPeak(
+            kind="detected", frame=0, peak_id=int(i),
+            radius=1.0, angle=45.0, radius_width=0.1, angle_width=1.0,
+        )
+        for i in (7, *range(n))
+    ]
+    panel.set_external_selections(sels)
+    n_reads, n_changes = len(reads), len(changes)
+
+    selection_model = panel._detected_table.selectionModel()
+    proxy = panel._detected_proxy
+    picked = sorted(
+        int(model.item(proxy.mapToSource(i).row(), 0).text())
+        for i in selection_model.selectedRows()
+    )
+    assert picked == list(range(n))
+    current = proxy.mapToSource(selection_model.currentIndex())
+    assert model.item(current.row(), 0).text() == "7"
+    assert n_reads <= n
+    assert n_changes == 1

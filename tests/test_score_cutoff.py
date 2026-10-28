@@ -2,10 +2,9 @@
 
 There is no public "visible detected count"; the filter
 (``score >= value - 0.005``) is inlined in ``_render_overlays``
-(image_viewer.py:2113-2119) and the result is drawn into the
-``_PeakShapeItem`` QPainterPath (:570-646, :2212). Peaks are injected
-through the public ``set_peaks`` (:1171); ``set_detected_score_cutoff``
-re-renders (:1292-1302). All three rows share identical geometry so
+(``ViewerOverlaysMixin`` / ``image_viewer``) and the result is drawn into
+the ``_PeakShapeItem`` QPainterPath. Peaks are injected through the
+public ``set_peaks``; ``set_detected_score_cutoff`` re-renders. All three rows share identical geometry so
 angular clipping treats them the same and only ``score`` discriminates.
 """
 

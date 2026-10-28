@@ -4,9 +4,9 @@ These run with no QApplication and operate on the fixture path
 directly — never a ``NexusSession.temp_path`` held open by a
 FrameSource — so they sidestep the h5py ``r+`` reopen the silx-detach
 machinery exists for. Every assertion is grounded in source:
-``load_peaks`` (file_model.py:669-684), ``add_fitted_peak_row``
-(:796-870), ``update_peak_row`` (:1224-1264), ``clear_peaks``
-(:953-1010 + ``_empty_dataset_in_place`` :1207-1221).
+``file_model.load_peaks``, ``add_fitted_peak_row``,
+``update_peak_row`` and ``clear_peaks`` (with
+``_empty_dataset_in_place``).
 """
 
 from __future__ import annotations

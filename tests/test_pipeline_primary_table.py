@@ -297,6 +297,33 @@ def test_recovery_works_from_the_stash_names_alone(
     assert _read(path, f"{pipeline._ORPHAN_PREFIX}detected_peaks") == swapped_in
 
 
+def test_a_second_recovery_keeps_the_first_orphan(
+    synthetic_nexus_with_peaks,
+):
+    """Two interrupted runs for the same table, both without a marker:
+    the second recovery must park its data next to the first one, not
+    replace it."""
+    path = synthetic_nexus_with_peaks
+    plan = peak_lists.swap_plan("run_detection", _specs(detected=True))
+
+    _seed(path, DET, 6, first_id=900)
+    first = _read(path, DET)
+    pipeline._swap_in(path, ENTRY, 0, plan)
+    with h5py.File(path, "r+") as f:
+        del f[f"{ENTRY}/process/mlgidlab/pipeline_swap"]
+    assert pipeline.recover_swaps(path) == 1
+
+    _seed(path, DET, 4, first_id=700)
+    second = _read(path, DET)
+    pipeline._swap_in(path, ENTRY, 0, plan)
+    with h5py.File(path, "r+") as f:
+        del f[f"{ENTRY}/process/mlgidlab/pipeline_swap"]
+    assert pipeline.recover_swaps(path) == 1
+
+    assert _read(path, f"{pipeline._ORPHAN_PREFIX}detected_peaks") == first
+    assert _read(path, f"{pipeline._ORPHAN_PREFIX}detected_peaks_2") == second
+
+
 def test_an_exception_in_the_run_still_restores(synthetic_nexus_with_peaks):
     path = synthetic_nexus_with_peaks
     standard_before = _read(path, "detected_peaks")
