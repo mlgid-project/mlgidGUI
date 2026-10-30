@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab import h5_edit
-from mlgidlab.session import NexusSession
+from mlgidgui import h5_edit
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

@@ -20,7 +20,7 @@ before, ``file_model.remap_matched_peak_lists`` after):
 
 These tests drive ``file_model`` directly (no Qt): they build a NeXus
 file whose ``fitted_peaks`` ids are deliberately *not* equal to their
-positions (mlgidLAB keeps ids stable across deletes), and
+positions (mlgidGUI keeps ids stable across deletes), and
 ``matched_segments_*`` datasets in the real on-disk format (``peak_list``
 = vlen int32, positions for old files, ids for new ones, see
 ``mlgidbase.mlgidmatch_functions``).
@@ -33,7 +33,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from mlgidlab import file_model
+from mlgidgui import file_model
 
 # fitted_peaks dtype as written by the pipeline (mirrors conftest's
 # PYGID_PEAK_DTYPE; only the fields the readers touch matter here).

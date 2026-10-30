@@ -3,7 +3,7 @@
 ``setWindowIcon`` fills the window's own icon and, on X11, ``_NET_WM_ICON``.
 It does not reach the dash, the window switcher or the top bar: GNOME
 resolves a window to an *application* first and takes the icon from that
-application's ``.desktop`` file. mlgidLAB shipped no such file, so there
+application's ``.desktop`` file. The app shipped no such file, so there
 was nothing to resolve to.
 
 The fix is two names that have to agree -- ``setDesktopFileName`` (the
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from mlgidlab import desktop_entry
+from mlgidgui import desktop_entry
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_main_hands_qt_the_same_name(monkeypatch):
 def test_entry_is_a_valid_application_entry(xdg):
     fields = _entries(desktop_entry.desktop_file_contents())
     assert fields["Type"] == "Application"
-    assert fields["Name"] == "mlgidLAB"
+    assert fields["Name"] == "mlgidGUI"
     assert fields["Terminal"] == "false"
     # Exactly one main category: desktop-file-validate warns that a
     # second one lists the app twice in a categorised menu.
@@ -83,14 +83,14 @@ def test_entry_is_a_valid_application_entry(xdg):
 
 
 def test_no_mimetype_claim(xdg):
-    """Claiming application/x-hdf would put mlgidLAB in "Open with" for
+    """Claiming application/x-hdf would put mlgidGUI in "Open with" for
     every HDF5 file on the machine, which is a bigger claim than a
     viewer for one flavour of NeXus should make."""
     assert "MimeType" not in _entries(desktop_entry.desktop_file_contents())
 
 
 def test_exec_is_absolute(xdg):
-    """A bare ``mlgidlab`` resolves for the person who typed it in their
+    """A bare ``mlgidgui`` resolves for the person who typed it in their
     activated env and fails for the same person clicking the dash icon --
     the launcher runs with the session's PATH, which usually has no conda
     env on it."""
@@ -121,7 +121,7 @@ def test_exec_falls_back_to_module_invocation(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "executable", str(tmp_path / "python"))
     monkeypatch.setattr(desktop_entry.shutil, "which", lambda _n: None)
     assert desktop_entry._exec_command() == (
-        f"{tmp_path / 'python'} -m mlgidlab"
+        f"{tmp_path / 'python'} -m mlgidgui"
     )
 
 
@@ -139,7 +139,7 @@ def test_install_writes_the_entry_and_icons(xdg):
 def test_installed_icons_are_the_shipped_bytes(xdg):
     from importlib import resources
     desktop_entry.install()
-    source = resources.files("mlgidlab").joinpath("assets/app/mlgidlab_48.png")
+    source = resources.files("mlgidgui").joinpath("assets/app/mlgidgui_48.png")
     with resources.as_file(source) as real:
         assert desktop_entry.icon_path(48).read_bytes() == Path(real).read_bytes()
 
@@ -207,3 +207,47 @@ def test_is_supported_tracks_the_platform(monkeypatch):
     ):
         monkeypatch.setattr(sys, "platform", platform)
         assert desktop_entry.is_supported() is expected
+
+
+# -- the entry the mlgidLAB alphas installed ------------------------------
+
+
+def _alpha_entry(data_home):
+    """What an mlgidLAB alpha left in the user's data dir."""
+    entry = data_home / "applications" / "mlgidlab.desktop"
+    entry.parent.mkdir(parents=True)
+    entry.write_text(
+        "[Desktop Entry]\nName=mlgidLAB\nExec=/env/bin/mlgidlab %F\n"
+        "Icon=mlgidlab\nStartupWMClass=mlgidlab\n", encoding="utf-8")
+    icons = []
+    for size in desktop_entry.ICON_SIZES:
+        icon = (data_home / "icons" / "hicolor" / f"{size}x{size}" / "apps"
+                / "mlgidlab.png")
+        icon.parent.mkdir(parents=True)
+        icon.write_bytes(b"png")
+        icons.append(icon)
+    return entry, icons
+
+
+def test_install_removes_the_alpha_entry_and_icons(xdg):
+    entry, icons = _alpha_entry(xdg)
+    assert desktop_entry.install() is True
+    assert not entry.exists()
+    assert not any(icon.exists() for icon in icons)
+    assert desktop_entry.desktop_file_path().is_file()
+
+
+def test_a_foreign_file_with_the_old_name_is_left_alone(xdg):
+    """Only an entry that is recognisably ours goes; someone else's
+    ``mlgidlab.desktop`` is not ours to delete."""
+    entry = xdg / "applications" / "mlgidlab.desktop"
+    entry.parent.mkdir(parents=True)
+    entry.write_text("[Desktop Entry]\nName=Something else\n", encoding="utf-8")
+    desktop_entry.install()
+    assert entry.exists()
+
+
+def test_removing_the_alpha_entry_twice_is_harmless(xdg):
+    _alpha_entry(xdg)
+    assert desktop_entry.remove_legacy() == 1 + len(desktop_entry.ICON_SIZES)
+    assert desktop_entry.remove_legacy() == 0

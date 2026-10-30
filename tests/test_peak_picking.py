@@ -19,13 +19,13 @@ import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtWidgets import QApplication
 
-from mlgidlab import peak_picking, theme_tokens
-from mlgidlab.image_viewer import GIWAXSImageViewer
-from mlgidlab.peak_picking import Box, box_area, contains, rank_hits
-from mlgidlab.viewer_styles import OVERLAY_STYLE, hover_style, selection_style
-from mlgidlab.theme import apply_dark_theme
-from mlgidlab.file_model import MatchedStructure
-from mlgidlab.viewer_items import ManualPeak, _peaks_from_manual
+from mlgidgui import peak_picking, theme_tokens
+from mlgidgui.image_viewer import GIWAXSImageViewer
+from mlgidgui.peak_picking import Box, box_area, contains, rank_hits
+from mlgidgui.viewer_styles import OVERLAY_STYLE, hover_style, selection_style
+from mlgidgui.theme import apply_dark_theme
+from mlgidgui.file_model import MatchedStructure
+from mlgidgui.viewer_items import ManualPeak, _peaks_from_manual
 
 pytestmark = pytest.mark.gui
 
@@ -584,7 +584,7 @@ def test_the_readout_reports_a_stacked_cursor(main_window):
 # -- Boxes are drawn in full, past the image edge --------------------------
 
 def test_a_finite_box_past_the_image_edge_is_drawn_in_full():
-    from mlgidlab.viewer_items import _PeakShapeItem
+    from mlgidgui.viewer_items import _PeakShapeItem
 
     class _T:                                   # one row: angle 3, width 10
         angle, angle_width = [3.0], [10.0]
@@ -603,14 +603,14 @@ def test_a_finite_box_past_the_image_edge_is_drawn_in_full():
 
 
 def test_a_ring_without_a_finite_width_still_stops_at_the_image_edge():
-    from mlgidlab.viewer_items import _clip_angle
+    from mlgidgui.viewer_items import _clip_angle
 
     assert _clip_angle(45.0, float("inf"), extent=(0.0, 90.0), clip_finite=False) == (0.0, 90.0)
     assert _clip_angle(float("nan"), float("inf"), extent=(0.0, 90.0)) == (0.0, 90.0)
 
 
 def test_clip_angle_still_clips_a_finite_box_by_default():
-    from mlgidlab.viewer_items import _clip_angle
+    from mlgidgui.viewer_items import _clip_angle
 
     assert _clip_angle(3.0, 10.0, extent=(0.0, 90.0)) == (0.0, 8.0)
     assert _clip_angle(3.0, 10.0, extent=(0.0, 90.0), clip_finite=False) == (-2.0, 8.0)

@@ -19,8 +19,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -78,7 +78,7 @@ def harness(main_window, synthetic_nexus_with_peaks, tmp_path, monkeypatch):
     # backend (`_update_sim_section_state`); stub availability BEFORE
     # the session/cache installs below re-evaluate it, so the widget
     # enable-state assertions hold on backend-less boxes (CI) too.
-    from mlgidlab import pipeline as _pipeline_mod
+    from mlgidgui import pipeline as _pipeline_mod
     monkeypatch.setattr(_pipeline_mod, "is_mlgidbase_available", lambda: True)
     mw._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
     mw.pipeline_panel.set_cif_pattern(_fake_cifpattern(), None)
@@ -116,7 +116,7 @@ def harness(main_window, synthetic_nexus_with_peaks, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(mw, "_view_worker_blocks_pipeline", lambda: False)
 
-    from mlgidlab import main_window as mw_mod
+    from mlgidgui import main_window as mw_mod
     monkeypatch.setattr(
         mw_mod.QMessageBox, "warning",
         staticmethod(lambda *a, **k: state["warnings"].append(a)),

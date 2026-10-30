@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab.pipeline_panel import (
+from mlgidgui.pipeline_panel import (
     FRAME_ACTIVE,
     FRAME_ALL,
     FRAME_RANGE,
@@ -24,7 +24,7 @@ def panel(qtbot, monkeypatch):
     # command actually RUNS — but the panel builds only a stub without
     # mlgidbase. Force availability so these tests cover the real
     # widgets on backend-less CI too.
-    from mlgidlab import pipeline_panel as panel_mod
+    from mlgidgui import pipeline_panel as panel_mod
 
     monkeypatch.setattr(panel_mod, "is_mlgidbase_available", lambda: True)
     p = PipelinePanel()
@@ -100,7 +100,7 @@ def test_fit_form_starts_from_the_mlgidbase_defaults(panel):
     """An unedited Fitting form is a bare run_fitting(): the clustering
     distances are 2 / 2 since mlgidbase 0.1.11 (they were 10 / 10), and
     the numbers come from manual_fit so every fallback agrees."""
-    from mlgidlab import manual_fit
+    from mlgidgui import manual_fit
 
     assert panel.fit_dist_peaks.value() == manual_fit.DEFAULT_CLUSTERING_DISTANCE_PEAKS == 2.0
     assert panel.fit_dist_rings.value() == manual_fit.DEFAULT_CLUSTERING_DISTANCE_RINGS == 2.0

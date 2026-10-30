@@ -14,7 +14,7 @@ from __future__ import annotations
 import h5py
 import numpy as np
 
-from mlgidlab import file_model
+from mlgidgui import file_model
 
 
 def test_list_entry_names_does_not_resolve_externals(tmp_path):

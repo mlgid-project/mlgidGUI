@@ -21,11 +21,11 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab import file_model
-from mlgidlab.file_model import ANALYSIS_REL, FRAME_KEY_FMT, PEAK_ROW_DTYPE
-from mlgidlab.image_viewer import ManualPeak, SelectedPeak
-from mlgidlab.parameter_panel import ParameterPanel
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.file_model import ANALYSIS_REL, FRAME_KEY_FMT, PEAK_ROW_DTYPE
+from mlgidgui.image_viewer import ManualPeak, SelectedPeak
+from mlgidgui.parameter_panel import ParameterPanel
+from mlgidgui.session import NexusSession
 
 ENTRY = "entry_0000"
 
@@ -111,7 +111,7 @@ def test_creating_fitted_peaks_creates_its_errors_sibling(synthetic_nexus):
     """pygid always writes the pair, and mlgidbase's ``delete_peak``
     reads the errors dataset unconditionally, so a lone ``fitted_peaks``
     is a shape the backend does not expect. Empty is the honest value:
-    mlgidLAB appends fitted rows without fabricating errors for them."""
+    mlgidGUI appends fitted rows without fabricating errors for them."""
     file_model.add_fitted_peak_row(
         synthetic_nexus, ENTRY, 0, amplitude=5.0, **GEOM,
     )
@@ -146,7 +146,7 @@ def test_an_unknown_entry_is_still_an_error(synthetic_nexus):
 
 def test_the_older_columnar_fitted_layout_is_refused_clearly(synthetic_nexus):
     """Old mlgid output stores fitted peaks as a *group* of 1-D columns.
-    mlgidLAB reads that layout but cannot append to it; the error should
+    mlgidGUI reads that layout but cannot append to it; the error should
     say so instead of failing somewhere in numpy."""
     with h5py.File(synthetic_nexus, "r+") as f:
         g = f.create_group(f"{ENTRY}/{ANALYSIS_REL}/{FRAME_KEY_FMT.format(0)}/fitted_peaks")

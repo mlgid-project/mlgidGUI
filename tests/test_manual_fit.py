@@ -26,8 +26,8 @@ import pytest
 
 pytest.importorskip("pygidfit")  # 2D fit path is private-backend dependent
 
-from mlgidlab.fit import gaussian_from_stored_params  # noqa: E402
-from mlgidlab.manual_fit import ManualFitError, fit_one_peak  # noqa: E402
+from mlgidgui.fit import gaussian_from_stored_params  # noqa: E402
+from mlgidgui.manual_fit import ManualFitError, fit_one_peak  # noqa: E402
 
 
 def _synthetic_cartesian_with_gaussian(
@@ -63,7 +63,7 @@ def test_fit_one_peak_recovers_synthetic_gaussian():
     array, hand pygidfit a wide box around the true centre, and
     verify it recovers the centre + amplitude approximately. The
     wrapper applies pygidfit's own polar conversion internally so
-    the synthetic doesn't have to match mlgidlab's polar resample."""
+    the synthetic doesn't have to match mlgidGUI's polar resample."""
     centre_r, centre_a = 1.5, 45.0
     sigma_r, sigma_a = 0.04, 3.0
     amplitude = 150.0
@@ -201,7 +201,7 @@ def test_fit_one_peak_raises_on_pygidfit_failure(monkeypatch):
     """When pygidfit raises internally, the wrapper must surface a
     ``ManualFitError`` so the caller can fall back to the legacy 1D
     + zero-fill path. The original exception chains through."""
-    from mlgidlab import manual_fit
+    from mlgidgui import manual_fit
     from pygidfit import process_scans
 
     def _boom(*args, **kwargs):
@@ -221,7 +221,7 @@ def test_fit_one_peak_raises_on_nan_amplitude(monkeypatch):
     """pygidfit may converge with a NaN amplitude (degenerate fit).
     The wrapper treats NaN amplitude as a non-fit and raises so the
     caller falls back rather than persisting a row with NaN values."""
-    from mlgidlab import manual_fit
+    from mlgidgui import manual_fit
     from pygidfit import process_scans
 
     class _FakeContainer:
@@ -362,7 +362,7 @@ def test_a_neighbour_box_keeps_the_fit_inside_the_drawn_box():
     fail this way (otherwise the test would pass for the wrong
     reason), and the neighbour-aware call must recover the target.
     """
-    from mlgidlab.manual_fit import PeakBox
+    from mlgidgui.manual_fit import PeakBox
 
     cart, q_xy, q_z = _synthetic_two_peaks()
     fwhm_factor = 2.0 * np.sqrt(2.0 * np.log(2.0))
@@ -397,7 +397,7 @@ def test_far_neighbours_do_not_change_the_fit():
     target's ROI, so handing the wrapper a whole frame's worth of
     distant peaks must produce exactly the single-box result — no
     drift, and no extra cluster fits on every click."""
-    from mlgidlab.manual_fit import PeakBox
+    from mlgidgui.manual_fit import PeakBox
 
     cart, q_xy, q_z = _synthetic_cartesian_with_gaussian(
         centre_r=1.5, centre_a=45.0, sigma_r=0.04, sigma_a=3.0,
@@ -431,7 +431,7 @@ def test_the_shared_fit_defaults_follow_mlgidbase():
     import inspect
 
     mlgidbase = pytest.importorskip("mlgidbase")
-    from mlgidlab import manual_fit
+    from mlgidgui import manual_fit
 
     sig = inspect.signature(mlgidbase.mlgidBASE.run_fitting)
     assert sig.parameters["clustering_distance_peaks"].default == (
@@ -454,7 +454,7 @@ def test_the_hot_pixel_percentile_is_the_pipelines():
 
     from pygidfit.process_scans import fit_data
 
-    from mlgidlab import manual_fit
+    from mlgidgui import manual_fit
 
     default = inspect.signature(fit_data).parameters[
         "hot_pixel_percentile"
@@ -466,7 +466,7 @@ def test_the_hot_pixel_percentile_is_the_pipelines():
 
 
 def test_fit_one_peak_hands_the_hot_pixel_percentile_to_pygidfit(monkeypatch):
-    import mlgidlab.manual_fit as mf
+    import mlgidgui.manual_fit as mf
 
     seen: dict = {}
     import pygidfit.process_scans as ps
@@ -496,7 +496,7 @@ def test_px_box_matches_pygidfits_boxes_preprocessing():
     from pygidfit.box_utils import boxes_preprocessing
     from pygidfit.process_scans import DetectedPeaks
 
-    from mlgidlab.manual_fit import PeakBox, _px_box
+    from mlgidgui.manual_fit import PeakBox, _px_box
 
     shape = (512, 1024)
     q_abs_max = 4.2

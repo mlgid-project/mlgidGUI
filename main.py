@@ -1,4 +1,4 @@
-from mlgidlab import main
+from mlgidgui import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

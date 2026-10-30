@@ -17,10 +17,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.manual_fit import ManualFitError, ManualFitResult
-from mlgidlab.pipeline import PipelineCommand, execute
-from mlgidlab.workers import PipelineWorker
+from mlgidgui import file_model
+from mlgidgui.manual_fit import ManualFitError, ManualFitResult
+from mlgidgui.pipeline import PipelineCommand, execute
+from mlgidgui.workers import PipelineWorker
 
 ENTRY = "entry_0000"
 
@@ -39,7 +39,7 @@ def _patch_geometry(monkeypatch):
 
 
 def _patch_fit(monkeypatch, fn):
-    import mlgidlab.manual_fit as manual_fit
+    import mlgidgui.manual_fit as manual_fit
     monkeypatch.setattr(manual_fit, "fit_one_peak", fn)
 
 

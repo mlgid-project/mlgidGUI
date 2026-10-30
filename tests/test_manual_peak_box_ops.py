@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.image_viewer import ManualPeak
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import ManualPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

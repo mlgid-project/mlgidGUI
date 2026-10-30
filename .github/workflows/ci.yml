@@ -108,7 +108,7 @@ jobs:
           pytest -v -rA "${FILES[@]}"
 
   # Windows-only regression net for the paths that genuinely differ per
-  # OS: the self-update launcher rename (a running Scripts\mlgidlab.exe
+  # OS: the self-update launcher rename (a running Scripts\mlgidgui.exe
   # is locked on Windows -> WinError 32 without it) and the detection
   # model pre-flight (pythonw console handling). Targeted files only —
   # the full GUI suite is covered by the Linux shards above; running it

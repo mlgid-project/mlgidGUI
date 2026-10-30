@@ -22,8 +22,8 @@ from pathlib import Path
 import h5py
 import pytest
 
-from mlgidlab import conversion
-from mlgidlab.conversion_panel import (
+from mlgidgui import conversion
+from mlgidgui.conversion_panel import (
     OUTPUT_SEPARATE_DATASETS,
     ConversionConfig,
     parse_poni_overrides,
@@ -256,7 +256,7 @@ def test_single_entry_mode_routes_all_scans_into_one_group(
     overwrite (a later overwrite would truncate the growing stack)."""
     import sys
 
-    from mlgidlab.conversion_panel import OUTPUT_SINGLE_ENTRY, RawScan
+    from mlgidgui.conversion_panel import OUTPUT_SINGLE_ENTRY, RawScan
 
     fake = _RecordingPygid()
     monkeypatch.setitem(sys.modules, "pygid", fake)
@@ -299,7 +299,7 @@ def _fake_entries(panel, *entries):
 
 
 def _raw_entry(tmp_path, name, n_frames, fabio=False):
-    from mlgidlab.file_model import RawEntry
+    from mlgidgui.file_model import RawEntry
 
     path = tmp_path / name
     return RawEntry(
@@ -418,7 +418,7 @@ def test_a_frame_subset_keeps_its_original_angle_indices(tmp_path):
     That is why the array is one value per SOURCE frame: pygid indexes
     by the frame's place in the data, not in the selection.
     """
-    from mlgidlab.conversion_config import _expand_fabio_scans
+    from mlgidgui.conversion_config import _expand_fabio_scans
 
     entry = _raw_entry(tmp_path, "stack", 14, fabio=True)
     scans = _expand_fabio_scans(entry, [3, 7])
@@ -444,7 +444,7 @@ def test_per_frame_ai_end_to_end_with_pygid(tmp_path):
     import fabio.tifimage
     import numpy as np
 
-    from mlgidlab.conversion_panel import (
+    from mlgidgui.conversion_panel import (
         CONV_DET2Q_GID,
         OUTPUT_SINGLE_ENTRY,
         RawScan,
@@ -511,7 +511,7 @@ def test_per_frame_ai_refuses_a_scan_pygid_would_batch(tmp_path):
     message that names the limit, rather than surfacing as an IndexError
     from inside pygid.
     """
-    from mlgidlab.conversion_panel import CONV_DET2Q_GID, RawScan
+    from mlgidgui.conversion_panel import CONV_DET2Q_GID, RawScan
 
     poni = tmp_path / "p.poni"
     poni.write_text("x")
@@ -533,7 +533,7 @@ def test_per_frame_ai_refuses_a_scan_pygid_would_batch(tmp_path):
 
 
 def test_per_frame_ai_refuses_a_scan_that_reaches_past_the_list(tmp_path):
-    from mlgidlab.conversion_panel import RawScan
+    from mlgidgui.conversion_panel import RawScan
 
     scans = [
         RawScan(file_path=tmp_path / "a.h5", entry="e", frame_offset=0),
@@ -554,7 +554,7 @@ def test_single_entry_mode_end_to_end_with_pygid(tmp_path):
     import fabio.tifimage
     import numpy as np
 
-    from mlgidlab.conversion_panel import (
+    from mlgidgui.conversion_panel import (
         CONV_DET2Q_GID,
         OUTPUT_SINGLE_ENTRY,
         RawScan,
@@ -728,8 +728,8 @@ def test_flipud_moves_the_beam_center_with_the_image(tmp_path):
     import fabio.tifimage
     import numpy as np
 
-    from mlgidlab.conversion_panel import CONV_DET2Q_GID, OUTPUT_SINGLE_ENTRY
-    from mlgidlab.conversion_config import RawScan
+    from mlgidgui.conversion_panel import CONV_DET2Q_GID, OUTPUT_SINGLE_ENTRY
+    from mlgidgui.conversion_config import RawScan
 
     rng = np.random.default_rng(3)
     img = (rng.random((220, 180)) * 1000).astype(np.uint32)
@@ -817,7 +817,7 @@ def test_an_empty_directory_with_a_checked_entry_is_runnable(
         main_window, tmp_path, synthetic_raw):
     from PySide6.QtCore import Qt
 
-    from mlgidlab.file_model import list_raw_entries
+    from mlgidgui.file_model import list_raw_entries
 
     panel = main_window.conversion_panel
     panel.poni_path.setText(str(_write_poni(tmp_path)))
@@ -862,7 +862,7 @@ def test_an_explicit_directory_wins(main_window, tmp_path):
 def test_a_read_only_raw_folder_is_refused(main_window, tmp_path, monkeypatch):
     """Monkeypatched rather than chmod-ed: CI may run as root, which
     writes anywhere."""
-    from mlgidlab import conversion_panel as cp
+    from mlgidgui import conversion_panel as cp
 
     panel = main_window.conversion_panel
     _ready_to_convert(panel, tmp_path, _raw_entry(tmp_path, "scan.h5", 3))
@@ -901,7 +901,7 @@ def test_hdf5_metadata_picker_reads_only_the_first_element(
 
     import numpy as np
 
-    from mlgidlab.conversion_panel import _Hdf5MetaPicker
+    from mlgidgui.conversion_panel import _Hdf5MetaPicker
 
     path = tmp_path / "raw.h5"
     with h5py.File(path, "w") as f:

@@ -1,6 +1,6 @@
 """The HDF5 editing primitives, and the HDF5 behaviours they rest on.
 
-No Qt here on purpose: everything ``mlgidlab.h5_edit`` does is plain
+No Qt here on purpose: everything ``mlgidgui.h5_edit`` does is plain
 h5py, so it is testable without a QApplication and runs in the
 backend-less CI job unchanged.
 
@@ -19,8 +19,8 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import h5_edit
-from mlgidlab.h5_edit import EditError, EditHandle
+from mlgidgui import h5_edit
+from mlgidgui.h5_edit import EditError, EditHandle
 
 
 @pytest.fixture

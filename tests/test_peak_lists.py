@@ -1,6 +1,6 @@
 """Extra peak tables registered as display layers.
 
-A file's analysis group can hold peak tables mlgidLAB knows nothing
+A file's analysis group can hold peak tables mlgidGUI knows nothing
 about. Registering one draws it, lets a box be picked and nudged, and
 must do **nothing else** -- the layer may not leak into the Peaks table,
 export, fitting, matching or tracking.
@@ -18,8 +18,8 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QPointF, QSettings, Qt
 
-from mlgidlab import file_model, peak_lists
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model, peak_lists
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -187,7 +187,7 @@ def test_a_list_takes_a_pen_of_its_own(
 ):
     """It starts from the preset of the flavour it is treated as, and
     the pen editor works on it exactly as on the built-in layers."""
-    from mlgidlab.viewer_styles import OVERLAY_STYLE
+    from mlgidgui.viewer_styles import OVERLAY_STYLE
 
     window = main_window
     _add_extra_table(synthetic_nexus_with_peaks)
@@ -268,7 +268,7 @@ def test_the_peak_actions_are_all_refused_for_a_list_box(
 ):
     """Add-to-detected / Add-to-fitted exclude it for free (they name
     their kinds); Delete does NOT, so it is the one closed by hand."""
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     window = main_window
     _add_extra_table(synthetic_nexus_with_peaks)
@@ -298,7 +298,7 @@ def test_the_delete_handler_is_a_no_op_for_a_list_box(
     """The keyboard route bypasses the disabled button, and without the
     guard it would fall through to the matched branch and hand
     mlgidbase a kind it has never heard of."""
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     window = main_window
     _add_extra_table(synthetic_nexus_with_peaks)
@@ -384,7 +384,7 @@ def test_unregistering_survives_a_view_box_that_refuses_the_item(
     """Taking the item off the view box is best-effort: when that raises
     (its C++ half already gone) the failure is logged and the layer is
     still dropped, rather than the handler dying on its own log call."""
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     viewer = GIWAXSImageViewer()
     qtbot.addWidget(viewer)
@@ -416,7 +416,7 @@ def test_the_entry_worker_reads_the_registered_lists(
 ):
     """The entry-switch path. This is the read that fills the landed
     frame's overlays on every switch after the first."""
-    from mlgidlab.workers import EntryLoadWorker
+    from mlgidgui.workers import EntryLoadWorker
 
     _add_extra_table(synthetic_nexus_with_peaks)
     worker = EntryLoadWorker()
@@ -438,7 +438,7 @@ def test_the_open_worker_reads_the_registered_lists(
     qtbot, synthetic_nexus_with_peaks,
 ):
     """The open path's prewarm, same failure mode."""
-    from mlgidlab.workers import CopyWorker
+    from mlgidgui.workers import CopyWorker
 
     _add_extra_table(synthetic_nexus_with_peaks)
     worker = CopyWorker(synthetic_nexus_with_peaks, (EXTRA,))
@@ -496,7 +496,7 @@ def test_an_overlay_read_that_predates_the_list_is_not_trusted(
 def test_a_detected_flavoured_list_takes_a_score_edit(
     main_window, synthetic_nexus_with_peaks,
 ):
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     window = main_window
     _add_extra_table(synthetic_nexus_with_peaks)
@@ -545,7 +545,7 @@ def test_a_fitted_flavoured_list_does_not_take_a_score_edit(
 ):
     """The flavour is the whole switch: a table the user calls fitted
     shows the fitted block, which has no score row to edit."""
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     window = main_window
     _add_extra_table(synthetic_nexus_with_peaks)
@@ -584,7 +584,7 @@ def test_a_list_without_a_score_column_is_not_offered_the_editor(
     with no score column would take the edit in memory and drop it on
     disk. Such a table has no score to show either, so the row goes
     rather than reading a synthesised 0.000."""
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     window = main_window
     path = synthetic_nexus_with_peaks

@@ -1,6 +1,6 @@
 """Smoke harness — workstream A, increment 1: construction + teardown.
 
-The riskiest path in mlgidLAB is the ``MainWindow`` constructor itself:
+The riskiest path in mlgidGUI is the ``MainWindow`` constructor itself:
 it wires the silx tree, the image viewer, eight docks and six menus,
 and that coupling is exactly what every feature has had to tiptoe
 around. Zero fixture data is needed to exercise it, so it is the
@@ -98,7 +98,7 @@ def test_clean_close_does_not_raise(qtbot):
     Constructed here directly rather than via the ``main_window``
     fixture so the close is the assertion under test, not teardown.
     """
-    from mlgidlab.main_window import MainWindow
+    from mlgidgui.main_window import MainWindow
 
     window = MainWindow()
     qtbot.addWidget(window)

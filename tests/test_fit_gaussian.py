@@ -3,7 +3,7 @@
 Recovery is asserted on a synthetic Gaussian + linear background with
 fixed-seed noise; only the *deterministic* None guards are asserted
 (scipy non-convergence is matrix-flaky and never asserted). Source:
-``mlgidlab/fit.py`` (``fit_gaussian_on_axis`` and its helpers).
+``mlgidgui/fit.py`` (``fit_gaussian_on_axis`` and its helpers).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.fit import fit_gaussian_on_axis
+from mlgidgui.fit import fit_gaussian_on_axis
 
 _FWHM_K = 2.0 * np.sqrt(2.0 * np.log(2.0))
 
@@ -200,7 +200,7 @@ def test_the_baseline_takes_a_real_tilt_but_not_a_contaminated_flank():
     used. A peak sitting in one flank raises its level *and* its
     spread, so that flank is not trusted and the background goes flat
     at the lower level."""
-    from mlgidlab.fit import _flank_baseline
+    from mlgidgui.fit import _flank_baseline
 
     x = np.linspace(0.0, 10.0, 120)
     lo, hi = 4.0, 6.0
@@ -221,7 +221,7 @@ def test_a_window_with_no_flanks_falls_back_to_a_flat_baseline():
     """When the peak region covers the whole window there is nothing to
     estimate a tilt from, and a tilt nothing constrains is exactly the
     bug this replaced. The baseline goes flat under the data."""
-    from mlgidlab.fit import _flank_baseline
+    from mlgidgui.fit import _flank_baseline
 
     x = np.linspace(0.0, 1.0, 64)
     y = 10.0 * np.exp(-((x - 0.5) ** 2) / (2.0 * 0.05 ** 2)) + 3.0
@@ -236,7 +236,7 @@ def test_a_window_with_no_flanks_falls_back_to_a_flat_baseline():
 def test_stored_shape_keeps_stored_centre_and_width():
     """The curve is the stored Gaussian whatever the data say: centre
     and sigma come back verbatim (stored width is 2 sigma)."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.2, 50.0, 0.0, 3.0)
     # Stored values deliberately off the real peak (centre 0, 2 sigma 2.4).
@@ -251,7 +251,7 @@ def test_stored_shape_keeps_stored_centre_and_width():
 def test_stored_shape_maximum_is_the_profile_value_at_the_centre():
     """The curve's maximum sits at the stored centre and equals the
     profile there above the background."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(-1.0, 1.0, 40.0, 0.5, 4.0)
     fit = gaussian_at_stored_shape(axis, data, center=-1.0, width_2sigma=2.0)
@@ -265,7 +265,7 @@ def test_stored_shape_maximum_is_the_profile_value_at_the_centre():
 def test_stored_shape_off_the_peak_gets_a_lower_maximum():
     """A stored centre two sigma off the real peak reads the profile
     where it is low, so the curve is visibly lower than the data."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     on = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
@@ -275,7 +275,7 @@ def test_stored_shape_off_the_peak_gets_a_lower_maximum():
 
 
 def test_stored_shape_fwhm_follows_the_stored_width():
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     fit = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
@@ -284,7 +284,7 @@ def test_stored_shape_fwhm_follows_the_stored_width():
 
 
 def test_stored_shape_amplitude_is_floored_at_zero():
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis = np.linspace(-10.0, 10.0, 200)
     data = np.full_like(axis, 5.0)
@@ -299,14 +299,14 @@ def test_stored_shape_amplitude_is_floored_at_zero():
                      (0.0, np.inf)],
 )
 def test_stored_shape_rejects_unusable_stored_values(center, width):
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 10.0, 0.0, 0.0)
     assert gaussian_at_stored_shape(axis, data, center, width) is None
 
 
 def test_stored_shape_none_when_peak_is_off_the_axis():
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 10.0, 0.0, 0.0)
     assert gaussian_at_stored_shape(axis, data, center=500.0, width_2sigma=1.0) is None
@@ -315,7 +315,7 @@ def test_stored_shape_none_when_peak_is_off_the_axis():
 def test_stored_shape_height_is_not_the_single_sample_at_the_centre():
     """One noisy sample exactly at the stored centre must not set the
     curve's height: the window mean damps it."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     spike = data.copy()
@@ -333,7 +333,7 @@ def test_stored_shape_height_is_not_the_single_sample_at_the_centre():
 def test_stored_shape_height_correction_holds_on_coarse_grids(n):
     """The window grows to one sample on a coarse grid; the Gaussian
     correction keeps a matching peak at its true height."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0, n=n)
     fit = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
@@ -354,7 +354,7 @@ def test_stored_shape_height_ignores_a_masked_stretch_beside_the_centre():
     """A neighbour masked out of the profile leaves NaN next to the
     peak. The height must come from the finite samples only: the same
     as the unmasked profile, not dragged by a line bridging the gap."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     clean = gaussian_at_stored_shape(axis, data, center=0.0, width_2sigma=2.0)
@@ -371,7 +371,7 @@ def test_stored_shape_is_not_biased_by_a_gap_across_the_centre():
     Gaussian's mean is taken at those same samples, so the height still
     matches the true peak (an interpolated bridge would read the shoulder
     value, about 0.88 of the peak, as if it were the centre)."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     masked = gaussian_at_stored_shape(
@@ -386,7 +386,7 @@ def test_stored_shape_height_is_exact_for_a_wide_gap_across_the_centre():
     the window. Bridging it with a line through the shoulder values read
     37.6 instead of 40 (about 6% low); the finite-sample mean, divided by
     the Gaussian's mean at those same samples, reads 40."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     fit = gaussian_at_stored_shape(
@@ -397,7 +397,7 @@ def test_stored_shape_height_is_exact_for_a_wide_gap_across_the_centre():
 
 
 def test_stored_shape_has_no_curve_when_the_window_is_fully_masked():
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     assert gaussian_at_stored_shape(
@@ -410,7 +410,7 @@ def test_stored_shape_spacing_is_read_from_the_axis_not_the_gaps():
     dropping NaN samples, a stretch of masked samples would inflate the
     spacing and so the window; here that would swallow the shoulder far
     from the centre and bias the height."""
-    from mlgidlab.fit import gaussian_at_stored_shape
+    from mlgidgui.fit import gaussian_at_stored_shape
 
     axis, data = _synthetic(0.0, 1.0, 40.0, 0.0, 3.0)
     scattered = data.copy()

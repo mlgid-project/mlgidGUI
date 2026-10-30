@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
+from mlgidgui import file_model
 
 ENTRY = "entry_0000"
 

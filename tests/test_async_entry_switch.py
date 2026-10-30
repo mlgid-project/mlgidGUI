@@ -15,9 +15,9 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.session import NexusSession
-from mlgidlab.workers import EntryLoadWorker
+from mlgidgui import file_model
+from mlgidgui.session import NexusSession
+from mlgidgui.workers import EntryLoadWorker
 
 pytestmark = pytest.mark.gui
 

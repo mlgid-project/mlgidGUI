@@ -17,10 +17,10 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab import file_model
-from mlgidlab.phase_tracking import TrackingPayload
-from mlgidlab.pipeline import PipelineCommand
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.phase_tracking import TrackingPayload
+from mlgidgui.pipeline import PipelineCommand
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -229,7 +229,7 @@ def test_views_workers_compute_real_data(
     main_window, synthetic_fitted_scan, qtbot,
 ):
     """ScanProfileWorker end-to-end through the views window (pure
-    h5py + mlgidlab.polar — no backend needed)."""
+    h5py + mlgidgui.polar — no backend needed)."""
     _open(main_window, synthetic_fitted_scan)
     _install_fake(main_window)
     main_window._on_show_phase_views()
@@ -733,7 +733,7 @@ def test_rings_tracked_gui_side_and_untracked_hidden(
     supplied, and member-id reconstruction + ring tracking are pure)."""
     import h5py
 
-    from mlgidlab.pipeline import PipelineCommand
+    from mlgidgui.pipeline import PipelineCommand
 
     # Add a persistent ring (id 9, r=1.8, amp 30) to every frame, plus a
     # one-off ring (id 10, r=2.6, amp 40) on frame 2 only. Distinct
@@ -812,7 +812,7 @@ def test_native_ring_components_not_double_counted(
     track."""
     import h5py
 
-    from mlgidlab.pipeline import PipelineCommand
+    from mlgidgui.pipeline import PipelineCommand
 
     with h5py.File(synthetic_fitted_scan, "r+") as f:
         for frame in range(6):
@@ -1031,7 +1031,7 @@ def test_structure_column_shows_matched_phases(
 def test_track_button_gated_without_backend(
     main_window, synthetic_fitted_scan, monkeypatch,
 ):
-    import mlgidlab.pipeline as pipeline_mod
+    import mlgidgui.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod, "is_mlgidbase_available", lambda: False)
     _open(main_window, synthetic_fitted_scan)
@@ -1155,7 +1155,7 @@ def test_hidden_matched_peak_is_not_selectable(
 def test_qmap_colors_by_matched_phase(main_window, synthetic_fitted_scan):
     """The q-map 'Color by matched phase' toggle recolors tracks by CIF
     (with a legend) once Matching has produced a phase map."""
-    from mlgidlab.phase_views_window import _track_pen
+    from mlgidgui.phase_views_window import _track_pen
 
     _write_matched(synthetic_fitted_scan, 2, [("PbI2", [0])])  # tracked id 0
     _open(main_window, synthetic_fitted_scan)
@@ -1244,7 +1244,7 @@ def test_display_palette_colors_reach_phase_views(
     on a fresh tracking install while the window is showing."""
     import pyqtgraph as pg
 
-    from mlgidlab.image_viewer import matched_pen_for
+    from mlgidgui.image_viewer import matched_pen_for
 
     _write_matched(synthetic_fitted_scan, 2, [("PbI2", [0])])
     _open(main_window, synthetic_fitted_scan)
@@ -1315,7 +1315,7 @@ def test_frame_interval_resets_on_new_payload(phase_window):
 def _late_track_window(qtbot, tmp_path):
     """6-frame scan (context set), track 0 on frames 2..3 and track 1 on
     frames 0 and 3 (a gap at 1..2) — the zero-padding test bed."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
 
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
@@ -1481,7 +1481,7 @@ def _preview_scan_file(tmp_path):
 def test_track_select_preview_highlights_selected_track(qtbot, tmp_path):
     """The Select-tracks preview: frame image from the file, slider
     spanning the scan, selected row ringed on its frames and jumped-to."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
 
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
@@ -1539,7 +1539,7 @@ def test_track_select_preview_jumps_to_subset_first_frame(qtbot, tmp_path):
     the row's STRUCTURE SUBSET (the "First" column), not of the whole
     track. A track fitted on frames 0..3 but claimed by matching only
     on 2..3 jumped to frame 0, where the tab's ring cannot appear."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
 
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
@@ -1569,7 +1569,7 @@ def test_track_select_preview_jumps_to_subset_first_frame(qtbot, tmp_path):
     assert list(tx) == [0.7, 0.8]
     # The unmatched tab's subset starts at frame 0: switching to it and
     # selecting its row jumps there.
-    from mlgidlab.phase_views_window import _UNMATCHED
+    from mlgidgui.phase_views_window import _UNMATCHED
 
     idx = dlg._tab_keys.index(_UNMATCHED)
     dlg._tabs.setCurrentIndex(idx)
@@ -1649,7 +1649,7 @@ def test_member_phases_split_track_at_matching_start(qtbot):
     unmatched — in the trajectories (matched colouring), the grouped
     amplitude bands and the q-map legend — instead of painting the
     whole span with the dominant phase."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow, _UNMATCHED
+    from mlgidgui.phase_views_window import PhaseViewsWindow, _UNMATCHED
 
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
@@ -1719,7 +1719,7 @@ def test_member_phases_pushed_from_matching(
 def phase_window(qtbot):
     """A PhaseViewsWindow with 3 tracks (2 matched: A, B; 1 unmatched)
     and a phase map installed — the amplitude-grouping test bed."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
     fn = np.array([0, 1, 0, 1, 0, 1])
@@ -1735,7 +1735,7 @@ def phase_window(qtbot):
 
 
 def test_amp_group_and_toggles_built(phase_window):
-    from mlgidlab.phase_views_window import _UNMATCHED
+    from mlgidgui.phase_views_window import _UNMATCHED
     w = phase_window
     assert w.amp_group.isEnabled()
     assert set(w._struct_checks) == {"A", "B", _UNMATCHED}
@@ -1789,7 +1789,7 @@ def test_amp_median_per_structure_with_iqr_band(qtbot):
     """Median mode collapses a structure's tracks into ONE per-frame
     median curve with a transparent interquartile (25th-75th
     percentile) band around it."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
     # Two tracks, BOTH structure A: amplitudes 10/8 and 6/4 on frames
@@ -1929,7 +1929,7 @@ def test_heatmaps_use_gui_colormap(phase_window):
 
 
 def test_amp_group_disabled_without_phases(qtbot):
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
     q = np.zeros(2)
@@ -1953,8 +1953,8 @@ def _roi_scan_window(qtbot, tmp_path):
     on frames 0 and 3 (a fit gap at 1..2)."""
     import h5py
 
-    from mlgidlab.phase_views_window import PhaseViewsWindow
-    from mlgidlab.roi_intensity import axis_slice
+    from mlgidgui.phase_views_window import PhaseViewsWindow
+    from mlgidgui.roi_intensity import axis_slice
 
     n_f, n_z, n_xy = 4, 40, 50
     q_xy_axis = np.linspace(0.0, 1.0, n_xy)
@@ -1992,7 +1992,7 @@ def test_amp_metric_roi_computes_gapfree_trace(qtbot, tmp_path):
     curve covers EVERY frame (the fit gap at 1..2 and the member-less
     frames borrow the nearest fitted position), and the values match
     the unit-tested ``integrate_roi`` on the same frames."""
-    from mlgidlab.roi_intensity import integrate_roi
+    from mlgidgui.roi_intensity import integrate_roi
 
     w, stack, q_xy_axis, q_z_axis = _roi_scan_window(qtbot, tmp_path)
     assert w.amp_metric.currentData() == "amplitude"   # default
@@ -2058,7 +2058,7 @@ def test_roi_key_frames_partition_by_nearest_member(qtbot, tmp_path):
     interval follows the key of the nearest member frame, so a track
     matched only from frame 2 splits its trace into an unmatched head
     and a matched tail (synthesized tail frames included)."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow, _UNMATCHED
+    from mlgidgui.phase_views_window import PhaseViewsWindow, _UNMATCHED
 
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
@@ -2097,7 +2097,7 @@ def test_amp_xrange_pinned_to_frame_interval(phase_window):
 def _ring_window(qtbot):
     """A views window with 2 spot tracks + 1 ring track (index 2), real
     (q_xy, q_z), and phases A/B on the spots."""
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
     fn = np.array([0, 1, 0, 1, 0, 1])
@@ -2157,7 +2157,7 @@ def test_trajectories_color_by_matched(qtbot):
 
 
 def test_trajectories_matched_disabled_without_phases(qtbot):
-    from mlgidlab.phase_views_window import PhaseViewsWindow
+    from mlgidgui.phase_views_window import PhaseViewsWindow
     w = PhaseViewsWindow()
     qtbot.addWidget(w)
     q = np.zeros(2)
@@ -2310,7 +2310,7 @@ def test_export_images_write_and_restore(phase_window, tmp_path):
 def test_export_dialog_modes(qtbot):
     """Data mode: view checkboxes only. Image mode adds the structure
     subset + style controls; OK gates on at least one selected view."""
-    from mlgidlab.phase_views_window import _ExportDialog
+    from mlgidgui.phase_views_window import _ExportDialog
     views = [
         ("trajectories", "Trajectories", True, ""),
         ("qmap", "q-map overlay", True, ""),
@@ -2451,7 +2451,7 @@ def test_the_structure_tab_round_trip_keeps_tracking_for_many_frames(
 
 def test_a_raw_session_after_a_single_frame_re_enables_the_action(
         main_window, synthetic_nexus_single, synthetic_raw):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     _open(main_window, synthetic_nexus_single)
     raw = RawSession.open([synthetic_raw])
@@ -2729,7 +2729,7 @@ def test_deleting_a_track_rewrites_the_saved_table(
     assert main_window.session.dirty is True
     tracks, edited = _saved_tracks(main_window.session.temp_path)
     assert tracks == [(0, [2], [1])]
-    assert str(edited).startswith("mlgidLAB")
+    assert str(edited).startswith("mlgidGUI")
     assert "saved in the file" in main_window.statusBar().currentMessage()
     # Reloading the entry from the file shows the edited result.
     main_window._invalidate_scan_tracks()
@@ -2775,7 +2775,7 @@ def test_gap_fills_are_written_into_the_saved_table(
     frames, ids = tracks[0][1], tracks[0][2]
     assert (3, int(new_id)) in list(zip(frames, ids))      # the filled peak
     assert frames == sorted(frames)
-    assert str(edited).startswith("mlgidLAB")
+    assert str(edited).startswith("mlgidGUI")
 
 
 def test_a_track_run_leaves_the_shown_tracks_in_the_working_file(
@@ -2808,7 +2808,7 @@ def test_a_track_run_leaves_the_shown_tracks_in_the_working_file(
     members = payload.track_members(0)
     assert tracks[0][1] == [int(f) for f in payload.frame_num[members]]
     assert tracks[0][2] == [int(i) for i in payload.peak_id[members]]
-    assert str(edited).startswith("mlgidLAB")
+    assert str(edited).startswith("mlgidGUI")
     # Saving carries it to the user's file.
     main_window.session.save()
     with h5py.File(main_window.session.original_path, "r") as f:

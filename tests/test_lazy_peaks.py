@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

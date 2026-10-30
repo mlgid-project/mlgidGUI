@@ -27,10 +27,10 @@ import numpy as np
 import pytest
 from PySide6.QtCore import Qt
 
-from mlgidlab import file_model
-from mlgidlab.conversion_panel import FRAME_ALL
-from mlgidlab.session import RawSession
-from mlgidlab.workers import CopyWorker
+from mlgidgui import file_model
+from mlgidgui.conversion_panel import FRAME_ALL
+from mlgidgui.session import RawSession
+from mlgidgui.workers import CopyWorker
 
 pytestmark = pytest.mark.gui
 
@@ -234,7 +234,7 @@ def test_image_rows_are_lightweight_and_click_to_view(
     from PySide6.QtCore import QItemSelectionModel, QModelIndex
     from silx.gui.hdf5 import Hdf5TreeModel as _SilxModel
 
-    from mlgidlab.main_window import _ImageFileNode
+    from mlgidgui.main_window import _ImageFileNode
 
     tiffs = _write_tiffs(tmp_path, n=3)
     main_window._open_paths(list(tiffs))
@@ -267,7 +267,7 @@ def test_action_open_uses_fast_widget_dialog(
     """File -> Open runs Qt's widget dialog (non-native, constant-time
     icon provider — native pickers thumbnail image files and crawl on
     big detector dirs) and feeds the picked files to ``_open_paths``."""
-    from mlgidlab import main_window as mw_mod
+    from mlgidgui import main_window as mw_mod
 
     tiffs = _write_tiffs(tmp_path, n=3)
     seen: dict = {}
@@ -304,7 +304,7 @@ def test_browser_fill_progress_indicator(
     status-bar "Browser: n/N files" indicator while rows stream in;
     it clears when the fill completes, and small batches never show
     it."""
-    from mlgidlab.main_window import MainWindow
+    from mlgidgui.main_window import MainWindow
 
     monkeypatch.setattr(MainWindow, "_TREE_PROGRESS_MIN", 2)
     tiffs = _write_tiffs(tmp_path, n=3)
@@ -409,7 +409,7 @@ def test_raw_drop_joins_the_raw_batch_behind_a_nexus_file(
 ):
     """With a NeXus session in front, a dropped raw file still extends
     the existing raw batch and brings it to the front with both files."""
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     first, second = _write_tiffs(tmp_path, n=2)
     main_window._open_paths([first])
@@ -475,7 +475,7 @@ def test_closing_the_raw_session_empties_the_selection(main_window, tmp_path):
 def test_closing_a_raw_session_behind_a_nexus_file_empties_the_selection(
     main_window, synthetic_nexus, tmp_path
 ):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     (tiff,) = _write_tiffs(tmp_path, n=1)
     main_window._open_paths([tiff])
@@ -630,7 +630,7 @@ def test_a_closed_raw_file_can_be_dropped_again(main_window, qtbot, tmp_path):
 def test_closing_a_raw_file_behind_a_nexus_file_updates_the_selection(
     main_window, qtbot, synthetic_nexus, tmp_path
 ):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     tiffs = _open_tiffs(main_window, qtbot, tmp_path, n=2)
     raw = main_window.session

@@ -14,9 +14,9 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QDialog, QMenu, QMessageBox
 
-from mlgidlab import h5_edit
-from mlgidlab.h5_edit_ops import DeleteLinkOp, RetargetLinkOp
-from mlgidlab.session import NexusSession
+from mlgidgui import h5_edit
+from mlgidgui.h5_edit_ops import DeleteLinkOp, RetargetLinkOp
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -58,7 +58,7 @@ def _show(window, h5_path: str, monkeypatch) -> None:
 
 
 def _stub_link_dialog(monkeypatch, kind, name, target, filename=""):
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     class _Stub:
         def __init__(self, *a, **k):
@@ -77,7 +77,7 @@ def _stub_link_dialog(monkeypatch, kind, name, target, filename=""):
 
 
 def _cancel_link_dialog(monkeypatch):
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     class _Stub:
         def __init__(self, *a, **k):

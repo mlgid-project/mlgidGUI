@@ -24,7 +24,7 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
+from mlgidgui import file_model
 
 ENTRY = "entry_0000"
 
@@ -163,8 +163,8 @@ def clean_link_settings():
 
     app = QApplication.instance()
     if app is not None:
-        app.setOrganizationName("mlgidLAB")
-        app.setApplicationName("mlgidLAB")
+        app.setOrganizationName("mlgidGUI")
+        app.setApplicationName("mlgidGUI")
     keys = ("peakLinkFittedToDetected", "peakLinkFittedDeleteRemovesDetected")
     s = QSettings()
     for k in keys:
@@ -180,7 +180,7 @@ def clean_link_settings():
 def test_the_link_is_on_and_the_reverse_cascade_off_by_default(
     clean_link_settings,
 ):
-    from mlgidlab import peak_link
+    from mlgidgui import peak_link
 
     assert peak_link.link_enabled() is True
     assert peak_link.reverse_delete_enabled() is False
@@ -188,7 +188,7 @@ def test_the_link_is_on_and_the_reverse_cascade_off_by_default(
 
 @pytest.mark.gui
 def test_the_settings_round_trip(clean_link_settings):
-    from mlgidlab import peak_link
+    from mlgidgui import peak_link
 
     s = clean_link_settings
     s.setValue("peakLinkFittedToDetected", False)
@@ -204,7 +204,7 @@ def test_the_settings_round_trip(clean_link_settings):
 def test_the_reverse_cascade_needs_the_link(clean_link_settings):
     """Without paired ids there is no partner to delete, so the reverse
     setting cannot act on its own however it is stored."""
-    from mlgidlab import peak_link
+    from mlgidgui import peak_link
 
     s = clean_link_settings
     s.setValue("peakLinkFittedToDetected", False)
@@ -224,7 +224,7 @@ def test_a_default_on_setting_survives_the_ini_backend(
     """QSettings hands back the string "false" on Linux and a real bool
     on macOS. The repo's older idiom only reads back a default-off
     setting correctly, which would have made this one unturnoffable."""
-    from mlgidlab import peak_link
+    from mlgidgui import peak_link
 
     s = clean_link_settings
     s.setValue("peakLinkFittedToDetected", stored)
@@ -234,7 +234,7 @@ def test_a_default_on_setting_survives_the_ini_backend(
 
 @pytest.mark.gui
 def test_the_settings_dialog_shows_and_saves_both(main_window, clean_link_settings):
-    from mlgidlab.main_window_dialogs import _SettingsDialog
+    from mlgidgui.main_window_dialogs import _SettingsDialog
 
     dlg = _SettingsDialog(main_window)
     assert dlg._chk_peak_link.isChecked()
@@ -250,7 +250,7 @@ def test_the_settings_dialog_shows_and_saves_both(main_window, clean_link_settin
     dlg.save_to_qsettings()
     clean_link_settings.sync()
 
-    from mlgidlab import peak_link
+    from mlgidgui import peak_link
     assert peak_link.link_enabled() is True
     assert peak_link.reverse_delete_enabled() is True
     # A fresh dialog reflects what was stored.
@@ -263,8 +263,8 @@ def test_the_settings_dialog_shows_and_saves_both(main_window, clean_link_settin
 # on frame 0, so detected 2 is unfitted and detected 0/1 already have a
 # fit — exactly the two cases the link has to tell apart.
 
-from mlgidlab.image_viewer import ManualPeak, SelectedPeak  # noqa: E402
-from mlgidlab.session import NexusSession  # noqa: E402
+from mlgidgui.image_viewer import ManualPeak, SelectedPeak  # noqa: E402
+from mlgidgui.session import NexusSession  # noqa: E402
 
 _FIT_ROW = {
     "radius": 2.75, "radius_width": 0.11,
@@ -835,7 +835,7 @@ def test_the_file_pass_types_only_infinite_width_rows_as_rings(
 def test_a_run_fitting_pass_types_its_infinite_width_rows_as_rings(
     main_window, synthetic_nexus_with_peaks,
 ):
-    from mlgidlab.pipeline import PipelineCommand
+    from mlgidgui.pipeline import PipelineCommand
 
     path = _open(main_window, synthetic_nexus_with_peaks)
     with main_window._detached_silx_tree():

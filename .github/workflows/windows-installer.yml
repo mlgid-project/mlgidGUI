@@ -1,0 +1,126 @@
+# Build the Windows installer: freeze the app with PyInstaller, wrap it with
+# Inno Setup, and prove the result starts.
+#
+# Runs on pushes to the 1.0.0 branch, on version tags, and on demand
+# (Actions -> Windows installer -> Run workflow; tick "lite" for the build
+# without the pipeline backends). It is a separate workflow from ci.yml so a
+# push to any other branch does not start a multi-gigabyte build.
+#
+# What the job proves, in order:
+#   1. the frozen folder starts and passes ``--self-test`` (a real window on a
+#      NeXus file, the bundled changelog and icons; with the backends also a
+#      2D fit, a CIF read and a torchvision call),
+#   2. the installer installs silently into a fresh folder, the INSTALLED app
+#      passes the same self-test, and the uninstaller removes it again.
+# The installer and the numbers (sizes, timings, SHA-256) are uploaded.
+
+name: Windows installer
+
+on:
+  push:
+    branches: [dev/v1.0.0]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      lite:
+        description: "Lite build: leave out the pipeline backends"
+        type: boolean
+        default: false
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ inputs.lite && 'lite' || 'full' }})
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      APP_NAME: mlgidGUI
+      LITE: ${{ inputs.lite && '1' || '0' }}
+      # The frozen app has no console; PyInstaller and pip print Unicode.
+      PYTHONUTF8: "1"
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Not editable: PyInstaller reads the installed package and its
+      # metadata. The extra is the whole pipeline stack unless LITE is set.
+      - name: Install the app and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          $target = if ($env:LITE -eq '1') { '.' } else { '.[pipeline]' }
+          pip install $target pyinstaller
+          # pygid declares the obsolete 'typing' backport as a dependency, and
+          # PyInstaller refuses to run while it is installed. The standard
+          # library module shadows it anyway, so removing it changes nothing.
+          pip uninstall -y typing
+          pip list
+
+      - name: Freeze and build the installer
+        run: |
+          $flags = @()
+          if ($env:LITE -eq '1') { $flags += '--lite' }
+          python packaging/windows/build.py --name $env:APP_NAME @flags
+
+      - name: Self-test the frozen app
+        run: |
+          $log = Join-Path $PWD 'selftest-frozen.log'
+          $env:MLGIDGUI_SELFTEST_LOG = $log
+          $flags = @('--self-test')
+          if ($env:LITE -ne '1') { $flags += '--backends' }
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          $run = Start-Process -FilePath "dist\$env:APP_NAME\$env:APP_NAME.exe" `
+            -ArgumentList $flags -Wait -PassThru
+          $watch.Stop()
+          if (Test-Path $log) { Get-Content $log } else { Write-Host 'no self-test log was written' }
+          $line = "- frozen app: self-test took $([math]::Round($watch.Elapsed.TotalSeconds, 1)) s (first start, exit code $($run.ExitCode))"
+          Write-Host $line
+          Add-Content $env:GITHUB_STEP_SUMMARY $line
+          if ($run.ExitCode -ne 0) { exit 1 }
+
+      - name: Install silently, self-test the installed app, uninstall
+        run: |
+          $installer = (Get-ChildItem dist -Filter '*-setup.exe' | Select-Object -First 1).FullName
+          $target = Join-Path $env:RUNNER_TEMP 'installed-app'
+          $install = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList `
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$target", "/LOG=$PWD\install.log"
+          if ($install.ExitCode -ne 0) { Get-Content install.log -Tail 40; exit 1 }
+          $log = Join-Path $PWD 'selftest-installed.log'
+          $env:MLGIDGUI_SELFTEST_LOG = $log
+          $flags = @('--self-test')
+          if ($env:LITE -ne '1') { $flags += '--backends' }
+          $run = Start-Process -FilePath "$target\$env:APP_NAME.exe" -ArgumentList $flags -Wait -PassThru
+          if (Test-Path $log) { Get-Content $log } else { Write-Host 'no self-test log was written' }
+          $uninstall = Start-Process -FilePath "$target\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES' -Wait -PassThru
+          Start-Sleep -Seconds 5
+          $left = Test-Path "$target\$env:APP_NAME.exe"
+          $line = "- installed app: self-test exit code $($run.ExitCode), uninstaller exit code $($uninstall.ExitCode), exe left behind: $left"
+          Write-Host $line
+          Add-Content $env:GITHUB_STEP_SUMMARY $line
+          if ($run.ExitCode -ne 0 -or $uninstall.ExitCode -ne 0 -or $left) { exit 1 }
+
+      - name: Upload the installer and the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-${{ inputs.lite && 'lite' || 'full' }}
+          path: |
+            dist/*-setup.exe
+            dist/build_report.json
+            selftest-frozen.log
+            selftest-installed.log
+            install.log
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0

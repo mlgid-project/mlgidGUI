@@ -1,4 +1,4 @@
-"""Shared fixtures for the mlgidLAB smoke harness.
+"""Shared fixtures for the mlgidGUI smoke harness.
 
 The environment is locked down *before* any Qt or h5py import so the
 suite is headless and hermetic:
@@ -7,9 +7,9 @@ suite is headless and hermetic:
 * ``XDG_CONFIG_HOME`` redirected to a temp dir — QSettings (recent
   files, theme, playback) cannot read or clobber the real user config,
   so construction starts from a clean slate every run.
-* ``MLGIDLAB_LOG_DIR`` redirected into the same temp dir, so the update
+* ``MLGIDGUI_LOG_DIR`` redirected into the same temp dir, so the update
   log is never written to the real per-user log directory.
-* ``HDF5_USE_FILE_LOCKING=FALSE`` — mirrors ``mlgidlab.__init__.main``;
+* ``HDF5_USE_FILE_LOCKING=FALSE`` — mirrors ``mlgidgui.__init__.main``;
   matters once the file-open increments land, set here for parity.
 
 These run at conftest import, which pytest executes before collecting
@@ -29,11 +29,11 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 # A per-process temp config root so test runs never share QSettings state.
 # Removed in pytest_unconfigure: that hook ends in os._exit (skipping atexit),
 # so without an explicit rmtree these would pile up in /tmp run after run.
-_CONFIG_ROOT = tempfile.mkdtemp(prefix="mlgidlab-test-config-")
+_CONFIG_ROOT = tempfile.mkdtemp(prefix="mlgidgui-test-config-")
 os.environ["XDG_CONFIG_HOME"] = _CONFIG_ROOT
-# Same for the crash / update logs (mlgidlab.diagnostics): never the real
+# Same for the crash / update logs (mlgidgui.diagnostics): never the real
 # per-user log directory.
-os.environ["MLGIDLAB_LOG_DIR"] = os.path.join(_CONFIG_ROOT, "logs")
+os.environ["MLGIDGUI_LOG_DIR"] = os.path.join(_CONFIG_ROOT, "logs")
 
 import gc  # noqa: E402
 import sys  # noqa: E402
@@ -61,7 +61,7 @@ gc.disable()
 # The XDG_CONFIG_HOME redirect above only reaches QSettings' INI backend,
 # i.e. Linux. On Windows the default backend is the REGISTRY: tests would
 # touch real machine state, and with no organization name set (only
-# mlgidlab.main() sets one, tests never call it) registry writes don't
+# mlgidgui.main() sets one, tests never call it) registry writes don't
 # round-trip at all — setValue() followed by value() returned None on the
 # windows-latest runner. Forcing the INI format into the per-run config
 # root gives every platform the exact hermetic behaviour Linux already
@@ -117,7 +117,7 @@ def pytest_unconfigure(config):
     import shutil
     shutil.rmtree(_CONFIG_ROOT, ignore_errors=True)
     try:
-        from mlgidlab import session
+        from mlgidgui import session
         session.cleanup_registered_temp_dirs()
     except Exception:
         pass
@@ -150,7 +150,7 @@ def pytest_unconfigure(config):
 # The peak structured dtype, kept as a plain list of (name, fmt) tuples
 # so numpy stays out of module scope (the env lockdown above must apply
 # before any numpy/h5py import). Field set + order is the ground truth
-# from mlgidLAB itself, NOT pygid (absent from this checkout): it mirrors
+# from mlgidGUI itself, NOT pygid (absent from this checkout): it mirrors
 # the ``fields`` dict written by ``add_fitted_peak_row``
 # (``file_model.add_fitted_peak_row``) and the names read by
 # ``PeakTable.from_dataset``.
@@ -180,14 +180,14 @@ def main_window(qtbot):
     """Construct a fresh ``MainWindow`` and guarantee teardown.
 
     Imported lazily inside the fixture so the environment lockdown
-    above is fully applied before ``mlgidlab`` (and its Qt/h5py
+    above is fully applied before ``mlgidgui`` (and its Qt/h5py
     imports) is touched. ``qtbot`` ensures a QApplication exists.
 
     Teardown runs even if a test fails: ``close()`` exercises the real
     ``closeEvent`` shutdown path (silx detach, worker quit). With no
     session loaded it must not raise or prompt.
     """
-    from mlgidlab.main_window import MainWindow
+    from mlgidgui.main_window import MainWindow
 
     window = MainWindow()
     qtbot.addWidget(window)
@@ -250,7 +250,7 @@ def pytest_runtest_teardown(item, nextitem):
 def _no_real_file_dialog():
     """Turn a file dialog that actually opens into a failure, not a hang.
 
-    Every picker in the app is built by ``mlgidlab.file_dialogs``, so a
+    Every picker in the app is built by ``mlgidgui.file_dialogs``, so a
     test that exercises a Browse button fakes it there -- or patches
     ``QFileDialog.exec`` itself, which lands on top of this and wins.
     Anything else reaches a modal ``exec()`` with nobody to answer it
@@ -272,7 +272,7 @@ def _no_real_file_dialog():
     def _refuse(self):
         raise RuntimeError(
             "a real QFileDialog.exec() was reached: fake "
-            "mlgidlab.file_dialogs (or patch QFileDialog.exec) in this "
+            "mlgidgui.file_dialogs (or patch QFileDialog.exec) in this "
             "test -- see tests/test_file_dialogs.py"
         )
 
@@ -293,11 +293,11 @@ def _cleanup_session_temp_dirs():
     """Remove any NexusSession working-copy temp dir a test left open.
 
     Many tests build ``NexusSession.open(...)`` directly without ``close()``;
-    each otherwise leaks an ``mlgidlab_*`` dir under the system temp dir
+    each otherwise leaks an ``mlgidgui_*`` dir under the system temp dir
     (atexit can't help -- ``pytest_unconfigure`` exits via ``os._exit``)."""
     yield
     try:
-        from mlgidlab import session
+        from mlgidgui import session
         session.cleanup_registered_temp_dirs()
     except Exception:
         pass
@@ -339,7 +339,7 @@ def peak_link_off():
     linked behaviour is covered in ``test_peak_linking.py``.
     """
     from PySide6.QtCore import QSettings
-    from mlgidlab.main_window_constants import PEAK_LINK_KEY
+    from mlgidgui.main_window_constants import PEAK_LINK_KEY
 
     s = QSettings()
     s.setValue(PEAK_LINK_KEY, False)

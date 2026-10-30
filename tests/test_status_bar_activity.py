@@ -16,7 +16,7 @@ import math
 
 import pytest
 
-from mlgidlab import skin, theme_tokens
+from mlgidgui import skin, theme_tokens
 
 pytestmark = pytest.mark.gui
 
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.gui
 def test_the_dirty_dot_replaces_the_asterisk(main_window, synthetic_nexus):
     """The marker used to be glued to the end of the file name, where it
     reads as part of the name and moves with the text."""
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     name = synthetic_nexus.name
@@ -60,7 +60,7 @@ def test_the_dot_is_a_real_disc_in_the_live_accent(main_window, theme):
 
 
 def test_the_pipeline_cell_shows_a_run_in_flight(main_window):
-    from mlgidlab.pipeline import PipelineCommand
+    from mlgidgui.pipeline import PipelineCommand
 
     main_window._update_status_pipeline(running=False)
     assert main_window._sb_pipeline.text() == "idle"
@@ -80,7 +80,7 @@ def test_the_pipeline_cell_shows_a_run_in_flight(main_window):
 def test_frame_progress_promotes_the_bar_from_busy_to_determinate(main_window):
     """Several ops are one opaque backend call, so the bar starts as a
     marquee and only becomes a real 0..N bar once a count arrives."""
-    from mlgidlab.pipeline import PipelineCommand
+    from mlgidgui.pipeline import PipelineCommand
 
     main_window._pipe_thread = object()          # pretend a run is live
     try:

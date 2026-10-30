@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.peaks_table_panel import PeaksTablePanel
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.peaks_table_panel import PeaksTablePanel
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -85,7 +85,7 @@ def test_mirroring_a_large_multi_selection_is_one_pass(qtbot):
     read once and the rows are selected in one go."""
     import numpy as np
 
-    from mlgidlab.file_model import PeakTable
+    from mlgidgui.file_model import PeakTable
 
     n = 300
     zeros = np.zeros(n, dtype=float)

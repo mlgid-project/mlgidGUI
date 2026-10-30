@@ -16,7 +16,7 @@ import pytest
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QToolButton
 
-from mlgidlab import icons, theme_tokens
+from mlgidgui import icons, theme_tokens
 
 pytestmark = pytest.mark.gui
 
@@ -35,7 +35,7 @@ def _isolate_icon_state():
 
 def test_the_assets_are_reachable_as_package_data():
     """Catches a wheel built without the package-data stanza."""
-    directory = resources.files("mlgidlab").joinpath("assets/icons")
+    directory = resources.files("mlgidgui").joinpath("assets/icons")
     assert directory.is_dir()
     shipped = icons.available()
     assert len(shipped) >= 40

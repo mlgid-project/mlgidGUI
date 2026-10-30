@@ -14,9 +14,9 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QSettings
 
-from mlgidlab.main_window_build import RAIL_EXPANDED_KEY
-from mlgidlab.session import NexusSession
-from mlgidlab.workflow_rail import WorkflowRail
+from mlgidgui.main_window_build import RAIL_EXPANDED_KEY
+from mlgidgui.session import NexusSession
+from mlgidgui.workflow_rail import WorkflowRail
 
 pytestmark = pytest.mark.gui
 
@@ -265,7 +265,7 @@ def test_opening_the_tab_takes_the_write_handle(opened):
 
 
 def test_a_raw_session_is_not_opened_for_writing(main_window, synthetic_raw):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     session = RawSession.open([synthetic_raw])
     main_window._sessions.append(session)
@@ -276,7 +276,7 @@ def test_a_raw_session_is_not_opened_for_writing(main_window, synthetic_raw):
 
 def test_a_failure_to_take_the_handle_is_silent(opened, monkeypatch):
     """The user has asked for nothing yet; the next edit reports it."""
-    from mlgidlab.h5_edit import EditError
+    from mlgidgui.h5_edit import EditError
 
     def _boom(_path):
         raise EditError("nope")
@@ -430,7 +430,7 @@ def test_a_section_cannot_be_collapsed_out_of_existence(workspace):
 
 
 def test_the_division_is_remembered(workspace):
-    from mlgidlab.structure_panel import _SPLIT_KEYS, StructurePanel
+    from mlgidgui.structure_panel import _SPLIT_KEYS, StructurePanel
 
     split = workspace._splits["top"]
     split.setSizes([300, 700])
@@ -443,7 +443,7 @@ def test_the_division_is_remembered(workspace):
 
 def test_a_stale_division_is_ignored_rather_than_applied(workspace):
     """A stored list from another layout would misplace a section."""
-    from mlgidlab.structure_panel import _SPLIT_KEYS, StructurePanel
+    from mlgidgui.structure_panel import _SPLIT_KEYS, StructurePanel
 
     QSettings().setValue(_SPLIT_KEYS["top"], "1,2,3")
     assert StructurePanel._stored_sizes("top", 2) is None
@@ -493,7 +493,7 @@ def test_the_action_row_no_ops_with_nothing_selected(workspace, opened,
 
 def test_add_actions_are_off_unless_a_group_is_selected(workspace, opened,
                                                         monkeypatch):
-    from mlgidlab import h5_edit
+    from mlgidgui import h5_edit
 
     class _Node:
         local_filename = ""
@@ -783,7 +783,7 @@ def test_every_region_sits_in_a_box(workspace):
     """
     from PySide6.QtWidgets import QFrame
 
-    from mlgidlab.skin import REGION_NAME
+    from mlgidgui.skin import REGION_NAME
 
     boxes = [
         f for f in workspace.findChildren(QFrame)

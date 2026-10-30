@@ -1,8 +1,112 @@
 # Changelog
 
-All notable changes to mlgidLAB are recorded here. Versions follow
-[PEP 440](https://peps.python.org/pep-0440/); `aN` suffixes are alpha
-pre-releases.
+All notable changes to mlgidGUI (called mlgidLAB until 1.0.0) are recorded
+here. Versions follow [PEP 440](https://peps.python.org/pep-0440/); `aN`
+suffixes are alpha pre-releases.
+
+## 1.0.0 (2026-10-30): mlgidLAB is now mlgidGUI
+
+The application you know as mlgidLAB is called **mlgidGUI** from this
+release on. It is the same program with a new name, a new logo and a Windows
+installer. The workflow is unchanged; what changed is what you type and
+where it lives.
+
+### Read this first: the rename
+
+| | Before | Now |
+|---|---|---|
+| Command | `mlgidlab` | `mlgidgui` |
+| Python package | `mlgidlab` | `mlgidgui` |
+| Run as a module | `python -m mlgidlab` | `python -m mlgidgui` |
+| PyPI project | none (installed from GitHub) | `mlgidGUI`, so `pip install mlgidgui` |
+| Repository | `mlgid-project/mlgidLAB` | `mlgid-project/mlgidGUI` (the old addresses redirect) |
+
+**What to do**
+
+- **Installed a21, a22 or a23:** use **Update now** in the banner (or Help,
+  Update now). It installs mlgidGUI from PyPI first and removes mlgidLAB
+  only once that worked, so a failed install leaves mlgidLAB as it was. The
+  restart prompt then starts mlgidGUI. From a21 and a22 the window can
+  freeze once after pip has finished (a bug fixed in a23): the new version
+  is installed, so close the window and start `mlgidgui`.
+- **Installed a20 or older, or you prefer to do it by hand:**
+  `pip install "mlgidgui[pipeline]"`, then `pip uninstall mlgidlab`.
+- **Windows installer:** run the new installer. It upgrades an earlier
+  installation in place and replaces the old launcher and shortcuts.
+- **Scripts that `import mlgidlab`:** change them to `import mlgidgui`.
+  There is **no compatibility layer**: the `mlgidlab` package and command
+  are gone after the update.
+- **Already have the older mlgidGUI (the annotation tool, up to 0.6.2)?**
+  It is a different program with the same name. `pip install --upgrade
+  mlgidgui` into the same environment replaces it with this application;
+  use a separate environment if you want to keep both. The old tool is
+  kept as `mlgid-project/mlgidGUI-legacy`.
+
+**What carries over**
+
+- Your data files are not touched, and files written by mlgidLAB open as
+  before. New files record `mlgidgui` where mlgidLAB recorded `mlgidlab`
+  (the `process/mlgidlab` group and the `program` entry); mlgidGUI reads
+  both. A file an interrupted mlgidLAB run left half-swapped is still
+  repaired.
+- Your settings (recent files, dock layout, theme, colours, update
+  preferences) are copied on the first start. The old ones stay where they
+  were, so an mlgidLAB installed next to it keeps working.
+- The log folder moved from `.../mlgidlab` to `.../mlgidgui`, and
+  `MLGIDGUI_LOG_DIR` replaces `MLGIDLAB_LOG_DIR` (the old name still
+  works). Old logs stay in the old folder.
+- On Linux the desktop entry and icons are named `mlgidgui`; the entry
+  mlgidLAB installed is removed. GNOME may keep showing a generic icon for
+  the first start: press Alt+F2, type `r`, press Enter once (or log in
+  again).
+
+### Added
+
+- **The area that is really fitted is drawn.** Selecting a detected peak
+  now outlines, in dashed red, the region pygidFIT fits for it. That region
+  is larger than the box you see: radially it is twice as wide (pygidFIT
+  uses `radius +- radius_width` where the box is drawn as `radius +-
+  radius_width / 2`), angularly the same, and one pixel of its polar grid
+  more on every side. It explains why a fitted peak can land outside its
+  detected box, and why a neighbour's intensity can leak into a fit. Fitted,
+  matched and manual selections do not show it. Settings, Display, "Outline
+  the area pygidFIT fits" turns it off (on by default).
+- **A Windows installer.** `mlgidGUI-<version>-windows-x64-full-setup.exe`
+  needs no Python and no administrator rights, and includes the full
+  pipeline. It is not code-signed, so SmartScreen asks once (More info,
+  Run anyway); each release lists its SHA-256. It does not update itself:
+  download the next installer. Tested on Windows 11 on a 4-core laptop with
+  7.6 GB of RAM and no dedicated GPU.
+- `mlgidgui --self-test` opens a window on a small generated file, reads
+  the bundled changelog and icons and, with `--backends`, runs a fit and
+  imports every backend. The installer build is checked with it.
+- The mlgidGUI logo replaces the mlgidLAB one (the logo the group chose for
+  the name). The window and desktop icon are unchanged.
+
+### Changed
+
+- **Updates install from PyPI.** Update now runs `pip install
+  "mlgidgui[pipeline]==<version>"` with the exact version the banner
+  announced (no git URL, and a pre-release works because of the exact pin).
+  GitHub is only asked which release is newest.
+- Update now works again for installs from PyPI. Those carry no record of
+  the URL they came from, which the app used to read as "unknown install"
+  and switched self-update off.
+- The one-time "mlgidLAB is becoming mlgidGUI" notice and its Help entry
+  are gone; they did their job in a21 to a23.
+- On Windows the first start deletes the `mlgidlab.exe.old` that moving
+  from mlgidLAB leaves in the `Scripts` folder.
+- The click-through manual test plan (`docs/manual_test_plan.html`) is
+  removed: it had fallen out of date. A new one will be added later.
+
+### Fixed
+
+- **An error when a menu was destroyed, and a crash report with it.** The key handler for Ctrl+Z, Ctrl+Y and
+  the arrow keys looks at every event in the application, including those
+  of widgets that are being destroyed, and handed such a widget back to Qt:
+  "Internal C++ object (QMenu) already deleted", followed in one report by a
+  segmentation fault. It no longer passes the widget on. We could not
+  reproduce the segmentation fault itself, only the error.
 
 ## 0.1.0a23 — twenty-third alpha (2026-10-28)
 

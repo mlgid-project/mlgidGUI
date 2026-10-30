@@ -11,9 +11,9 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import h5_edit
-from mlgidlab.h5_edit import MISSING
-from mlgidlab.h5_edit_ops import (
+from mlgidgui import h5_edit
+from mlgidgui.h5_edit import MISSING
+from mlgidgui.h5_edit_ops import (
     EditHistory,
     RenameAttrOp,
     SetAttrOp,

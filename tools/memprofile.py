@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""External memory profiler for mlgidLAB.
+"""External memory profiler for mlgidGUI.
 
 Samples /proc/<pid>/status at a fixed interval, records VmRSS / VmSize
 to a CSV, and reads the kernel's VmHWM / VmPeak (high watermarks)
@@ -12,9 +12,9 @@ the workload (open a stack, play it, run the pipeline), then Ctrl-C
 to stop sampling and print the summary.
 
 Usage:
-    python mlgidLAB/tools/memprofile.py
-    python mlgidLAB/tools/memprofile.py --pid 12345
-    python mlgidLAB/tools/memprofile.py --interval 0.25 --out mem.csv --plot mem.png
+    python mlgidGUI/tools/memprofile.py
+    python mlgidGUI/tools/memprofile.py --pid 12345
+    python mlgidGUI/tools/memprofile.py --interval 0.25 --out mem.csv --plot mem.png
 """
 import argparse
 import csv
@@ -71,7 +71,7 @@ def fmt_mb(kB: float) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Sample mlgidLAB's RSS over time; report peak RAM at exit."
+        description="Sample mlgidGUI's RSS over time; report peak RAM at exit."
     )
     ap.add_argument("--pid", type=int,
                     help="PID to sample. If omitted, auto-discovers a process "
@@ -82,8 +82,8 @@ def main() -> None:
                     help="CSV output path (default memprof.csv)")
     ap.add_argument("--plot",
                     help="optional PNG plot path (uses matplotlib if available)")
-    ap.add_argument("--needle", default="mlgidlab",
-                    help="substring to match for auto-discover (default mlgidlab)")
+    ap.add_argument("--needle", default="mlgidgui",
+                    help="substring to match for auto-discover (default mlgidgui)")
     args = ap.parse_args()
 
     if args.pid is None:
@@ -175,7 +175,7 @@ def main() -> None:
                        label=f"peak {peak_rss / 1024.0:.0f} MiB (VmHWM)")
             ax.set_xlabel("time (s)")
             ax.set_ylabel("RSS (MiB)")
-            ax.set_title(f"mlgidLAB RSS  pid={args.pid}")
+            ax.set_title(f"mlgidGUI RSS  pid={args.pid}")
             ax.grid(True, alpha=0.3)
             ax.legend(loc="lower right")
             fig.tight_layout()

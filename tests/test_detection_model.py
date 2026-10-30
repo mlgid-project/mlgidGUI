@@ -27,7 +27,7 @@ import time
 
 import pytest
 
-from mlgidlab import detection_model
+from mlgidgui import detection_model
 
 
 @pytest.fixture(autouse=True)
@@ -233,7 +233,7 @@ def test_purge_removes_an_abandoned_part_file(tmp_path, small_models):
 
 
 def test_purge_spares_a_fresh_part_file(tmp_path, small_models):
-    """A recent .part may be an in-flight download in a second mlgidLAB
+    """A recent .part may be an in-flight download in a second mlgidGUI
     instance — deleting it would corrupt that run."""
     fresh = tmp_path / f"dino.abc{detection_model._PART_SUFFIX}"
     fresh.write_bytes(b"x" * 512)

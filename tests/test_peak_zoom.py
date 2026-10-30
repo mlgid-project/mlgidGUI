@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.peak_zoom import MIN_FRACTION, PAD, peak_view_range
+from mlgidgui.peak_zoom import MIN_FRACTION, PAD, peak_view_range
 
 _KW = dict(radius_max=4.0, angle_extent=(0.0, 90.0))
 
@@ -74,8 +74,8 @@ pytestmark_gui = pytest.mark.gui
 
 @pytest.fixture
 def viewer(qtbot):
-    from mlgidlab.image_viewer import GIWAXSImageViewer
-    from mlgidlab.viewer_styles import MODE_POLAR
+    from mlgidgui.image_viewer import GIWAXSImageViewer
+    from mlgidgui.viewer_styles import MODE_POLAR
 
     v = GIWAXSImageViewer()
     qtbot.addWidget(v)
@@ -85,7 +85,7 @@ def viewer(qtbot):
 
 
 def _sel(kind, peak_id=0, r=2.0, a=40.0):
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
     return SelectedPeak(
         kind=kind, frame=0, peak_id=peak_id, radius=r, angle=a,
         radius_width=0.2, angle_width=10.0,
@@ -104,7 +104,7 @@ def test_selecting_a_detected_or_fitted_peak_zooms_to_it(viewer, kind):
 
 @pytest.mark.gui
 def test_a_manual_selection_does_not_move_the_view(viewer):
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     before = viewer._plot.getViewBox().viewRange()
     sel = SelectedPeak(
@@ -141,7 +141,7 @@ def _with_image(viewer):
 
 
 def _ring(kind="fitted", peak_id=0, angle_width=float("inf")):
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     return SelectedPeak(
         kind=kind, frame=0, peak_id=peak_id, radius=2.0, angle=45.0,
@@ -195,7 +195,7 @@ def test_reselecting_the_same_ring_does_not_reset_the_view_again(viewer):
 @pytest.mark.gui
 def test_the_setting_turns_the_ring_zoom_out_off_too(viewer):
     from PySide6.QtCore import QSettings
-    from mlgidlab.main_window_constants import ZOOM_TO_SELECTED_PEAK_KEY
+    from mlgidgui.main_window_constants import ZOOM_TO_SELECTED_PEAK_KEY
 
     full = _with_image(viewer)
     settings = QSettings()
@@ -217,7 +217,7 @@ def test_the_setting_turns_the_ring_zoom_out_off_too(viewer):
 @pytest.mark.gui
 def test_the_setting_turns_the_zoom_off(viewer):
     from PySide6.QtCore import QSettings
-    from mlgidlab.main_window_constants import ZOOM_TO_SELECTED_PEAK_KEY
+    from mlgidgui.main_window_constants import ZOOM_TO_SELECTED_PEAK_KEY
 
     settings = QSettings()
     old = settings.value(ZOOM_TO_SELECTED_PEAK_KEY, None)
@@ -240,7 +240,7 @@ def test_the_setting_turns_the_zoom_off(viewer):
 @pytest.mark.gui
 def test_the_settings_dialog_has_the_zoom_option_on_the_display_tab(qtbot):
     from PySide6.QtWidgets import QWidget
-    from mlgidlab.main_window_dialogs import _SettingsDialog
+    from mlgidgui.main_window_dialogs import _SettingsDialog
 
     parent = QWidget()
     qtbot.addWidget(parent)

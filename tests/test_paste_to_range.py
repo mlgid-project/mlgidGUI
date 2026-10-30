@@ -23,9 +23,9 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QInputDialog, QMessageBox, QProgressDialog
 
-from mlgidlab import file_model, peak_clipboard
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model, peak_clipboard
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

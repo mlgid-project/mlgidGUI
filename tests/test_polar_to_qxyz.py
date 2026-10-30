@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.polar import polar_to_qxyz
+from mlgidgui.polar import polar_to_qxyz
 
 
 def test_canonical_angles_scalar():

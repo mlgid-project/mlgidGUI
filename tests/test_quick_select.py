@@ -22,10 +22,10 @@ import pytest
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab import file_model
-from mlgidlab.image_viewer import ManualPeak, SelectedPeak
-from mlgidlab.parameter_panel import ParameterPanel
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.image_viewer import ManualPeak, SelectedPeak
+from mlgidgui.parameter_panel import ParameterPanel
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -48,7 +48,7 @@ def _clean_quick_target():
     """The target persists in QSettings; keep one test's pick out of the
     next one's default."""
     from PySide6.QtCore import QSettings
-    from mlgidlab.main_window_constants import QUICK_TARGET_KEY
+    from mlgidgui.main_window_constants import QUICK_TARGET_KEY
 
     QSettings().remove(QUICK_TARGET_KEY)
     yield

@@ -19,7 +19,7 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab.session import NexusSession
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

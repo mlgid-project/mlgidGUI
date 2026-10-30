@@ -1,30 +1,35 @@
 #!/usr/bin/env python
-"""Regenerate the mlgidLAB brand assets (app icon + wordmark).
+"""Regenerate the mlgidGUI brand assets: the app icons and the dark logo.
 
-    python tools/render_brand.py
+    python tools/render_brand.py [--out DIR]
 
 Writes:
 
-    mlgidlab/assets/app/mlgidlab_<size>.png   window / taskbar icon
-    mlgidlab/assets/app/mlgidlab.ico          Windows shortcuts, PyInstaller
-    docs/images/mlgid_logo_mlgidlab.png       README header (on white)
-    docs/images/mlgid_logo_mlgidlab_dark.png  About dialog (on the dark theme)
+    mlgidgui/assets/app/mlgidgui_<size>.png          window / taskbar icon
+    mlgidgui/assets/app/mlgidgui.ico                 Windows shortcuts, PyInstaller
+    docs/images/mlgid_logo_mlgidgui_dark.png         dark-theme logo (README, About)
+    mlgidgui/assets/app/mlgid_logo_mlgidgui_dark.png the same, loaded at runtime
 
-Everything is drawn here rather than stored as hand-edited SVG so the two
-marks cannot drift apart: they share one description of the family mark.
+With ``--out`` the files are written under DIR (same layout as the repo)
+instead of into the repo, to look at a change before it goes in.
 
-**The geometry is measured, not eyeballed.** The mlgid family logo
-(``mlgidBASE/docs/images/mlgid_logo.png``, 1920x1440) was analysed by
-fitting a circle to its main arc — centre (887.9, 503.5), r = 397.2 px —
-and every constant below is expressed in units of that radius: six nodes
-with their interior radii and stroke weight, nine edges with their widths
-and colours, and the two concentric arcs. So mlgidLAB's wordmark carries
-the same graph as the rest of mlgid-project, and the app icon is that
-same graph recoloured to the detector colormap.
+**The logo itself is not drawn here.** ``docs/images/mlgid_logo_mlgidgui.png``
+is the mlgid-project's mlgidGUI logo (the one of the earlier annotation tool,
+cropped to its content, with the last letters set in capitals by
+``tools/retypeset_logo.py``; the group chose to keep it for 1.0). It sits on
+a white ground. The dark variant is derived from it: every pixel is read as one
+of the logo's ink colours over white, which gives back a clean transparent
+logo, and the inks are recoloured for a dark ground (``DARK_MAP``).
 
-Dev-only: needs PySide6 (already a runtime dependency). A multi-size
-.ico additionally needs Pillow; without it the .ico is written at a
-single size, which Windows scales.
+**The app icon is drawn here** from the family node graph. The geometry is
+measured, not eyeballed: the mlgid family logo
+(``mlgidBASE/docs/images/mlgid_logo.png``, 1920x1440) was analysed by fitting
+a circle to its main arc, centre (887.9, 503.5), r = 397.2 px, and every
+constant below is expressed in units of that radius: six nodes with their
+interior radii and stroke weight and nine edges with their widths and
+colours. The icon is that graph recoloured to the detector colormap.
+
+Dev-only: needs PySide6 (already a runtime dependency) and numpy.
 """
 from __future__ import annotations
 
@@ -35,8 +40,6 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
-    QFont,
-    QFontMetricsF,
     QImage,
     QPainter,
     QPainterPath,
@@ -45,8 +48,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QApplication
 
 REPO = Path(__file__).resolve().parents[1]
-APP_DIR = REPO / "mlgidlab" / "assets" / "app"
-DOCS_DIR = REPO / "docs" / "images"
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 # --- mlgid family palette (sampled from the shipped family logos) -------
@@ -56,16 +57,15 @@ CHAR = "#323c3b"     # the "mlgid" stem of the wordmark
 STEEL = "#5b7585"    # the package suffix
 LSTEEL = "#8d9faa"   # lighter nodes / edges
 PALE = "#e5e9eb"     # the faintest edge
+#: The ink colours of the logo file, as they are in the PNG (the tagline
+#: and the darkest nodes are ``#012037``, the arcs ``#183c52``, ...).
+LOGO_INKS = (DEEP, NAVY, CHAR, STEEL, LSTEEL)
 
 # --- magma accents: the app's default detector colormap -----------------
 MAGENTA = "#b73779"
 ORANGE = "#fc8961"
 CREAM = "#fcfdbf"
 GROUND = "#19232d"   # matches the dark theme's panel colour
-
-# --- the traced family mark, in units of the main arc radius ------------
-ARC_MAIN = (1.000, -37.1, 269.4, 0.149)      # radius, start deg, span, width
-ARC_FRAGMENT = (1.362, -27.0, 60.5, 0.157)
 
 # (dx, dy, interior radius, colour)
 FAMILY_NODES = [
@@ -90,18 +90,8 @@ FAMILY_EDGES = [
 # as most prominent on a dark tile (brightest cream).
 MAGMA_MAP = {DEEP: CREAM, NAVY: ORANGE, STEEL: "#e05780",
              LSTEEL: MAGENTA, PALE: "#8c2981"}
-DARK_MAP = {DEEP: "#e8f0f5", NAVY: "#a9c9dc", STEEL: "#7fa2ba",
-            LSTEEL: "#5d7d95", PALE: "#41586b"}
-
-WORDMARK_FONT = "Noto Sans"
-TAGLINE = ("Interactive Analysis Workbench",
-           "for Grazing Incidence Diffraction")
-
-# The package motif sits where mlgidGUI puts its cursor: lower right,
-# overlapping the graph, drawn on an opaque backing so it reads as on top.
-MOTIF_CENTRE = (0.22, 0.26)
-MOTIF_SCALE = 0.52
-
+DARK_MAP = {DEEP: "#e8f0f5", NAVY: "#a9c9dc", CHAR: "#e6e9ea",
+            STEEL: "#8fb0c4", LSTEEL: "#5d7d95", PALE: "#41586b"}
 
 def _c(colour: str, palette: dict[str, str] | None) -> QColor:
     return QColor(palette.get(colour, colour) if palette else colour)
@@ -123,97 +113,6 @@ def draw_graph(p: QPainter, cx: float, cy: float, r: float, *,
         p.setBrush(QBrush(QColor(fill)))
         p.drawEllipse(QRectF(x - rr, y - rr, 2 * rr, 2 * rr))
     p.setBrush(Qt.BrushStyle.NoBrush)
-
-
-def draw_detector_motif(p: QPainter, cx: float, cy: float, r: float,
-                        colour: str, bg: str) -> None:
-    """Detector frame with three peak boxes — mlgidLAB's package motif."""
-    scale = MOTIF_SCALE * r
-    x = cx + MOTIF_CENTRE[0] * r + scale * 0.10
-    y = cy + MOTIF_CENTRE[1] * r + scale * 0.16
-    w, h = scale * 0.66, scale * 0.56
-    pad = scale * 0.10
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(QColor(bg)))
-    p.drawRoundedRect(QRectF(x - pad, y - pad, w + 2 * pad, h + 2 * pad),
-                      scale * 0.12, scale * 0.12)
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    p.setPen(QPen(QColor(colour), max(2.0, scale * 0.075),
-                  Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
-                  Qt.PenJoinStyle.RoundJoin))
-    p.drawRoundedRect(QRectF(x, y, w, h), scale * 0.07, scale * 0.07)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(QColor(colour)))
-    for fx, fy, fw, fh in ((0.12, 0.16, 0.22, 0.16),
-                           (0.48, 0.30, 0.28, 0.20),
-                           (0.20, 0.58, 0.18, 0.14)):
-        p.drawRect(QRectF(x + fx * w, y + fy * h, fw * w, fh * h))
-    p.setBrush(Qt.BrushStyle.NoBrush)
-
-
-def draw_mark(p: QPainter, cx: float, cy: float, r: float, *,
-              palette: dict[str, str] | None = None,
-              fill: str = "#ffffff", motif_colour: str = DEEP) -> None:
-    """Arcs + graph + motif."""
-    for radius, start, span, width in (ARC_MAIN, ARC_FRAGMENT):
-        p.setPen(QPen(_c(NAVY, palette), width * r, Qt.PenStyle.SolidLine,
-                      Qt.PenCapStyle.FlatCap))
-        rr = radius * r
-        p.drawArc(QRectF(cx - rr, cy - rr, 2 * rr, 2 * rr),
-                  int(start * 16), int(span * 16))
-    draw_graph(p, cx, cy, r, palette=palette, fill=fill)
-    draw_detector_motif(p, cx, cy, r, motif_colour, fill)
-
-
-def _text_path(text: str, font: QFont, x: float, baseline: float) -> QPainterPath:
-    path = QPainterPath()
-    path.addText(x, baseline, font, text)
-    return path
-
-
-def render_wordmark(path: Path, *, width: int = 1200, dark: bool = False) -> Path:
-    """The README / About wordmark: mark over "mlgidLAB" over the tagline.
-
-    Text is converted to outlines, so the PNG carries no font dependency.
-    """
-    height = int(width * 0.42)
-    image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(Qt.GlobalColor.transparent if dark else QColor("#ffffff"))
-    p = QPainter(image)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-    fill = GROUND if dark else "#ffffff"
-    draw_mark(p, width / 2.0, height * 0.265, height * 0.205,
-              palette=DARK_MAP if dark else None, fill=fill,
-              motif_colour="#d7e3ea" if dark else DEEP)
-
-    font = QFont(WORDMARK_FONT)
-    font.setPixelSize(int(height * 0.215))
-    fm = QFontMetricsF(font)
-    stem_w = fm.horizontalAdvance("mlgid")
-    suffix_w = fm.horizontalAdvance("LAB")
-    x = width / 2.0 - (stem_w + suffix_w) / 2.0
-    baseline = height * 0.725
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(QColor("#e6e9ea" if dark else CHAR)))
-    p.drawPath(_text_path("mlgid", font, x, baseline))
-    p.setBrush(QBrush(QColor("#8fb0c4" if dark else STEEL)))
-    p.drawPath(_text_path("LAB", font, x + stem_w, baseline))
-
-    tag_font = QFont(WORDMARK_FONT)
-    tag_font.setPixelSize(int(height * 0.066))
-    tag_fm = QFontMetricsF(tag_font)
-    p.setBrush(QBrush(QColor("#c2ced6" if dark else DEEP)))
-    for i, line in enumerate(TAGLINE):
-        p.drawPath(_text_path(
-            line, tag_font,
-            width / 2.0 - tag_fm.horizontalAdvance(line) / 2.0,
-            height * 0.845 + i * height * 0.066 * 1.32))
-    p.end()
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(str(path), "PNG")
-    return path
 
 
 def _tight_bbox(image: QImage):
@@ -276,34 +175,123 @@ def render_app_icon(path: Path, size: int) -> Path:
 
 
 def render_ico(path: Path, pngs: list[Path]) -> Path:
-    """Multi-size .ico. Falls back to a single size without Pillow."""
-    try:
-        from PIL import Image
+    """Multi-size .ico built from the per-size PNGs, each stored as it was
+    rendered.
 
-        frames = [Image.open(png) for png in pngs]
-        frames[0].save(path, format="ICO",
-                       sizes=[(f.width, f.height) for f in frames])
-    except ImportError:
-        QImage(str(pngs[-1])).save(str(path), "ICO")
-        print("  (Pillow not installed: .ico written at one size)")
+    Pillow's ``save(..., sizes=...)`` resamples ONE image to every size and
+    drops the sizes larger than that image, so saving from the 16 px frame
+    wrote a 16 px-only icon that Windows then stretched to 32, 48 and 256 px
+    (blurry, wrong shapes). Writing the ICONDIR by hand keeps the sharp
+    hand-sized frames; PNG entries are valid in .ico since Windows Vista.
+    """
+    import struct
+
+    entries = []
+    for png in sorted(pngs, key=lambda p: QImage(str(p)).width()):
+        image = QImage(str(png))
+        entries.append((image.width(), image.height(), png.read_bytes()))
+    header = struct.pack("<HHH", 0, 1, len(entries))
+    offset = 6 + 16 * len(entries)
+    directory = b""
+    for width, height, data in entries:
+        # 0 stands for 256 in an ICONDIRENTRY's width and height bytes.
+        directory += struct.pack(
+            "<BBBBHHII", width % 256, height % 256, 0, 0, 1, 32,
+            len(data), offset)
+        offset += len(data)
+    path.write_bytes(header + directory + b"".join(d for _, _, d in entries))
     return path
 
 
-def main() -> int:
+def render_dark_logo(src: Path, dst: Path) -> Path:
+    """The dark-ground variant of the logo at ``src`` (a logo on white).
+
+    Each pixel of the logo is a mix of one ink colour (``LOGO_INKS``) and
+    white, so it can be split back into "which ink" and "how much of it"
+    (the alpha). A pixel that equals an ink, within a small tolerance, is
+    that ink at full strength. An anti-aliased edge pixel takes the ink of
+    its nearest solid neighbours, because a light ink and a part-covered
+    dark one can look the same. White becomes transparent. The inks are then
+    swapped for their ``DARK_MAP`` colours, keeping the alpha.
+    """
+    import numpy as np
+
+    image = QImage(str(src)).convertToFormat(QImage.Format.Format_RGBA8888)
+    w, h = image.width(), image.height()
+    raw = np.frombuffer(image.constBits(), dtype=np.uint8)
+    arr = raw.reshape(h, image.bytesPerLine() // 4, 4)[:, :w, :].astype(float)
+    cover = arr[..., 3:4] / 255.0
+    rgb = arr[..., :3] * cover + 255.0 * (1.0 - cover)      # on white
+
+    def hex_rgb(colour: str) -> list[int]:
+        return [int(colour[i:i + 2], 16) for i in (1, 3, 5)]
+
+    inks = np.array([hex_rgb(c) for c in LOGO_INKS], dtype=float)
+    white = np.full(3, 255.0)
+    toward_ink = white - inks                                # (k, 3)
+    t = np.einsum("hwc,kc->hwk", white - rgb, toward_ink)
+    t = np.clip(t / np.einsum("kc,kc->k", toward_ink, toward_ink), 0.0, 1.0)
+    mixed = white - t[..., None] * toward_ink                # (h, w, k, 3)
+    mix_error = np.linalg.norm(mixed - rgb[..., None, :], axis=-1)
+    solid_error = np.linalg.norm(rgb[..., None, :] - inks, axis=-1)
+
+    blank = (white - rgb).max(axis=-1) <= 6.0
+    solid = (solid_error.min(axis=-1) <= 8.0) & ~blank
+    ink = np.where(solid, solid_error.argmin(axis=-1), -1)
+    alpha = np.where(solid, 1.0, 0.0)
+    for y, x in zip(*np.nonzero(~solid & ~blank)):
+        near = ink[max(0, y - 3):y + 4, max(0, x - 3):x + 4]
+        candidates = np.unique(near[near >= 0])
+        if candidates.size == 0:
+            candidates = np.arange(len(LOGO_INKS))
+        best = candidates[np.argmin(mix_error[y, x, candidates])]
+        ink[y, x] = best
+        alpha[y, x] = t[y, x, best]
+
+    out = np.zeros((h, w, 4), dtype=np.uint8)
+    for index, colour in enumerate(LOGO_INKS):
+        target = hex_rgb(DARK_MAP.get(colour, colour))
+        out[ink == index, :3] = target
+    out[..., 3] = np.round(alpha * 255).astype(np.uint8)
+    result = QImage(out.tobytes(), w, h, w * 4,
+                    QImage.Format.Format_RGBA8888).copy()
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    result.save(str(dst), "PNG")
+    return dst
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--out", type=Path, default=None,
+                        help="write under this directory instead of the repo")
+    args = parser.parse_args(argv)
+    root = args.out or REPO
+    app_dir = root / "mlgidgui" / "assets" / "app"
+    docs_dir = root / "docs" / "images"
+
     app = QApplication.instance() or QApplication(sys.argv)
     _ = app
 
-    pngs = [render_app_icon(APP_DIR / f"mlgidlab_{s}.png", s)
+    pngs = [render_app_icon(app_dir / f"mlgidgui_{s}.png", s)
             for s in ICON_SIZES]
-    written = [*pngs, render_ico(APP_DIR / "mlgidlab.ico", pngs)]
-    for directory in (DOCS_DIR, APP_DIR):
-        # docs/ feeds the README header; the package copy is what the
-        # About dialog loads at runtime.
-        written.append(render_wordmark(directory / "mlgid_logo_mlgidlab.png"))
-        written.append(render_wordmark(directory / "mlgid_logo_mlgidlab_dark.png",
-                                       dark=True))
+    written = [*pngs, render_ico(app_dir / "mlgidgui.ico", pngs)]
+    # The logo is a committed file (see the module docstring); the package
+    # carries the same bytes, and the dark variant is derived from it.
+    light = REPO / "docs" / "images" / "mlgid_logo_mlgidgui.png"
+    if not light.is_file():
+        raise SystemExit(f"missing {light.relative_to(REPO)}")
+    app_dir.mkdir(parents=True, exist_ok=True)
+    package_light = app_dir / light.name
+    if package_light.resolve() != light.resolve():
+        package_light.write_bytes(light.read_bytes())
+        written.append(package_light)
+    for directory in (docs_dir, app_dir):
+        written.append(render_dark_logo(
+            light, directory / "mlgid_logo_mlgidgui_dark.png"))
     for path in written:
-        print(path.relative_to(REPO))
+        print(path.relative_to(root))
     return 0
 
 

@@ -1,11 +1,11 @@
 # Backend compatibility — verifying mlgidbase & the pipeline stack
 
-mlgidLAB runs standalone (view + edit existing NeXus results) on its
+mlgidGUI runs standalone (view + edit existing NeXus results) on its
 public-PyPI runtime dependencies alone. Detection, fitting, and
 matching require the in-house pipeline stack — installed via the
 `[pipeline]` extra. That stack moves faster than the GUI, so this
 document is the procedure for confirming a given pipeline release still
-drives mlgidLAB the same way, plus the exact API surface the GUI
+drives mlgidGUI the same way, plus the exact API surface the GUI
 depends on (the things that break if an upstream signature drifts).
 
 Run this whenever you bump `mlgidbase` (or any backend), before
@@ -88,9 +88,9 @@ Web cross-check: open `https://pypi.org/project/mlgidbase/`.
 In a throwaway environment, so the verified-good env stays intact:
 
 ```bash
-conda create -n mlgidlab_compat python=3.12 -y
-conda activate mlgidlab_compat
-git clone https://github.com/mlgid-project/mlgidLAB && cd mlgidLAB
+conda create -n mlgidgui_compat python=3.12 -y
+conda activate mlgidgui_compat
+git clone https://github.com/mlgid-project/mlgidGUI && cd mlgidGUI
 pip install mlgidbase pygid pygidfit mlgidmatch     # pull the latest from PyPI
 pip install -e ".[dev]"
 python -c "import importlib.metadata as m; \
@@ -106,7 +106,7 @@ skip there means a backend failed to import — read the collection log.
 Then a behavioral end-to-end pass in the GUI (the demo loop):
 
 ```bash
-python -m mlgidlab
+python -m mlgidgui
 ```
 
 1. Open `example/eiger4m_0000.h5` (raw) and convert it.
@@ -130,7 +130,7 @@ these. Verbatim call sites are in the code; this is the contract.
   `analysis.plot_analysis_results(save_fig=True, path_to_save_fig=...,
   plot_result=False, return_result=False, **kwargs)` (figure export).
 - `mlgiddetect_functions.load_config`'s **dict form**, used by the
-  Pipeline dock's detection parameters (`mlgidlab.detection_config`):
+  Pipeline dock's detection parameters (`mlgidgui.detection_config`):
   a `{SECTION: {KEY: value}}` dict passed as `config_detect` is applied
   onto a fresh `mlgiddetect` `Config` with
   `setattr(config, f"{SECTION}_{KEY}", value)`, so the panel's widgets
@@ -293,7 +293,7 @@ pip install --force-reinstall --no-deps project_repos/mlgidBASE
   0.1.3, so there is nothing meaningful to pin. Re-pin when upstream
   tags the release containing `561edfa`.
 - **Caveats the GUI codes around** (checked at this sha; see
-  `mlgidlab/phase_tracking.py`):
+  `mlgidgui/phase_tracking.py`):
   - `track_peaks` exists only past the 0.1.3 release — the GUI
     feature-gates on availability and raises a named RuntimeError
     ("needs mlgidbase newer than 0.1.3") for older installs.
@@ -420,7 +420,7 @@ adaptations below.
   `make_box_attributes`), and NaN still poisons the (angle, radius)
   IoU box — backend-fitted rings STILL end as discarded 1-member
   components, so the GUI's `track_rings` pass stays. Rings stored
-  with a FINITE angle (mlgidLAB's injected rings persist
+  with a FINITE angle (mlgidGUI's injected rings persist
   `angle = 45`) CAN now form native components; the result handler
   (`_on_phase_track_result`) drops ring-member components from the
   native payload before appending `track_rings` output, so every
@@ -559,7 +559,7 @@ profile).
     `conversion_config`'s poni -> centre autofill still mirrors
     upstream exactly.
   - `dataloader`: `_find_3d_dataset` / `_validate_dataset` improve
-    pygid's own raw-dataset search. mlgidLAB does its own walk
+    pygid's own raw-dataset search. mlgidGUI does its own walk
     (`list_raw_entries`), so this is upside only.
   - `nexus_reader`: new `set_techniques_info`; the GUI does not call
     it.
@@ -595,7 +595,7 @@ import (the CI profile).
   simulated pattern (they passed whenever their q_z happened to sit
   under q_xy_max, which for a near-square q range is almost always).
   0.1.7 compares `q_2d_fin[0]`. Since `CifPattern` is built from
-  `giwaxs_2d` output, this changes what mlgidLAB draws as the
+  `giwaxs_2d` output, this changes what mlgidGUI draws as the
   **Expected pattern** overlay and which candidates matching scores:
   fewer reflections, and the ones that remain are the ones inside the
   measured q range. Re-parse any cached `.pickle` built with 0.1.4;
@@ -630,7 +630,7 @@ import (the CI profile).
   `giwaxs_sim` and now also from the package root beside
   `ExpParameters`, `GIWAXS` and `GIWAXSFromCif`. Internal imports went
   relative and `setup.py` was replaced by `pyproject.toml`. Every
-  import path mlgidLAB and mlgidmatch use still resolves
+  import path mlgidGUI and mlgidmatch use still resolves
   (`from pygidsim.experiment import ExpParameters` on our side), so
   this is packaging hygiene rather than an API change.
 - **pygidfit 0.1.5 is blocked, and stays blocked.** `mlgidbase 0.1.8`

@@ -27,7 +27,7 @@ import shutil
 from PySide6.QtCore import QEvent, QItemSelectionModel, QModelIndex, Qt
 from PySide6.QtGui import QKeyEvent
 
-from mlgidlab.session import NexusSession
+from mlgidgui.session import NexusSession
 
 
 def _open(window, path) -> NexusSession:
@@ -49,7 +49,7 @@ def _delete_key() -> QKeyEvent:
 def test_delete_emits_only_with_a_selection(qtbot, synthetic_nexus):
     """The tree view fires ``deleteFileRequested`` on Delete when a row
     is selected, and stays silent when nothing is selected."""
-    from mlgidlab.main_window import _MlgidHdf5TreeView
+    from mlgidgui.main_window import _MlgidHdf5TreeView
 
     view = _MlgidHdf5TreeView()
     qtbot.addWidget(view)
@@ -180,7 +180,7 @@ def test_cancelling_the_unsaved_prompt_closes_nothing(
 def test_delete_closes_converted_and_raw_files_together(
     main_window, synthetic_nexus, synthetic_raw, tmp_path
 ):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     s1 = _open(main_window, synthetic_nexus)
     raw_files = []

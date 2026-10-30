@@ -23,10 +23,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from mlgidlab.flow_layout import ToolGroup, install_flow, wrapping_bar
-from mlgidlab.image_viewer import GIWAXSImageViewer
-from mlgidlab.theme import apply_dark_theme
-from mlgidlab.workflow_rail import STAGES, WorkflowRail
+from mlgidgui.flow_layout import ToolGroup, install_flow, wrapping_bar
+from mlgidgui.image_viewer import GIWAXSImageViewer
+from mlgidgui.theme import apply_dark_theme
+from mlgidgui.workflow_rail import STAGES, WorkflowRail
 
 pytestmark = pytest.mark.gui
 

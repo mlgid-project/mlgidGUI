@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QLabel, QWidget
 
-from mlgidlab.flow_layout import ToolGroup, install_flow
+from mlgidgui.flow_layout import ToolGroup, install_flow
 
 pytestmark = pytest.mark.gui
 

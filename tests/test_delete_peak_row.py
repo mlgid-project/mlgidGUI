@@ -15,7 +15,7 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
+from mlgidgui import file_model
 
 # Minimal peak dtype — only the fields the row-delete helper needs
 # (``id`` for matching, plus a couple of geometry fields so the
@@ -408,7 +408,7 @@ def test_appending_frames_removes_the_stale_tracking_table(tmp_path):
     a leftover 'general' group would shift them by one."""
     from pathlib import Path
 
-    from mlgidlab import conversion
+    from mlgidgui import conversion
 
     path = _add_tracked(
         _seed_file_with_three_kinds(tmp_path / "trk6.h5"), [([0], [0])],

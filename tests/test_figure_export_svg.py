@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab import file_dialogs
-from mlgidlab.figure_export_window import FigureExportWindow, _modified_save_paths
+from mlgidgui import file_dialogs
+from mlgidgui.figure_export_window import FigureExportWindow, _modified_save_paths
 
 pytestmark = pytest.mark.gui
 

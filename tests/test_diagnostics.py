@@ -1,4 +1,4 @@
-"""Persistent crash / update logs (``mlgidlab.diagnostics``).
+"""Persistent crash / update logs (``mlgidgui.diagnostics``).
 
 The update-install crash reported on Ubuntu 24.04 left nothing behind:
 the crash log lived in the temp dir a reboot wipes, and pip's output was
@@ -15,12 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from mlgidlab import diagnostics
+from mlgidgui import diagnostics
 
 
 @pytest.fixture
 def no_override(monkeypatch, tmp_path):
     monkeypatch.delenv(diagnostics.LOG_DIR_ENV, raising=False)
+    monkeypatch.delenv(diagnostics.LEGACY_LOG_DIR_ENV, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     return tmp_path
 
@@ -30,7 +31,7 @@ def test_linux_uses_xdg_state_home(no_override, monkeypatch):
     state = no_override / "state"
     monkeypatch.setenv("XDG_STATE_HOME", str(state))
     path = diagnostics.log_dir()
-    assert path == state / "mlgidlab"
+    assert path == state / "mlgidgui"
     assert path.is_dir()
 
 
@@ -38,24 +39,24 @@ def test_linux_falls_back_to_local_state(no_override, monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     assert diagnostics.log_dir() == (
-        no_override / "home" / ".local" / "state" / "mlgidlab")
+        no_override / "home" / ".local" / "state" / "mlgidgui")
     # A relative XDG_STATE_HOME is invalid per the spec and ignored.
     monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
     assert diagnostics.log_dir() == (
-        no_override / "home" / ".local" / "state" / "mlgidlab")
+        no_override / "home" / ".local" / "state" / "mlgidgui")
 
 
 def test_windows_uses_localappdata(no_override, monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setenv("LOCALAPPDATA", str(no_override / "appdata"))
     assert diagnostics.log_dir() == (
-        no_override / "appdata" / "mlgidlab" / "Logs")
+        no_override / "appdata" / "mlgidgui" / "Logs")
 
 
 def test_macos_uses_library_logs(no_override, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     assert diagnostics.log_dir() == (
-        no_override / "home" / "Library" / "Logs" / "mlgidlab")
+        no_override / "home" / "Library" / "Logs" / "mlgidgui")
 
 
 def test_override_wins_and_unwritable_dir_returns_none(monkeypatch, tmp_path):
@@ -80,22 +81,22 @@ def test_crash_log_rotates_past_one_mib(monkeypatch, tmp_path):
 
 
 def test_enable_crash_log_writes_to_the_log_dir(monkeypatch, tmp_path):
-    import mlgidlab
+    import mlgidgui
 
     monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(tmp_path))
     streams: list = []
     # Not the real faulthandler: it would take over pytest's own handler.
     monkeypatch.setattr(
         faulthandler, "enable", lambda file, all_threads: streams.append(file))
-    mlgidlab._enable_crash_log()
+    mlgidgui._enable_crash_log()
     assert len(streams) == 1
     streams[0].close()
     text = (tmp_path / diagnostics.CRASH_LOG_NAME).read_text()
-    assert f"mlgidLAB {mlgidlab.__version__} started" in text
+    assert f"mlgidGUI {mlgidgui.__version__} started" in text
 
 
 def _run_worker(command):
-    from mlgidlab.update_ui import _UpdateInstallWorker
+    from mlgidgui.update_ui import _UpdateInstallWorker
 
     results: list = []
     worker = _UpdateInstallWorker(command)
@@ -105,7 +106,7 @@ def _run_worker(command):
 
 
 def test_worker_writes_started_and_finished_blocks(qapp, monkeypatch, tmp_path):
-    import mlgidlab
+    import mlgidgui
 
     monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(tmp_path))
     command = [sys.executable, "-c", "print('x')"]
@@ -116,7 +117,7 @@ def test_worker_writes_started_and_finished_blocks(qapp, monkeypatch, tmp_path):
     started = text.index("=== update started")
     finished = text.index("=== update finished")
     assert started < finished
-    assert f"mlgidLAB: {mlgidlab.__version__}" in text
+    assert f"mlgidGUI: {mlgidgui.__version__}" in text
     assert f"Python: {sys.version}" in text
     assert "Platform: " in text
     assert f"Command: {' '.join(command)}" in text
@@ -148,7 +149,7 @@ def test_crash_mid_pip_leaves_only_the_started_block(
 def test_unwritable_log_location_breaks_neither_worker_nor_startup(
     qapp, monkeypatch, tmp_path
 ):
-    import mlgidlab
+    import mlgidgui
 
     blocker = tmp_path / "blocker"
     blocker.write_text("a file, not a directory")
@@ -162,7 +163,7 @@ def test_unwritable_log_location_breaks_neither_worker_nor_startup(
     enabled: list = []
     monkeypatch.setattr(
         faulthandler, "enable", lambda **kw: enabled.append(kw))
-    mlgidlab._enable_crash_log()  # must not raise
+    mlgidgui._enable_crash_log()  # must not raise
     assert enabled == []
 
 
@@ -175,7 +176,7 @@ def test_unwritable_log_dir_falls_back_to_temp(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(temp))
     results = _run_worker([sys.executable, "-c", "print('x')"])
     assert results == [(0, "x\n")]
-    fallback = temp / "mlgidlab_update_install.log"
+    fallback = temp / "mlgidgui_update_install.log"
     assert "=== update finished" in fallback.read_text(encoding="utf-8")
 
 
@@ -196,7 +197,7 @@ def test_failure_dialog_names_the_full_log(main_window, monkeypatch, tmp_path):
 def test_restart_prompt_logs_the_request(main_window, monkeypatch, tmp_path):
     from PySide6.QtWidgets import QMessageBox
 
-    import mlgidlab.main_window_update as mwu
+    import mlgidgui.main_window_update as mwu
 
     monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(
@@ -210,3 +211,13 @@ def test_restart_prompt_logs_the_request(main_window, monkeypatch, tmp_path):
         main_window._prompt_restart()
     text = Path(tmp_path / diagnostics.UPDATE_LOG_NAME).read_text("utf-8")
     assert "=== restart requested" in text
+
+
+def test_the_alpha_log_dir_variable_still_works_and_loses_to_the_new_one(
+        no_override, monkeypatch):
+    old = no_override / "old-style"
+    new = no_override / "new-style"
+    monkeypatch.setenv(diagnostics.LEGACY_LOG_DIR_ENV, str(old))
+    assert diagnostics.log_dir() == old
+    monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(new))
+    assert diagnostics.log_dir() == new

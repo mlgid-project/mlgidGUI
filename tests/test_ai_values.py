@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.ai_values import describe, parse_ai
+from mlgidgui.ai_values import describe, parse_ai
 
 
 def test_a_single_number_is_one_angle_for_every_frame():

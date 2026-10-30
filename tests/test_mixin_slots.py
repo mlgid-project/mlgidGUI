@@ -19,9 +19,9 @@ import sys
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, QThread
 
-from mlgidlab import diagnostics
-from mlgidlab import main_window_update as mwu
-from mlgidlab import update_check as uc
+from mlgidgui import diagnostics
+from mlgidgui import main_window_update as mwu
+from mlgidgui import update_check as uc
 
 pytestmark = pytest.mark.gui
 
@@ -34,8 +34,8 @@ def test_no_mixin_method_is_a_decorated_slot():
     """A ``@Slot`` on a method of a non-QObject class is called on the
     emitting thread. Every mixin of the window and of the viewer must leave
     its handlers undecorated."""
-    from mlgidlab.image_viewer import GIWAXSImageViewer
-    from mlgidlab.main_window import MainWindow
+    from mlgidgui.image_viewer import GIWAXSImageViewer
+    from mlgidgui.main_window import MainWindow
 
     offenders = []
     for root in (MainWindow, GIWAXSImageViewer):
@@ -66,7 +66,7 @@ def test_update_install_finish_is_handled_on_the_gui_thread(
     monkeypatch.setenv(diagnostics.LOG_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(mwu, "make_progress_dialog", lambda *a, **k: Progress())
     monkeypatch.setattr(
-        uc, "build_update_commands", lambda tag: [[sys.executable, "-c", "pass"]]
+        uc, "build_upgrade_command", lambda tag: [sys.executable, "-c", "pass"]
     )
 
     def question(*args, **kwargs):

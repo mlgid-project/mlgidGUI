@@ -18,8 +18,8 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import Qt
 
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -72,7 +72,7 @@ def _inject_detected_at_fitted0(v):
     """Add a detected row at fitted row 0's centre so the two overlays
     overlap at one point. Returns (radius, angle) of that point."""
     import numpy as np
-    from mlgidlab.file_model import PeakTable
+    from mlgidgui.file_model import PeakTable
     tables = v._frame_peaks.get(0) or {}
     fit = tables["fitted"]
     det = tables["detected"]

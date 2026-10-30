@@ -21,8 +21,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.image_viewer import _apply_raw_flips
-from mlgidlab.viewer_items import _raw_pixel_index
+from mlgidgui.image_viewer import _apply_raw_flips
+from mlgidgui.viewer_items import _raw_pixel_index
 
 pytestmark = pytest.mark.gui
 
@@ -94,7 +94,7 @@ def test_raw_pixel_index_rejects_a_point_off_the_frame():
 
 
 def test_viewer_set_raw_flips_reorients_preview(qtbot):
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     viewer = GIWAXSImageViewer()
     qtbot.addWidget(viewer)
@@ -125,7 +125,7 @@ def test_viewer_set_raw_flips_reorients_preview(qtbot):
 
 
 def test_viewer_transposes_the_preview_like_the_flips(qtbot):
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     viewer = GIWAXSImageViewer()
     qtbot.addWidget(viewer)
@@ -150,7 +150,7 @@ def test_viewer_transposes_the_preview_like_the_flips(qtbot):
 def test_the_cursor_readout_follows_the_orientation(qtbot):
     """Reading the wrong pixel is the failure a flipped preview hides."""
     from PySide6.QtCore import QPointF
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     viewer = GIWAXSImageViewer()
     qtbot.addWidget(viewer)
@@ -180,7 +180,7 @@ def test_the_cursor_readout_follows_the_orientation(qtbot):
 
 
 def test_conversion_panel_emits_raw_flips(qtbot):
-    from mlgidlab.conversion_panel import ConversionPanel
+    from mlgidgui.conversion_panel import ConversionPanel
 
     panel = ConversionPanel()
     qtbot.addWidget(panel)
@@ -207,7 +207,7 @@ def test_transpose_sits_with_the_flips_not_under_manual_overrides(qtbot):
     attribute is gone rather than aliased, so nothing can quietly go on
     using it.
     """
-    from mlgidlab.conversion_panel import ConversionPanel
+    from mlgidgui.conversion_panel import ConversionPanel
 
     panel = ConversionPanel()
     qtbot.addWidget(panel)

@@ -1,7 +1,7 @@
 """Theme switch persistence via QSettings.
 
 ``MainWindow.__init__`` does not re-read the persisted theme — only
-``mlgidlab.__init__.main`` does (it also sets the org/app name). So
+``mlgidgui.__init__.main`` does (it also sets the org/app name). So
 this asserts only what ``_set_theme`` guarantees (main_window.py:
 1149-1178): invalid clamps to "dark", ``_current_theme`` updates, and
 ``QSettings().setValue("theme", ...)`` round-trips (the same key
@@ -25,10 +25,10 @@ def _settings_theme():
 
 
 def test_set_theme_persists_and_clamps(main_window):
-    # Mirror production QSettings resolution (set in mlgidlab.main).
+    # Mirror production QSettings resolution (set in mlgidgui.main).
     app = QApplication.instance()
-    app.setOrganizationName("mlgidLAB")
-    app.setApplicationName("mlgidLAB")
+    app.setOrganizationName("mlgidGUI")
+    app.setApplicationName("mlgidGUI")
 
     main_window._set_theme("light")
     assert main_window._current_theme == "light"

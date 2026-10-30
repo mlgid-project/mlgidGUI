@@ -19,8 +19,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -110,7 +110,7 @@ def harness(main_window, synthetic_nexus_with_peaks, tmp_path, monkeypatch):
     monkeypatch.setattr(mw, "_confirm_matched_sweep", fake_confirm)
     monkeypatch.setattr(mw, "_view_worker_blocks_pipeline", lambda: False)
 
-    from mlgidlab import main_window as mw_mod
+    from mlgidgui import main_window as mw_mod
     monkeypatch.setattr(
         mw_mod.QMessageBox, "warning",
         staticmethod(lambda *a, **k: state["warnings"].append(a)),

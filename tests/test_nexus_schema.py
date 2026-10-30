@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab import nexus_schema as nx
+from mlgidgui import nexus_schema as nx
 
 
 def test_every_listed_class_has_a_help_line():
@@ -12,7 +12,7 @@ def test_every_listed_class_has_a_help_line():
     assert not missing, f"no help text for {missing!r}"
 
 
-def test_the_two_classes_mlgidlab_depends_on_are_listed():
+def test_the_two_classes_mlgidgui_depends_on_are_listed():
     """NXparameters is what pygid stamps on analysis groups; NXdata is how
     the viewer resolves an entry."""
     assert "NXparameters" in nx.NX_CLASSES

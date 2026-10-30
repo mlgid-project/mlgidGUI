@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -139,7 +139,7 @@ def test_the_presets_write_the_numbers_the_app_already_meant_by_them(
 ):
     """High / Medium / Low were already 1.0 / 0.5 / 0.1 for a manual
     commit; the editor must not invent a second meaning."""
-    from mlgidlab.parameter_panel import ParameterPanel
+    from mlgidgui.parameter_panel import ParameterPanel
 
     window = main_window
     session = _open(window, synthetic_nexus_with_peaks)

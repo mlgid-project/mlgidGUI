@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from mlgidlab import file_model as fm
+from mlgidgui import file_model as fm
 
 
 def _write_tiffs(tmp_path, n=3, h=40, w=50) -> list[Path]:
@@ -128,7 +128,7 @@ def test_build_raw_stack_polymorphism(tiffs, synthetic_raw):
 
 
 def test_expand_fabio_scans(tiffs):
-    from mlgidlab.conversion_panel import _expand_fabio_scans
+    from mlgidgui.conversion_panel import _expand_fabio_scans
 
     # A multi-frame entry maps each selected frame to its own image file.
     entry = _multiframe_entry(tiffs)

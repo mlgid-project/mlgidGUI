@@ -14,13 +14,13 @@ action bound to the redo chords, then confirm the keyboard still redoes.
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QAction, QKeyEvent, QKeySequence
+from PySide6.QtWidgets import QMenu, QMessageBox
 
-from mlgidlab import file_model
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -166,3 +166,25 @@ def test_redo_chord_no_double_fire_without_competitor(
     )
     qtbot.wait(10)
     assert _n_det(path, "entry_0000", 0) == 2  # exactly one redo, not two
+
+
+def test_event_filter_survives_an_object_that_is_already_gone(qtbot):
+    """The filter sits on the whole application, so it is offered events for
+    widgets in the middle of being destroyed (a QMenu's hide event). Its
+    Python wrapper is already invalid then; handing it back to C++ through
+    ``super().eventFilter`` raised "Internal C++ object already deleted"
+    out of the filter and ended in a crash on a user's machine."""
+    import shiboken6
+
+    from mlgidgui.main_window import MainWindow
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    menu = QMenu(w)
+    shiboken6.delete(menu)
+    events = [QEvent(QEvent.Type.Hide)] + [
+        QKeyEvent(kind, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier)
+        for kind in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride)
+    ]
+    for event in events:
+        assert w.eventFilter(menu, event) is False

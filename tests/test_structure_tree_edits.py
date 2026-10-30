@@ -16,10 +16,10 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QDialog, QInputDialog, QMessageBox
 
-from mlgidlab import h5_edit
-from mlgidlab.h5_edit_ops import CreateNodeOp, DeleteNodeOp, MoveNodeOp
-from mlgidlab.session import NexusSession
-from mlgidlab.structure_dialogs import parse_shape
+from mlgidgui import h5_edit
+from mlgidgui.h5_edit_ops import CreateNodeOp, DeleteNodeOp, MoveNodeOp
+from mlgidgui.session import NexusSession
+from mlgidgui.structure_dialogs import parse_shape
 
 pytestmark = pytest.mark.gui
 
@@ -83,7 +83,7 @@ def _show(window, h5_path: str, monkeypatch) -> None:
 
 
 def _stub_group_dialog(monkeypatch, name, nx_class="", template=None):
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     class _Stub:
         def __init__(self, *a, **k):
@@ -105,7 +105,7 @@ def _stub_dataset_dialog(
     monkeypatch, name, dtype="float64", shape="", value="0",
     units="", resizable=False,
 ):
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     class _Stub:
         def __init__(self, *a, **k):
@@ -644,7 +644,7 @@ def test_the_structure_tab_menu_is_not_kept_after_it_closes(
     from PySide6.QtCore import QCoreApplication, QEvent, QPoint
     from PySide6.QtWidgets import QMenu
 
-    import mlgidlab.main_window_structure as mws
+    import mlgidgui.main_window_structure as mws
 
     shown = []
 
@@ -668,7 +668,7 @@ def test_a_closed_structure_dialog_is_not_kept(editing, monkeypatch):
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QDialog
 
-    import mlgidlab.main_window_structure as mws
+    import mlgidgui.main_window_structure as mws
 
     class _Cancelled(mws.NewGroupDialog):
         def exec(self):
@@ -713,7 +713,7 @@ def test_the_file_root_cannot_be_renamed_or_deleted(editing):
 
 def test_a_raw_file_gets_no_edit_menu(main_window, synthetic_raw, monkeypatch):
     from PySide6.QtWidgets import QMenu
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     session = RawSession.open([synthetic_raw])
     main_window._sessions.append(session)

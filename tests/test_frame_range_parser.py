@@ -1,4 +1,4 @@
-"""Unit tests for ``mlgidlab.frame_range.parse_frame_range``.
+"""Unit tests for ``mlgidgui.frame_range.parse_frame_range``.
 
 Pure unit, no Qt. Backs the Ctrl+Shift+V "Paste to frames..." dialog
 input. Out-of-range frames are not a syntax error — the parser splits
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.frame_range import compact_repr, parse_frame_range
+from mlgidgui.frame_range import compact_repr, parse_frame_range
 
 
 def test_single_integer():

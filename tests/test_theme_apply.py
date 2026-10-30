@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from mlgidlab.theme import apply_dark_theme, apply_light_theme
+from mlgidgui.theme import apply_dark_theme, apply_light_theme
 
 pytestmark = pytest.mark.gui
 
@@ -43,8 +43,8 @@ def test_set_theme_switches_chrome_and_plots_live(main_window):
     """A runtime `_set_theme` updates the app stylesheet *and* recolours
     the live viewer / profile plot backgrounds without a restart."""
     app = QApplication.instance()
-    app.setOrganizationName("mlgidLAB")
-    app.setApplicationName("mlgidLAB")
+    app.setOrganizationName("mlgidGUI")
+    app.setApplicationName("mlgidGUI")
     v = main_window.viewer
     pv = main_window.profile_viewer
 

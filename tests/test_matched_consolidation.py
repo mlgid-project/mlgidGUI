@@ -21,8 +21,8 @@ import logging
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.pipeline import _dedupe_matched_groups
+from mlgidgui import file_model
+from mlgidgui.pipeline import _dedupe_matched_groups
 
 ENTRY = "entry_0000"
 

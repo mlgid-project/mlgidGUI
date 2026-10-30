@@ -21,10 +21,10 @@ import pyqtgraph as pg
 import pytest
 from PySide6.QtCore import QPointF, Qt
 
-from mlgidlab.file_model import MatchedStructure, PeakTable
-from mlgidlab.image_viewer import _PeakShapeItem
-from mlgidlab.pipeline import is_mlgidbase_available
-from mlgidlab.session import NexusSession
+from mlgidgui.file_model import MatchedStructure, PeakTable
+from mlgidgui.image_viewer import _PeakShapeItem
+from mlgidgui.pipeline import is_mlgidbase_available
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

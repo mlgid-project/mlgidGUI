@@ -16,9 +16,9 @@ import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QProgressBar
 
-from mlgidlab import skin, theme_tokens
-from mlgidlab.theme import apply_dark_theme, apply_light_theme
-from mlgidlab.widgets import make_progress_dialog, skin_progress
+from mlgidgui import skin, theme_tokens
+from mlgidgui.theme import apply_dark_theme, apply_light_theme
+from mlgidgui.widgets import make_progress_dialog, skin_progress
 
 pytestmark = pytest.mark.gui
 
@@ -108,7 +108,7 @@ def pipeline_panel(monkeypatch):
     ``pipeline_panel`` binds ``is_mlgidbase_available`` by name at import,
     so the patch has to target the panel module.
     """
-    from mlgidlab import pipeline_panel as panel_mod
+    from mlgidgui import pipeline_panel as panel_mod
 
     monkeypatch.setattr(panel_mod, "is_mlgidbase_available", lambda: True)
     return panel_mod.PipelinePanel()

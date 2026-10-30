@@ -13,8 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.file_model import PeakTable
-from mlgidlab.session import NexusSession
+from mlgidgui.file_model import PeakTable
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

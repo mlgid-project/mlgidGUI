@@ -1,15 +1,15 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mlgid-project/mlgidLAB/main/docs/images/mlgid_logo_mlgidlab_dark.png">
-    <img src="https://raw.githubusercontent.com/mlgid-project/mlgidLAB/main/docs/images/mlgid_logo_mlgidlab.png" width="400" alt="mlgidLAB">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/mlgid-project/mlgidGUI/main/docs/images/mlgid_logo_mlgidgui_dark.png">
+    <img src="https://raw.githubusercontent.com/mlgid-project/mlgidGUI/main/docs/images/mlgid_logo_mlgidgui.png" width="320" alt="mlgidGUI">
   </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/mlgid-project/mlgidLAB/actions/workflows/ci.yml"><img src="https://github.com/mlgid-project/mlgidLAB/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/mlgid-project/mlgidLAB/releases/latest"><img src="https://img.shields.io/github/v/release/mlgid-project/mlgidLAB?include_prereleases&label=release" alt="Latest release"></a>
+  <a href="https://github.com/mlgid-project/mlgidGUI/actions/workflows/ci.yml"><img src="https://github.com/mlgid-project/mlgidGUI/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/mlgid-project/mlgidGUI/releases/latest"><img src="https://img.shields.io/github/v/release/mlgid-project/mlgidGUI?include_prereleases&label=release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/python-%E2%89%A53.11-blue" alt="Python 3.11 or newer">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+  <a href="https://github.com/mlgid-project/mlgidGUI/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
 <p align="center">
@@ -23,16 +23,17 @@
   <a href="#see-it-in-action">Demo</a> &middot;
   <a href="#install--launch">Install</a> &middot;
   <a href="#what-you-can-do">Features</a> &middot;
-  <a href="docs/getting_started.md">Getting started</a> &middot;
-  <a href="CHANGELOG.md">Changelog</a> &middot;
-  <a href="https://github.com/mlgid-project/mlgidLAB/issues">Issues</a>
+  <a href="https://github.com/mlgid-project/mlgidGUI/blob/main/docs/getting_started.md">Getting started</a> &middot;
+  <a href="https://github.com/mlgid-project/mlgidGUI/blob/main/CHANGELOG.md">Changelog</a> &middot;
+  <a href="https://github.com/mlgid-project/mlgidGUI/issues">Issues</a>
 </p>
 
-> **Alpha (`v0.1.0a23`).** The detect, fit, match and edit loop works end to end. Expect
-> rough edges and please report issues. See [`CHANGELOG.md`](CHANGELOG.md) for
-> highlights.
+> **mlgidGUI is the new name of mlgidLAB**, from version 1.0. It is the same
+> application, with the package and the command renamed to `mlgidgui`. If you
+> have mlgidLAB installed, `Help → Update now…` moves you over and keeps your
+> files and settings; see [`CHANGELOG.md`](https://github.com/mlgid-project/mlgidGUI/blob/main/CHANGELOG.md) for the details.
 
-mlgidLAB drives the full `pygid → mlgidDETECT → pygidFIT → mlgidMATCH`
+mlgidGUI drives the full `pygid → mlgidDETECT → pygidFIT → mlgidMATCH`
 workflow in one PySide6 window: convert raw detector images to NeXus, then
 **detect / fit / match**, **review and edit** peaks, **track** them across a
 scan, and **export**.
@@ -47,7 +48,7 @@ Open a raw 2D detector image, load the pyFAI PONI calibration and the detector
 mask, set the angle of incidence, attach sample metadata from a YAML file and
 convert to a q-space map.
 
-https://github.com/user-attachments/assets/95fdcdc0-4c5b-4893-a6d9-02ece98f89ab
+https://github.com/user-attachments/assets/a9b01e89-800f-4d38-9900-5f0a125d9704
 
 ### 2. Detect, fit and match
 
@@ -55,7 +56,7 @@ Detect diffraction peaks with the ML model, 2D-fit a strong peak by hand, fit
 every detected peak and inspect the radial and angular profiles, then match the
 fitted peaks against a CIF library and review the identified phases.
 
-https://github.com/user-attachments/assets/c05ea716-4c7e-4dbe-8584-f130b7394060
+https://github.com/user-attachments/assets/5119748a-b39b-445b-bf75-75b3893c2f34
 
 ### 3. Track peaks across a scan
 
@@ -63,9 +64,9 @@ Open a completed scan, track each peak across its frames, interpolate the gaps
 (every missing frame is fitted and re-matched), play the scan and follow the
 matched phases as they grow and decay.
 
-https://github.com/user-attachments/assets/ddc65852-fc9e-4cb4-a1ef-f6bb1911357b
+https://github.com/user-attachments/assets/3e78ec72-18da-473b-a47c-9d2f405a31ef
 
-<sub>Recorded against `v0.1.0a22`.</sub>
+<sub>Recorded against `v1.0.0`.</sub>
 
 ## Install & launch
 
@@ -75,21 +76,27 @@ stack (PyTorch + the in-house mlgid packages), so keep it isolated.
 
 ```bash
 # create + activate an isolated environment
-conda create -n mlgidlab python=3.12 -y
-conda activate mlgidlab
+conda create -n mlgidgui python=3.12 -y
+conda activate mlgidgui
 
 # full pipeline (detection / fitting / matching + raw conversion)
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
-mlgidlab
+pip install "mlgidgui[pipeline]"
+mlgidgui
 ```
 
+**On Windows** you can skip all of this: download the installer from the
+[releases page](https://github.com/mlgid-project/mlgidGUI/releases) and run
+it (no Python needed, includes the full pipeline). It is not code-signed, so
+SmartScreen asks once: **More info**, then **Run anyway**. Details in
+**[docs/getting_started.md](https://github.com/mlgid-project/mlgidGUI/blob/main/docs/getting_started.md)**.
+
 No conda? Any Python ≥ 3.11 virtual environment works
-(`python -m venv mlgidlab && source mlgidlab/bin/activate`).
+(`python -m venv mlgidgui && source mlgidgui/bin/activate`).
 
 Drop `[pipeline]` for view-only mode (browse and edit existing NeXus
 results, in-GUI pyFAI calibration; Run buttons disabled). Full per-OS
 install, a first-file walkthrough, and shortcuts are in
-**[docs/getting_started.md](docs/getting_started.md)**.
+**[docs/getting_started.md](https://github.com/mlgid-project/mlgidGUI/blob/main/docs/getting_started.md)**.
 
 ## What you can do
 
@@ -107,26 +114,35 @@ install, a first-file walkthrough, and shortcuts are in
 
 ## Documentation
 
-- **[Getting started](docs/getting_started.md)**: install, first run,
+- **[Getting started](https://github.com/mlgid-project/mlgidGUI/blob/main/docs/getting_started.md)**: install, first run,
   shortcuts, troubleshooting.
-- **[Backend compatibility](docs/backend_compatibility.md)**: pipeline
+- **[Backend compatibility](https://github.com/mlgid-project/mlgidGUI/blob/main/docs/backend_compatibility.md)**: pipeline
   version policy and how to verify a backend bump.
-- **[Manual test plan](docs/manual_test_plan.html)**: click-through
-  checklist for alpha testers. Download it and open it in a browser. Grab
-  the `example.zip` dataset, hosted once on the
-  [v0.1.0a9 release](https://github.com/mlgid-project/mlgidLAB/releases/download/v0.1.0a9/example.zip)
+- **Example data**: the `example.zip` dataset is hosted once on the
+  [v0.1.0a9 release](https://github.com/mlgid-project/mlgidGUI/releases/download/v0.1.0a9/example.zip)
   and reused for every version, so later releases carry no attachments.
-- **[Changelog](CHANGELOG.md)**: release highlights.
+- **[Changelog](https://github.com/mlgid-project/mlgidGUI/blob/main/CHANGELOG.md)**: release highlights.
 
 For contributor-facing architecture and module reference docs please contact me.
 
+## Citing
+
+The citation for mlgidGUI will be listed here once the paper about it is
+published.
+
+## Name
+
+mlgidGUI was called mlgidLAB until version 1.0. An earlier, unrelated
+annotation tool also carried the name mlgidGUI (versions up to 0.6.2); it is
+kept as [mlgidGUI-legacy](https://github.com/mlgid-project/mlgidGUI-legacy).
+
 ## License
 
-MIT, see [`LICENSE`](LICENSE). The optional `[pipeline]` extra pulls in
+MIT, see [`LICENSE`](https://github.com/mlgid-project/mlgidGUI/blob/main/LICENSE). The optional `[pipeline]` extra pulls in
 GPL-3.0 `mlgidMATCH` as a separate, optional dependency the GUI calls
 (aggregation, not a derived work).
 
 ## Contact
 
 Nico Lerch, <nico.lerch@uni-tuebingen.de>. Issues and feedback via
-[GitHub issues](https://github.com/mlgid-project/mlgidLAB/issues).
+[GitHub issues](https://github.com/mlgid-project/mlgidGUI/issues).

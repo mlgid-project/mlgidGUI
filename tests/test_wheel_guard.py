@@ -131,7 +131,7 @@ def test_a_slider_still_takes_the_wheel(main_window):
 def test_the_open_popup_list_still_scrolls(main_window):
     """Only the CLOSED combobox is filtered. The popup is a separate
     QListView, so a long item list stays scrollable."""
-    from mlgidlab.widgets import ValueWheelBlocker
+    from mlgidgui.widgets import ValueWheelBlocker
 
     combo = QComboBox(main_window)
     combo.addItems([str(i) for i in range(50)])

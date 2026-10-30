@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.file_model import MatchedStructure, PeakTable
+from mlgidgui.file_model import MatchedStructure, PeakTable
 
 pytestmark = pytest.mark.gui
 
@@ -34,7 +34,7 @@ def _structure(local_idx: int, cif: str, hkl: tuple) -> MatchedStructure:
 
 @pytest.fixture
 def viewer(qtbot):
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
     v = GIWAXSImageViewer()
     qtbot.addWidget(v)
     return v
@@ -115,7 +115,7 @@ def _struct_with_peaks(cif: str, rows: list) -> MatchedStructure:
 
 
 def test_matched_display_style_defaults_to_boxes(viewer):
-    from mlgidlab.image_viewer import _PeakShapeItem
+    from mlgidgui.image_viewer import _PeakShapeItem
     v = viewer
     v._frame_index = 0
     v.set_matched_structures(0, [_struct_with_peaks("PbI2", [(1.0, 30.0, False)])])
@@ -126,7 +126,7 @@ def test_matched_display_style_defaults_to_boxes(viewer):
 
 def test_matched_marker_style_circles_and_ring_arcs(viewer):
     import pyqtgraph as pg
-    from mlgidlab.image_viewer import MODE_CARTESIAN
+    from mlgidgui.image_viewer import MODE_CARTESIAN
     v = viewer
     v._frame_index = 0
     v._mode = MODE_CARTESIAN
@@ -144,7 +144,7 @@ def test_matched_marker_style_circles_and_ring_arcs(viewer):
     r = np.hypot(np.asarray(xd), np.asarray(yd))
     assert np.allclose(r, 3.0)                          # ring arc at constant |q|
     # Switching back restores boxes.
-    from mlgidlab.image_viewer import _PeakShapeItem
+    from mlgidgui.image_viewer import _PeakShapeItem
     v.set_matched_display_style("boxes")
     assert all(
         isinstance(it, _PeakShapeItem) for _uid, it in v._matched_items
@@ -171,7 +171,7 @@ def test_matched_marker_ring_shares_structure_colour(viewer):
     structure is enough."""
     import pyqtgraph as pg
     from PySide6.QtCore import Qt
-    from mlgidlab.image_viewer import MODE_CARTESIAN
+    from mlgidgui.image_viewer import MODE_CARTESIAN
     v = viewer
     v._frame_index = 0
     v._mode = MODE_CARTESIAN
@@ -211,7 +211,7 @@ def test_unmatched_fitted_pseudo_group(viewer):
     through the matched machinery: hidden by default, own checkbox,
     marker style, master toggle, and the tracked-peak filter."""
     import pyqtgraph as pg
-    from mlgidlab.image_viewer import (
+    from mlgidgui.image_viewer import (
         MODE_CARTESIAN, UNMATCHED_COLOR, UNMATCHED_UID, _PeakShapeItem,
     )
     v = viewer
@@ -272,7 +272,7 @@ def test_unmatched_fitted_pseudo_group(viewer):
 def test_unmatched_group_renders_without_structures(viewer):
     """With NO matched structures at all, every fitted row is unmatched
     and the pseudo-group still renders (helps tracking visualization)."""
-    from mlgidlab.image_viewer import UNMATCHED_UID
+    from mlgidgui.image_viewer import UNMATCHED_UID
     v = viewer
     v._frame_index = 0
     v.set_peaks(0, {
@@ -344,7 +344,7 @@ def test_custom_matched_color_survives_clear_and_restart(
     """Overrides are preferences, not file state: they outlive
     ``clear()`` and, via QSettings, a fresh viewer instance (the
     restart stand-in)."""
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
     v = viewer
     key = ("Aaa", 1, 1, 0)
     v.set_matched_color(key, "#123456")
@@ -396,7 +396,7 @@ def test_a_width_only_override_is_not_a_colour_choice(
 
 def test_a_matched_pen_survives_a_restart(viewer, qtbot, clean_matched_colors):
     from PySide6.QtCore import Qt
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     key = ("Aaa", 1, 1, 0)
     viewer.set_matched_pen(
@@ -422,7 +422,7 @@ def test_colours_stored_before_pens_are_still_honoured(
     import json
 
     from PySide6.QtCore import QSettings
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     QSettings().setValue(
         "matchedColors", json.dumps([[["Aaa", 1, 1, 0], "#abcdef"]]),
@@ -439,7 +439,7 @@ def test_the_detected_and_fitted_overlays_take_a_pen(
 ):
     """The peaks overlays are customisable now, and default to the preset."""
     from PySide6.QtCore import Qt
-    from mlgidlab.viewer_styles import OVERLAY_STYLE
+    from mlgidgui.viewer_styles import OVERLAY_STYLE
 
     v = viewer
     assert v.overlay_pen("detected") == OVERLAY_STYLE["detected"]
@@ -468,7 +468,7 @@ def test_the_detected_and_fitted_overlays_take_a_pen(
 
 
 def test_an_overlay_pen_survives_a_restart(viewer, qtbot, clean_matched_colors):
-    from mlgidlab.image_viewer import GIWAXSImageViewer
+    from mlgidgui.image_viewer import GIWAXSImageViewer
 
     viewer.set_overlay_pen("detected", {"color": "#00ff00", "width": 3.0})
     fresh = GIWAXSImageViewer()

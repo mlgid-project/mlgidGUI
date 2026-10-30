@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.image_viewer import MODE_CARTESIAN
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import MODE_CARTESIAN
+from mlgidgui.session import NexusSession
 
 
 def _open(window, path) -> NexusSession:

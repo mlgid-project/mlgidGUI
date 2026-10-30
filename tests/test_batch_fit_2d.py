@@ -21,8 +21,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -69,7 +69,7 @@ def test_batch_fit_appends_one_fitted_row_per_selected(
     main_window, synthetic_nexus_with_peaks, monkeypatch, peak_link_off,
 ):
     """3 detected selected, pygidfit stubbed → 3 fitted rows added."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     _select_all_three_detected(main_window)
 
@@ -139,7 +139,7 @@ def test_batch_fit_cancel_mid_loop_keeps_partial(
     main_window, synthetic_nexus_with_peaks, monkeypatch, peak_link_off,
 ):
     """Cancel after the first write keeps row 1 but not 2/3."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     _select_all_three_detected(main_window)
 
@@ -190,7 +190,7 @@ def test_batch_fit_undo_removes_all_appended(
     main_window, synthetic_nexus_with_peaks, monkeypatch, peak_link_off,
 ):
     """One Ctrl+Z reverses the whole batch — all N appended rows go."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     _select_all_three_detected(main_window)
     monkeypatch.setattr(
@@ -219,7 +219,7 @@ def test_batch_fit_partial_failure_continues(
     main_window, synthetic_nexus_with_peaks, monkeypatch, peak_link_off,
 ):
     """pygidfit fails on the 2nd peak; the 1st and 3rd still write."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     _select_all_three_detected(main_window)
 

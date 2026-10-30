@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab.session import NexusSession, RawSession
+from mlgidgui.session import NexusSession, RawSession
 
 pytestmark = pytest.mark.gui
 

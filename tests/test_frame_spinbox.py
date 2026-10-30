@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.session import NexusSession
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 

@@ -1,4 +1,4 @@
-"""``mlgidlab.phase_tracking`` — payload math, the tracked-table adapter,
+"""``mlgidgui.phase_tracking`` — payload math, the tracked-table adapter,
 helpers.
 
 Pure numpy / h5py tests run everywhere; the integration tests need the
@@ -9,8 +9,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.file_model import MatchedStructure, PeakTable
-from mlgidlab.phase_tracking import (
+from mlgidgui.file_model import MatchedStructure, PeakTable
+from mlgidgui.phase_tracking import (
     AXIS_NAMES,
     TrackingPayload,
     match_tracks_to_structures,
@@ -20,7 +20,7 @@ from mlgidlab.phase_tracking import (
     read_fitted_members,
     smooth_normalize_amplitude,
 )
-from mlgidlab.polar import polar_to_qxyz
+from mlgidgui.polar import polar_to_qxyz
 
 
 def _payload(**overrides):
@@ -201,7 +201,7 @@ def _fitted_table_for(frame_specs):
 
 
 def test_plan_gap_fills_interpolates_gaps_only():
-    from mlgidlab.phase_tracking import plan_gap_fills
+    from mlgidgui.phase_tracking import plan_gap_fills
 
     # One track, members on frames 0, 1, 3, 6 -> fills ONLY the gap
     # frames (2, 4, 5): position interpolated between the bracketing
@@ -237,7 +237,7 @@ def test_plan_gap_fills_interpolates_gaps_only():
 
 
 def test_plan_gap_fills_needs_two_anchors_and_skips_gapless():
-    from mlgidlab.phase_tracking import plan_gap_fills
+    from mlgidgui.phase_tracking import plan_gap_fills
 
     payload = TrackingPayload(
         entry="e", threshold=0.5, length=1,
@@ -268,7 +268,7 @@ def test_plan_gap_fills_rings_flagged_with_quadrant_box():
     """Ring tracks interpolate too: radial geometry only, flagged
     ``is_ring``, and carrying the finite quadrant-spanning fit box
     (angle 45 / width 90) instead of an interpolated angle."""
-    from mlgidlab.phase_tracking import (
+    from mlgidgui.phase_tracking import (
         RING_BOX_ANGLE, RING_BOX_ANGLE_WIDTH, plan_gap_fills,
     )
 
@@ -330,7 +330,7 @@ def _ring_tables(frame_specs):
 
 
 def test_track_rings_links_persistent_ring_by_radius():
-    from mlgidlab.phase_tracking import track_rings
+    from mlgidgui.phase_tracking import track_rings
 
     # A ring at r=1.8 on every frame 0-5 (the persistent phase ring)
     # plus a one-off ring at r=2.5 on frame 2 only. Member arrays are in
@@ -355,7 +355,7 @@ def test_track_rings_links_persistent_ring_by_radius():
 
 
 def test_track_rings_ignores_spots_and_short_tracks():
-    from mlgidlab.phase_tracking import track_rings
+    from mlgidgui.phase_tracking import track_rings
 
     # Two spots (not rings) + a ring on just one frame -> nothing:
     # spots are excluded by is_ring, the lone ring is < length+1.
@@ -375,7 +375,7 @@ def test_track_rings_ignores_spots_and_short_tracks():
 
 
 def test_track_rings_needs_overlapping_radii():
-    from mlgidlab.phase_tracking import track_rings
+    from mlgidgui.phase_tracking import track_rings
 
     # Two rings at very different radii never link, however many frames.
     member_frames = [0, 1, 2, 3]
@@ -602,7 +602,7 @@ def test_track_peaks_integration(synthetic_fitted_scan):
     forms one surviving track; the frame-2 blip's single-member
     component is cut by ``length``."""
     pytest.importorskip("mlgidbase")
-    from mlgidlab.pipeline import PipelineCommand, execute
+    from mlgidgui.pipeline import PipelineCommand, execute
 
     payload = execute(
         synthetic_fitted_scan,
@@ -634,7 +634,7 @@ def test_track_peaks_window_size_reaches_upstream(synthetic_fitted_scan):
     """A frame window of 1 cuts the chain 0-1-2-3-4-5 into links that
     still connect neighbours; a window of 0 means 'off' in the GUI."""
     pytest.importorskip("mlgidbase")
-    from mlgidlab.pipeline import PipelineCommand, execute
+    from mlgidgui.pipeline import PipelineCommand, execute
 
     kw = {"entry": "entry_0000", "threshold": 0.5, "length": 3}
     limited = execute(
@@ -655,7 +655,7 @@ def test_a_saved_table_is_the_same_tracks_the_payload_shows(
     pytest.importorskip("mlgidbase")
     import h5py
 
-    from mlgidlab.pipeline import PipelineCommand, execute
+    from mlgidgui.pipeline import PipelineCommand, execute
 
     payload = execute(
         synthetic_fitted_scan,
@@ -679,7 +679,7 @@ def test_track_peaks_old_backend_named_error(
     pytest.importorskip("mlgidbase")
     from mlgidbase import mlgidBASE
 
-    from mlgidlab.pipeline import PipelineCommand, execute
+    from mlgidgui.pipeline import PipelineCommand, execute
 
     monkeypatch.delattr(mlgidBASE, "track_peaks")
     with pytest.raises(RuntimeError, match="needs mlgidbase >= 0.1.11"):
@@ -699,7 +699,7 @@ def test_track_peaks_no_fitted_peaks_message(synthetic_fitted_scan):
     pytest.importorskip("mlgidbase")
     import h5py
 
-    from mlgidlab.pipeline import PipelineCommand, execute
+    from mlgidgui.pipeline import PipelineCommand, execute
 
     with h5py.File(synthetic_fitted_scan, "r+") as f:
         del f["entry_0000/data/analysis"]
@@ -739,7 +739,7 @@ def _write_saved(path, tracks, *, meta=None, old_layout=False):
 def test_read_saved_tracking_returns_table_and_recorded_settings(
     synthetic_fitted_scan,
 ):
-    from mlgidlab.phase_tracking import read_saved_tracking, saved_tracking_problem
+    from mlgidgui.phase_tracking import read_saved_tracking, saved_tracking_problem
 
     assert read_saved_tracking(synthetic_fitted_scan, "entry_0000") is None
     assert saved_tracking_problem(synthetic_fitted_scan, "entry_0000") == "none"
@@ -756,7 +756,7 @@ def test_read_saved_tracking_returns_table_and_recorded_settings(
 
 
 def test_saved_tracking_without_a_record_or_with_no_window(synthetic_fitted_scan):
-    from mlgidlab.phase_tracking import read_saved_tracking
+    from mlgidgui.phase_tracking import read_saved_tracking
 
     _write_saved(synthetic_fitted_scan, [([0], [0])])
     saved = read_saved_tracking(synthetic_fitted_scan, "entry_0000")
@@ -764,7 +764,7 @@ def test_saved_tracking_without_a_record_or_with_no_window(synthetic_fitted_scan
 
 
 def test_an_old_layout_table_is_reported_not_read(synthetic_fitted_scan):
-    from mlgidlab.phase_tracking import (
+    from mlgidgui.phase_tracking import (
         load_saved_tracking_state,
         read_saved_tracking,
         saved_tracking_problem,
@@ -778,7 +778,7 @@ def test_an_old_layout_table_is_reported_not_read(synthetic_fitted_scan):
 
 
 def test_load_saved_tracking_state_loaded_stale_and_forced(synthetic_fitted_scan):
-    from mlgidlab.phase_tracking import load_saved_tracking_state
+    from mlgidgui.phase_tracking import load_saved_tracking_state
 
     _write_saved(
         synthetic_fitted_scan,
@@ -801,7 +801,7 @@ def test_load_saved_tracking_state_loaded_stale_and_forced(synthetic_fitted_scan
 def test_a_saved_table_for_an_entry_without_fits_is_an_error_not_a_crash(tmp_path):
     import h5py
 
-    from mlgidlab.phase_tracking import load_saved_tracking_state
+    from mlgidgui.phase_tracking import load_saved_tracking_state
 
     path = tmp_path / "nofit.h5"
     with h5py.File(path, "w") as f:
@@ -817,7 +817,7 @@ def test_a_saved_table_for_an_entry_without_fits_is_an_error_not_a_crash(tmp_pat
 
 
 def test_a_written_table_reads_back_to_the_same_tracks(synthetic_fitted_scan):
-    from mlgidlab.phase_tracking import (
+    from mlgidgui.phase_tracking import (
         load_saved_tracking_state,
         write_saved_tracking,
     )
@@ -844,8 +844,8 @@ def test_a_written_table_reads_back_to_the_same_tracks(synthetic_fitted_scan):
 def test_the_written_phase_columns_follow_upstreams_majority_rule():
     import h5py  # noqa: F401  (dtype helper needs it)
 
-    from mlgidlab.file_model import MatchedStructure
-    from mlgidlab.phase_tracking import TrackingPayload, tracking_table_from_payload
+    from mlgidgui.file_model import MatchedStructure
+    from mlgidgui.phase_tracking import TrackingPayload, tracking_table_from_payload
 
     payload = TrackingPayload(
         entry="e", threshold=0.5, length=1,
@@ -883,7 +883,7 @@ def test_the_written_phase_columns_follow_upstreams_majority_rule():
 def test_regenerating_a_table_reproduces_what_upstream_wrote(synthetic_fitted_scan):
     """Load -> rewrite from the payload gives upstream's own rows back for
     the members, which is what lets a rewrite after an edit be trusted."""
-    from mlgidlab.phase_tracking import (
+    from mlgidgui.phase_tracking import (
         load_saved_tracking_state,
         tracking_table_from_payload,
     )

@@ -14,9 +14,9 @@ import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QFocusEvent, QKeyEvent
 
-from mlgidlab import h5_edit
-from mlgidlab.h5_edit import Issue, LinkInfo, NodeInfo
-from mlgidlab.structure_panel import StructurePanel, describe_node
+from mlgidgui import h5_edit
+from mlgidgui.h5_edit import Issue, LinkInfo, NodeInfo
+from mlgidgui.structure_panel import StructurePanel, describe_node
 
 pytestmark = pytest.mark.gui
 
@@ -163,7 +163,7 @@ class _FakeNode:
 
 @pytest.fixture
 def opened(main_window, synthetic_nexus):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     session = NexusSession.open(synthetic_nexus)
     main_window._sessions.append(session)
@@ -263,7 +263,7 @@ def test_structure_read_yields_none_for_an_unreadable_file(opened, tmp_path):
 def test_an_image_row_says_there_is_no_structure(main_window, tmp_path):
     from PySide6.QtGui import QIcon
 
-    from mlgidlab.browser_widgets import _ImageFileNode
+    from mlgidgui.browser_widgets import _ImageFileNode
 
     node = _ImageFileNode(str(tmp_path / "frame_0001.tif"), QIcon())
     main_window._render_structure_node(node)
@@ -309,7 +309,7 @@ def test_the_check_is_not_repeated_on_every_click(opened, monkeypatch):
 
 
 def test_a_raw_session_is_marked_read_only(main_window, synthetic_raw, monkeypatch):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     session = RawSession.open([synthetic_raw])
     main_window._sessions.append(session)

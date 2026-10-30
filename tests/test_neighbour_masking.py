@@ -19,8 +19,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.file_model import PeakTable
-from mlgidlab.manual_fit import (
+from mlgidgui.file_model import PeakTable
+from mlgidgui.manual_fit import (
     PeakBox,
     neighbour_boxes_from_tables,
     select_neighbour_boxes,
@@ -78,7 +78,7 @@ def test_it_drops_a_duplicate_among_the_candidates_too():
 
 
 def test_it_drops_rings():
-    """mlgidlab stores a ring as ``angle_width = inf``, which
+    """mlgidGUI stores a ring as ``angle_width = inf``, which
     pygidfit's ``boxes_preprocessing`` cannot cast to an int pixel
     row; a ring in the call would also flip the target's cluster to
     pygidfit's peak-on-ring model."""
@@ -176,8 +176,8 @@ def test_the_window_gathers_neighbours_from_the_frame_cache(
     """``MainWindow._neighbour_boxes`` reads the viewer's per-frame
     peak cache — the tables the overlays already hold — so a click
     costs no I/O, and it drops the row being fitted."""
-    from mlgidlab.image_viewer import SelectedPeak
-    from mlgidlab.session import NexusSession
+    from mlgidgui.image_viewer import SelectedPeak
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
     tables = main_window.viewer._frame_peaks.get(0)
@@ -202,8 +202,8 @@ def test_a_frame_without_peaks_yields_no_neighbours(
     """Frames 1 and 2 of the fixture carry no analysis group. The
     fall-back read returns empty tables, and a fit there simply runs
     without neighbours instead of failing."""
-    from mlgidlab.image_viewer import SelectedPeak
-    from mlgidlab.session import NexusSession
+    from mlgidgui.image_viewer import SelectedPeak
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
     sel = SelectedPeak(

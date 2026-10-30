@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.controls_help import (
+from mlgidgui.controls_help import (
     CONTROL_SECTIONS,
     ControlsDialog,
     build_controls_html,

@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QPushButton
 
-from mlgidlab.welcome_view import RECENT_SHOWN, WelcomeView
+from mlgidgui.welcome_view import RECENT_SHOWN, WelcomeView
 
 pytestmark = pytest.mark.gui
 
@@ -30,7 +30,7 @@ def test_the_window_starts_on_the_welcome_page(main_window):
 
 
 def test_opening_a_file_switches_to_the_tabs(main_window, synthetic_nexus):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     assert main_window._central_stack.currentWidget() is main_window.tabs
@@ -38,7 +38,7 @@ def test_opening_a_file_switches_to_the_tabs(main_window, synthetic_nexus):
 
 def test_closing_the_last_file_comes_back_to_welcome(main_window,
                                                      synthetic_nexus):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     main_window._set_active_session(None)
@@ -140,7 +140,7 @@ def test_the_hint_hides_once_rows_arrive(qtbot):
     from PySide6.QtGui import QStandardItem, QStandardItemModel
     from PySide6.QtWidgets import QTableView
 
-    from mlgidlab.widgets import attach_empty_hint
+    from mlgidgui.widgets import attach_empty_hint
 
     model = QStandardItemModel(0, 1)
     table = QTableView()

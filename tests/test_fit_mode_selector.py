@@ -23,7 +23,7 @@ import math
 
 import pytest
 
-from mlgidlab.parameter_panel import ParameterPanel
+from mlgidgui.parameter_panel import ParameterPanel
 
 
 # -- ParameterPanel.fit_mode() ---------------------------------------
@@ -104,7 +104,7 @@ def test_ring_greys_out_radios(qtbot):
 
 
 class _DummyGaussianFit:
-    """Minimal stand-in for ``mlgidlab.fit.GaussianFit`` so we can
+    """Minimal stand-in for ``mlgidgui.fit.GaussianFit`` so we can
     feed the preview slot without driving scipy."""
     def __init__(self, center: float, fwhm: float, amplitude: float = 1.0):
         self.center = float(center)
@@ -136,7 +136,7 @@ def _select_synthetic_peak(main_window, *, kind="manual"):
     """Inject a SelectedPeak into the viewer so ``_update_fitted_preview``
     has a target to render the preview around. Synthesised directly —
     no need to drive the click handler."""
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
     peak = SelectedPeak(
         kind=kind, frame=0, peak_id=0,
         radius=1.5, angle=45.0,
@@ -283,7 +283,7 @@ def _runner_wait(qtbot, runner, timeout=5000):
 
 def test_runner_delivers_a_result_and_skips_unwanted_jobs(qtbot):
     import threading
-    from mlgidlab.preview_fit import PreviewFitRunner
+    from mlgidgui.preview_fit import PreviewFitRunner
 
     runner = PreviewFitRunner()
     got = []
@@ -308,7 +308,7 @@ def test_runner_delivers_a_result_and_skips_unwanted_jobs(qtbot):
 
 
 def test_runner_reports_a_job_that_raises(qtbot):
-    from mlgidlab.preview_fit import PreviewFitRunner
+    from mlgidgui.preview_fit import PreviewFitRunner
 
     runner = PreviewFitRunner()
     got = []
@@ -331,7 +331,7 @@ def test_selecting_a_slow_peak_does_not_block_and_fills_in_later(
     import threading
     import time
     from types import SimpleNamespace
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     w = main_window
     w._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
@@ -369,7 +369,7 @@ def test_a_result_for_a_peak_no_longer_selected_is_cached_not_painted(
 ):
     import threading
     from types import SimpleNamespace
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     w = main_window
     w._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))
@@ -402,7 +402,7 @@ def test_closing_the_window_does_not_wait_for_a_running_fit(
 ):
     import threading
     import time
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     w = main_window
     w._set_active_session(NexusSession.open(synthetic_nexus_with_peaks))

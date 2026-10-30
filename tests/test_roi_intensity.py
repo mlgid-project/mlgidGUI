@@ -1,4 +1,4 @@
-"""Pure-numpy unit tests for ``mlgidlab.roi_intensity`` — the
+"""Pure-numpy unit tests for ``mlgidgui.roi_intensity`` — the
 background-subtracted integrated ROI intensity behind the amplitude
 tab's "integrated intensity (ROI)" metric. No Qt, no files."""
 from __future__ import annotations
@@ -6,8 +6,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.phase_tracking import TrackingPayload
-from mlgidlab.roi_intensity import (
+from mlgidgui.phase_tracking import TrackingPayload
+from mlgidgui.roi_intensity import (
     axis_slice,
     integrate_roi,
     track_frame_positions,

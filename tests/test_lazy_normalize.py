@@ -15,7 +15,7 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
+from mlgidgui import file_model
 
 
 def _two_entry_file(path):

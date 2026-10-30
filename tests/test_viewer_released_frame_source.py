@@ -25,8 +25,8 @@ import math
 
 from PySide6.QtCore import QPointF
 
-from mlgidlab.image_viewer import MODE_CARTESIAN, MODE_POLAR
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import MODE_CARTESIAN, MODE_POLAR
+from mlgidgui.session import NexusSession
 
 
 def _open(window, path) -> NexusSession:

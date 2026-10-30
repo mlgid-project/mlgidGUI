@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import Qt
 
-from mlgidlab.image_viewer import MATCHED_PALETTE
-from mlgidlab.pen_picker import PenPopup, grid_colors
-from mlgidlab.viewer_styles import PEN_WIDTH_MAX, PEN_WIDTH_MIN
+from mlgidgui.image_viewer import MATCHED_PALETTE
+from mlgidgui.pen_picker import PenPopup, grid_colors
+from mlgidgui.viewer_styles import PEN_WIDTH_MAX, PEN_WIDTH_MIN
 
 pytestmark = pytest.mark.gui
 
@@ -136,7 +136,7 @@ def test_automatic_emits_reset(qtbot):
 
 def test_a_pen_round_trips_through_json():
     """``Qt.PenStyle`` is an enum, and an enum is not JSON."""
-    from mlgidlab.viewer_styles import pen_from_json, pen_to_json
+    from mlgidgui.viewer_styles import pen_from_json, pen_to_json
 
     pen = {"color": "#3b82f6", "style": Qt.PenStyle.DashDotLine,
            "width": 2.5}
@@ -146,7 +146,7 @@ def test_a_pen_round_trips_through_json():
 
 
 def test_a_partial_pen_stays_partial():
-    from mlgidlab.viewer_styles import pen_from_json, pen_to_json
+    from mlgidgui.viewer_styles import pen_from_json, pen_to_json
 
     assert pen_to_json({"width": 3.0}) == {"width": 3.0}
     assert pen_from_json({"width": 3.0}) == {"width": 3.0}
@@ -154,7 +154,7 @@ def test_a_partial_pen_stays_partial():
 
 def test_a_bare_hex_string_reads_as_a_colour_only_pen():
     """The shape the pre-pen ``matchedColors`` key stored."""
-    from mlgidlab.viewer_styles import pen_from_json
+    from mlgidgui.viewer_styles import pen_from_json
 
     assert pen_from_json("#abcdef") == {"color": "#abcdef"}
     assert pen_from_json("") == {}
@@ -162,7 +162,7 @@ def test_a_bare_hex_string_reads_as_a_colour_only_pen():
 
 def test_unreadable_stored_pens_do_not_take_the_viewer_down():
     """A settings file edited by hand, or written by a future version."""
-    from mlgidlab.viewer_styles import pen_from_json
+    from mlgidgui.viewer_styles import pen_from_json
 
     assert pen_from_json(None) == {}
     assert pen_from_json(42) == {}
@@ -174,7 +174,7 @@ def test_unreadable_stored_pens_do_not_take_the_viewer_down():
 
 
 def test_a_stored_width_is_clamped_to_the_field_range():
-    from mlgidlab.viewer_styles import pen_from_json
+    from mlgidgui.viewer_styles import pen_from_json
 
     assert pen_from_json({"width": 999})["width"] == pytest.approx(
         PEN_WIDTH_MAX
@@ -190,8 +190,8 @@ def test_the_swatch_shows_a_widened_pen_without_thinning_the_presets():
     Dropping to their literal width would make every existing swatch
     fainter for no gain, so 2 px is a floor, not the value.
     """
-    from mlgidlab.viewer_styles import OVERLAY_STYLE
-    from mlgidlab.widgets import make_pen_swatch
+    from mlgidgui.viewer_styles import OVERLAY_STYLE
+    from mlgidgui.widgets import make_pen_swatch
 
     thin = make_pen_swatch(OVERLAY_STYLE["detected"])
     thick = make_pen_swatch({**OVERLAY_STYLE["detected"], "width": 5.0})
@@ -215,7 +215,7 @@ def test_the_display_dock_overlay_swatch_opens_the_editor(
 ):
     """The Detected / Fitted swatches were static labels; they are the
     way in to those overlays' pens now."""
-    from mlgidlab.viewer_styles import OVERLAY_STYLE
+    from mlgidgui.viewer_styles import OVERLAY_STYLE
 
     window = main_window
     swatch = window._overlay_swatches["detected"]

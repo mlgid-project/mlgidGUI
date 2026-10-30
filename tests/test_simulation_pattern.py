@@ -15,8 +15,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from mlgidlab import simulation_pattern as sp
-from mlgidlab.phase_tracking import RING_BOX_ANGLE, RING_BOX_ANGLE_WIDTH
+from mlgidgui import simulation_pattern as sp
+from mlgidgui.phase_tracking import RING_BOX_ANGLE, RING_BOX_ANGLE_WIDTH
 
 
 def _fake_cifpattern():

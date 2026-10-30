@@ -5,9 +5,9 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mlgidlab"
-version = "0.1.0a23"
-description = "mlgidLAB: graphical interface for the mlgidBASE GIWAXS analysis pipeline"
+name = "mlgidgui"
+version = "1.0.0"
+description = "mlgidGUI: graphical interface for the mlgidBASE GIWAXS analysis pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -17,7 +17,7 @@ authors = [
 ]
 keywords = ["GIWAXS", "GISAXS", "diffraction", "NeXus", "HDF5", "PySide6", "silx"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Visualization",
@@ -76,7 +76,7 @@ dev = ["pytest>=8.0", "pytest-qt>=4.4", "pytest-xdist>=3.5"]
 # on mlgidbase's transitive closure — a future mlgidbase that drops one
 # then surfaces as a clear resolver error, not a runtime ImportError.
 # mlgiddetect is declared for the same reason as the rest: since the
-# detection-model pre-flight (mlgidlab/detection_model.py) reads its
+# detection-model pre-flight (mlgidgui/detection_model.py) reads its
 # MODEL_URLS table and cache directory, the GUI now imports it directly.
 # Exact ('==') pins, not floors: each in-house backend release can shift
 # the detection/fitting/matching numerics or the on-disk schema, so a
@@ -124,12 +124,12 @@ pipeline = [
 ]
 
 [project.gui-scripts]
-mlgidlab = "mlgidlab:main"
+mlgidgui = "mlgidgui:main"
 
 [project.urls]
-Homepage = "https://github.com/mlgid-project/mlgidLAB"
-Repository = "https://github.com/mlgid-project/mlgidLAB"
-Issues = "https://github.com/mlgid-project/mlgidLAB/issues"
+Homepage = "https://github.com/mlgid-project/mlgidGUI"
+Repository = "https://github.com/mlgid-project/mlgidGUI"
+Issues = "https://github.com/mlgid-project/mlgidGUI/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -141,11 +141,11 @@ markers = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mlgidlab*"]
+include = ["mlgidgui*"]
 
 # `packages.find` finds packages, it does not ship data files. Without
 # this stanza the SVG glyphs are missing from the wheel and every icon
 # silently falls back to nothing — tests/test_icons.py checks the assets
 # are importable so a broken wheel fails CI rather than a user's install.
 [tool.setuptools.package-data]
-mlgidlab = ["assets/icons/*.svg", "assets/app/*.png", "assets/app/*.ico"]
+mlgidgui = ["assets/icons/*.svg", "assets/app/*.png", "assets/app/*.ico"]

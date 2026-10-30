@@ -8,8 +8,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab.profile_viewer import ProfileViewer
-from mlgidlab.viewer_items import SelectedPeak
+from mlgidgui.profile_viewer import ProfileViewer
+from mlgidgui.viewer_items import SelectedPeak
 
 pytestmark = pytest.mark.gui
 
@@ -149,7 +149,7 @@ def test_masking_off_by_default_leaves_the_profile_alone(qtbot):
 
 
 def test_masking_blanks_the_neighbour_in_the_angular_profile(qtbot):
-    from mlgidlab.manual_fit import PeakBox
+    from mlgidgui.manual_fit import PeakBox
 
     viewer = _two_peak_viewer(qtbot)
     viewer.set_selected_peak(_peak("detected", 2.0, 40.0, 0.2, 10.0))
@@ -174,8 +174,8 @@ def test_neighbour_mask_leaves_clustered_neighbours_in():
     grid) cluster with the target (joint fit), so they are not masked.
     The distance is the Pipeline setting, 2 px by default since mlgidbase
     0.1.11 (it was 10)."""
-    from mlgidlab.manual_fit import PeakBox
-    from mlgidlab.profile_masking import neighbour_mask
+    from mlgidgui.manual_fit import PeakBox
+    from mlgidgui.profile_masking import neighbour_mask
 
     radius = np.linspace(0.0, 4.0, 400)
     angle = np.linspace(0.0, 90.0, 180)
@@ -203,7 +203,7 @@ def test_the_profile_viewer_asks_for_the_panels_cluster_distance(qtbot):
     """A neighbour 12 polar pixels away (~2.3 deg) is masked at the
     default 2 px, and left in the profile at 10 px? No: 12 > 10, so both
     mask it; at 20 px it clusters with the target and stays."""
-    from mlgidlab.manual_fit import PeakBox
+    from mlgidgui.manual_fit import PeakBox
 
     viewer = _two_peak_viewer(qtbot)
     viewer.set_selected_peak(_peak("detected", 2.0, 40.0, 0.2, 2.0))
@@ -228,8 +228,8 @@ def test_the_profile_viewer_asks_for_the_panels_cluster_distance(qtbot):
 
 
 def test_neighbour_mask_skips_duplicates_of_the_target_and_bad_boxes():
-    from mlgidlab.manual_fit import PeakBox
-    from mlgidlab.profile_masking import neighbour_mask
+    from mlgidgui.manual_fit import PeakBox
+    from mlgidgui.profile_masking import neighbour_mask
 
     radius = np.linspace(0.0, 4.0, 400)
     angle = np.linspace(0.0, 90.0, 180)
@@ -245,8 +245,8 @@ def test_neighbour_mask_masks_spots_for_a_target_without_angular_extent():
     """A saved ring-like row has angle_width = inf. It must not count
     as the 'same peak' as every spot at its radius (peak 197 / 198 of
     the perovskite validation set): the spot is masked."""
-    from mlgidlab.manual_fit import PeakBox
-    from mlgidlab.profile_masking import neighbour_mask
+    from mlgidgui.manual_fit import PeakBox
+    from mlgidgui.profile_masking import neighbour_mask
 
     radius = np.linspace(0.0, 4.0, 400)
     angle = np.linspace(0.0, 90.0, 180)

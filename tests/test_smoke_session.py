@@ -21,8 +21,8 @@ import os
 import subprocess
 import sys
 
-from mlgidlab import session as session_mod
-from mlgidlab.session import NexusSession
+from mlgidgui import session as session_mod
+from mlgidgui.session import NexusSession
 
 
 def _open(window, path) -> NexusSession:
@@ -143,7 +143,7 @@ def test_stale_sweep_leaves_everything_alone_on_windows(tmp_path, monkeypatch):
 
     monkeypatch.setattr(session_mod.os, "kill", _no_kill)
     monkeypatch.setattr(session_mod.tempfile, "gettempdir", lambda: str(tmp_path))
-    leftover = tmp_path / "mlgidlab_999999_abcd"
+    leftover = tmp_path / "mlgidgui_999999_abcd"
     leftover.mkdir()
     assert session_mod._pid_alive(999999) is True
     assert session_mod.sweep_stale_temp_dirs() == 0
@@ -156,10 +156,26 @@ def test_stale_sweep_removes_dead_pid_dirs_on_posix(tmp_path, monkeypatch):
     child = subprocess.Popen([sys.executable, "-c", "pass"])
     child.wait()
     monkeypatch.setattr(session_mod.tempfile, "gettempdir", lambda: str(tmp_path))
-    dead = tmp_path / f"mlgidlab_{child.pid}_x"
-    mine = tmp_path / f"mlgidlab_{os.getpid()}_x"
+    dead = tmp_path / f"mlgidgui_{child.pid}_x"
+    mine = tmp_path / f"mlgidgui_{os.getpid()}_x"
     dead.mkdir()
     mine.mkdir()
     assert session_mod.sweep_stale_temp_dirs() == 1
     assert not dead.exists()
     assert mine.is_dir()
+
+
+def test_stale_sweep_also_removes_dirs_the_alphas_leaked(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        return
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    monkeypatch.setattr(session_mod.tempfile, "gettempdir", lambda: str(tmp_path))
+    old = tmp_path / f"mlgidlab_{child.pid}_x"
+    new = tmp_path / f"mlgidgui_{child.pid}_x"
+    other = tmp_path / f"unrelated_{child.pid}_x"
+    for d in (old, new, other):
+        d.mkdir()
+    assert session_mod.sweep_stale_temp_dirs() == 2
+    assert not old.exists() and not new.exists()
+    assert other.is_dir()

@@ -21,9 +21,9 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import h5_edit
-from mlgidlab.session import NexusSession
-from mlgidlab.structure_tree import KIND_ROLE, PATH_ROLE, RootSpec, StructureTree
+from mlgidgui import h5_edit
+from mlgidgui.session import NexusSession
+from mlgidgui.structure_tree import KIND_ROLE, PATH_ROLE, RootSpec, StructureTree
 
 pytestmark = pytest.mark.gui
 
@@ -272,7 +272,7 @@ def test_a_raw_batch_of_images_contributes_no_roots(main_window, synthetic_raw):
     that call opens the file, and a batch of thousands would mean
     thousands of opens every time this list is rebuilt.
     """
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     session = RawSession.open([synthetic_raw])
     main_window._sessions.append(session)
@@ -295,7 +295,7 @@ def test_a_nexus_session_shows_under_its_original_name(main_window,
 
 def test_the_raw_root_list_is_capped(main_window, tmp_path, monkeypatch):
     """A batch can hold thousands of files; a tree of them is not a tree."""
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     paths = []
     for i in range(6):

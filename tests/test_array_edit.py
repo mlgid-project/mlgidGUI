@@ -13,10 +13,10 @@ import pytest
 from PySide6.QtCore import QItemSelectionModel, QModelIndex, Qt
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from mlgidlab import h5_edit
-from mlgidlab.array_edit_dialog import ArrayEditDialog, CompoundTableModel
-from mlgidlab.h5_edit_ops import ReplaceDataOp
-from mlgidlab.session import NexusSession
+from mlgidgui import h5_edit
+from mlgidgui.array_edit_dialog import ArrayEditDialog, CompoundTableModel
+from mlgidgui.h5_edit_ops import ReplaceDataOp
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -197,7 +197,7 @@ def _read(window):
 
 def _stub_grid(monkeypatch, transform, *, accept=True):
     """Replace the dialog with one that applies ``transform`` to the array."""
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     class _Stub:
         def __init__(self, parent=None, *, path="", array=None,
@@ -364,7 +364,7 @@ def test_a_large_dataset_opens_read_only(editing, monkeypatch):
     monkeypatch.setattr(h5_edit, "EDITABLE_CELL_LIMIT", 4)
     captured = {}
 
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     class _Stub:
         def __init__(self, parent=None, *, path="", array=None,

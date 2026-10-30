@@ -18,7 +18,7 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab.pipeline import PipelineCommand, execute
+from mlgidgui.pipeline import PipelineCommand, execute
 
 
 def _seed_file_with_matched(path: Path, entry: str = "entry_0000") -> Path:
@@ -320,7 +320,7 @@ def test_run_matching_stamps_new_datasets_and_migrates_old_ones(
     path = _seed_fitted_with_old_rings(tmp_path / "match_stamp.h5")
     _install_matching_stub(monkeypatch, [("matched_segments_0000", [[9, 2]])])
     monkeypatch.setattr(
-        "mlgidlab.pipeline.backend_peak_list_kind", lambda: "id",
+        "mlgidgui.pipeline.backend_peak_list_kind", lambda: "id",
     )
     execute(path, PipelineCommand(
         "run_matching", {"entry": "entry_0000", "frame_num": 0},
@@ -340,7 +340,7 @@ def test_run_matching_that_finds_nothing_still_stamps_the_old_data(
     path = _seed_fitted_with_old_rings(tmp_path / "match_nothing.h5")
     _install_matching_stub(monkeypatch, [])
     monkeypatch.setattr(
-        "mlgidlab.pipeline.backend_peak_list_kind", lambda: "id",
+        "mlgidgui.pipeline.backend_peak_list_kind", lambda: "id",
     )
     execute(path, PipelineCommand("run_matching", {"entry": "entry_0000"}))
     with _group(path) as f:
@@ -355,7 +355,7 @@ def test_run_matching_with_an_older_backend_stamps_positions(
     path = _seed_fitted_with_old_rings(tmp_path / "match_old_backend.h5")
     _install_matching_stub(monkeypatch, [("matched_segments_0000", [[0, 1]])])
     monkeypatch.setattr(
-        "mlgidlab.pipeline.backend_peak_list_kind", lambda: "position",
+        "mlgidgui.pipeline.backend_peak_list_kind", lambda: "position",
     )
     execute(path, PipelineCommand("run_matching", {"entry": "entry_0000"}))
     with _group(path) as f:
@@ -368,7 +368,7 @@ def test_run_matching_with_an_older_backend_stamps_positions(
 def test_backend_peak_list_kind_follows_the_installed_mlgidbase(monkeypatch):
     from importlib import metadata
 
-    from mlgidlab.pipeline import backend_peak_list_kind
+    from mlgidgui.pipeline import backend_peak_list_kind
 
     real = metadata.version
     for installed, expected in (

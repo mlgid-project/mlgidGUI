@@ -19,8 +19,8 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QObject, Signal
 
-from mlgidlab import file_model
-from mlgidlab.workers import _FRAME_DONE_RE, _FrameProgressHandler
+from mlgidgui import file_model
+from mlgidgui.workers import _FRAME_DONE_RE, _FrameProgressHandler
 
 
 class _ProgressSink(QObject):

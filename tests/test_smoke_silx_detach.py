@@ -15,7 +15,7 @@ from __future__ import annotations
 import h5py
 import pytest
 
-from mlgidlab.session import NexusSession
+from mlgidgui.session import NexusSession
 
 
 def _open(window, path) -> NexusSession:

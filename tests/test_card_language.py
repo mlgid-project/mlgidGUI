@@ -16,8 +16,8 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QGroupBox, QLabel, QPushButton, QToolButton
 
-from mlgidlab import skin
-from mlgidlab.widgets import (
+from mlgidgui import skin
+from mlgidgui.widgets import (
     BODY_INSET,
     Card,
     CollapsibleSection,
@@ -144,7 +144,7 @@ def test_the_docked_panels_agree_on_one_section_shape(main_window,
 
 @pytest.fixture
 def conversion_panel(qtbot):
-    from mlgidlab.conversion_panel import ConversionPanel
+    from mlgidgui.conversion_panel import ConversionPanel
 
     panel = ConversionPanel()
     qtbot.addWidget(panel)

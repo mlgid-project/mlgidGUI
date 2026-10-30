@@ -16,8 +16,8 @@ import re
 
 import pytest
 
-from mlgidlab import theme_tokens
-from mlgidlab.theme_tokens import QDARKSTYLE_MIRROR, THEMES, TOKENS
+from mlgidgui import theme_tokens
+from mlgidgui.theme_tokens import QDARKSTYLE_MIRROR, THEMES, TOKENS
 
 HEX = re.compile(r"^#[0-9a-f]{6}$")
 
@@ -60,7 +60,7 @@ def test_mirrored_tokens_still_match_qdarkstyle(theme):
 def test_plot_tokens_are_the_values_theme_publishes():
     """``theme.PG_*`` is derived from these; a mismatch would put the
     plots on a different ground than the docks."""
-    from mlgidlab import theme
+    from mlgidgui import theme
 
     assert theme.PG_DARK_BACKGROUND == theme_tokens.color("plot_bg", "dark")
     assert theme.PG_DARK_FOREGROUND == theme_tokens.color("plot_fg", "dark")
@@ -87,7 +87,7 @@ def test_active_theme_tracks_the_applied_theme(main_window):
     theme follow a live switch."""
     from PySide6.QtWidgets import QApplication
 
-    from mlgidlab.theme import apply_dark_theme, apply_light_theme
+    from mlgidgui.theme import apply_dark_theme, apply_light_theme
 
     app = QApplication.instance()
 

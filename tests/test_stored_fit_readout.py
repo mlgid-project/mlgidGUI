@@ -21,8 +21,8 @@ from __future__ import annotations
 import math
 from types import SimpleNamespace
 
-from mlgidlab.parameter_panel import EMPTY, ParameterPanel
-from mlgidlab.viewer_items import SelectedPeak
+from mlgidgui.parameter_panel import EMPTY, ParameterPanel
+from mlgidgui.viewer_items import SelectedPeak
 
 
 def _fitted(**over) -> SelectedPeak:
@@ -77,7 +77,7 @@ def test_stored_numbers_match_the_peaks_dock_formatting(qtbot):
     """The dock builds its Fitted row with ``.3f`` radius and width,
     ``.2f`` angles and ``.3g`` amplitude. Same peak, same digits, or
     the two readouts disagree on screen for no reason."""
-    from mlgidlab.peaks_table_panel import _num_item
+    from mlgidgui.peaks_table_panel import _num_item
 
     panel = _panel(qtbot)
     peak = _fitted()

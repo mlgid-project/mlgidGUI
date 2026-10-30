@@ -20,9 +20,9 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.session import RawSession
-from mlgidlab.workers import CopyWorker, EntryLoadWorker
+from mlgidgui import file_model
+from mlgidgui.session import RawSession
+from mlgidgui.workers import CopyWorker, EntryLoadWorker
 
 pytestmark = pytest.mark.gui
 

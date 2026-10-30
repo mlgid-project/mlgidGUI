@@ -20,17 +20,17 @@ import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
-from mlgidlab.image_viewer import GIWAXSImageViewer
-from mlgidlab.session import NexusSession
+from mlgidgui.image_viewer import GIWAXSImageViewer
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
 
 def _name_settings() -> None:
-    """Mirror production QSettings resolution (set in mlgidlab.main)."""
+    """Mirror production QSettings resolution (set in mlgidgui.main)."""
     app = QApplication.instance()
-    app.setOrganizationName("mlgidLAB")
-    app.setApplicationName("mlgidLAB")
+    app.setOrganizationName("mlgidGUI")
+    app.setApplicationName("mlgidGUI")
 
 
 def _open(window, path) -> NexusSession:

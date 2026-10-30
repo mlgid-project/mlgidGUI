@@ -14,8 +14,8 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import phase_tracking
-from mlgidlab.pipeline import PipelineCommand, execute
+from mlgidgui import phase_tracking
+from mlgidgui.pipeline import PipelineCommand, execute
 
 ENTRY = "entry_0000"
 

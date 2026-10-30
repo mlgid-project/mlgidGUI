@@ -1,6 +1,6 @@
 # Getting started
 
-Install + first-run guide for **mlgidLAB**, the desktop GUI for the
+Install + first-run guide for **mlgidGUI**, the desktop GUI for the
 [mlgidBASE](https://github.com/mlgid-project/mlgidBASE) GIWAXS pipeline.
 For the pipeline-backend version policy see
 [backend_compatibility.md](backend_compatibility.md). Contributor-facing
@@ -15,33 +15,66 @@ code documentation (architecture, per-module reference) lives in the
 - For detection / fitting / matching / raw conversion: the in-house
   pipeline stack (the `[pipeline]` extra) — see below.
 
-mlgidLAB runs **view-only** without the pipeline stack: open and browse
+mlgidGUI runs **view-only** without the pipeline stack: open and browse
 NeXus files, edit peaks manually, run the in-GUI pyFAI calibration. The
 Run buttons stay disabled until `[pipeline]` is installed.
 
 ## Install
 
-A clean virtual environment is strongly recommended (the `[pipeline]`
-extra pulls a large ML stack including PyTorch).
+On **Windows** the simplest route is the installer (next section). On any
+platform you can also install with pip, as below. A clean virtual
+environment is strongly recommended (the `[pipeline]` extra pulls a large
+ML stack including PyTorch).
+
+### Windows installer
+
+Download `mlgidGUI-<version>-windows-x64-full-setup.exe` from the
+[releases page](https://github.com/mlgid-project/mlgidGUI/releases) and run
+it. It needs no Python and no administrator rights (it installs for your
+user by default; the dialog offers an all-users install), and it includes
+the full pipeline: raw conversion, detection, fitting and matching. The
+first detection run downloads the detection model (about 1.1 GB) once.
+
+**Tested on:** Windows 11 Home on a 4-core laptop (Intel Core i5-1035G4,
+7.6 GB RAM, integrated graphics, no dedicated GPU), where opening files,
+raw conversion, detection and fitting all ran on the CPU without trouble.
+Plan for about 1.5 GB of disk space for the app, plus about 1.1 GB for the
+detection model after the first detection run. We have not found a machine
+that is too small yet; if yours struggles, please tell us what it is.
+
+The installer is **not code-signed**, so Windows SmartScreen may say
+"Windows protected your PC" the first time. Click **More info**, then
+**Run anyway**. Each release lists the file's SHA-256 checksum, so you can
+check the download with `Get-FileHash <file>` in PowerShell. If your
+antivirus flags the file, report it to us; we submit every installer to
+Microsoft for review.
+
+To update, download the newer installer and run it: it replaces the
+installed version and keeps your settings. An installation made while the
+app was still called mlgidLAB is upgraded in place (the old launcher and
+shortcuts are replaced by the mlgidGUI ones). The installed app does not
+update itself with pip, so `Help → Update now…` is switched off there and
+the banner offers the releases page instead. Uninstall from Windows
+Settings, Apps, as usual.
 
 ### Recommended: conda env
 
 ```bash
-conda create -n mlgidlab python=3.12 -y
-conda activate mlgidlab
+conda create -n mlgidgui python=3.12 -y
+conda activate mlgidgui
 
 # GUI only
-pip install "git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
+pip install mlgidgui
 
 # or, full pipeline (detection / fitting / matching + raw conversion)
-pip install "mlgidlab[pipeline] @ git+https://github.com/mlgid-project/mlgidLAB@v0.1.0a23"
+pip install "mlgidgui[pipeline]"
 ```
 
 ### From a local clone (for development)
 
 ```bash
-git clone https://github.com/mlgid-project/mlgidLAB
-cd mlgidLAB
+git clone https://github.com/mlgid-project/mlgidGUI
+cd mlgidGUI
 pip install -e ".[pipeline]"      # or -e . for view-only, -e ".[dev]" for tests
 ```
 
@@ -64,34 +97,47 @@ test-rechecked step (see [backend_compatibility.md](backend_compatibility.md)).
 ## Launch
 
 ```bash
-mlgidlab                 # console entry point
-mlgidlab path/to/file.h5 # open a file on startup
-python -m mlgidlab       # equivalent module form
+mlgidgui                 # console entry point
+mlgidgui path/to/file.h5 # open a file on startup
+python -m mlgidgui       # equivalent module form
 ```
 
 ## Updating
 
-On launch mlgidLAB checks GitHub for a newer release. If one exists a
-banner appears with an **Update now** button that installs the new version
-into the current environment (equivalent to the `pip install --upgrade
-"…@<tag>"` command above, run in the background) and then offers to
+On launch mlgidGUI checks GitHub for a newer release. If one exists a
+banner appears with an **Update now** button that installs that exact
+version from PyPI into the current environment (`pip install
+"mlgidgui[pipeline]==<version>"`, run in the background) and then offers to
 restart. `Help → Update now…` runs the same check-and-install on demand
 (no need to wait for the banner), and `Help → Automatically install
 updates` (off by default) does it automatically on launch, after a single
 confirmation.
 
-**mlgidLAB is becoming mlgidGUI.** With release 1.0.0 the app is renamed
-mlgidGUI (package and command `mlgidgui`). Nothing has to be done in
-advance: when 1.0.0 is out, the same banner offers **Update now**, which
-installs mlgidGUI from PyPI and only then removes mlgidLAB, so a failed
-install leaves mlgidLAB working. Scripts that `import mlgidlab` must be
-changed to `import mlgidgui`; there is no compatibility layer. A one-time
-notice in the app explains this (`Help → mlgidLAB is becoming mlgidGUI…`).
+Self-update is only offered for installs that pip made. The **Windows
+installer** build never updates itself (download the new installer instead),
+a **conda** or system-package install is updated with that tool, and for a
+**development / editable** checkout (`pip install -e`) the button is hidden:
+update it with `git pull` (or re-run the `pip install -e` command). The
+`[pipeline]` extra is kept across an update when it is installed.
 
-Self-update is only offered for normal pip installs. For a **development /
-editable** checkout (`pip install -e`) the button is hidden — update it with
-`git pull` (or re-run the `pip install -e` command). The `[pipeline]` extra
-is kept across an update when it is installed.
+### Coming from mlgidLAB
+
+mlgidLAB is now called mlgidGUI (package and command `mlgidgui`). The
+installed alphas a21 to a23 move over on their own: **Update now** installs
+mlgidGUI from PyPI and only then removes mlgidLAB, so a failed install leaves
+mlgidLAB working. With a20 or older, or if you prefer to do it by hand:
+
+```bash
+pip install "mlgidgui[pipeline]"      # or just: pip install mlgidgui
+pip uninstall mlgidlab
+mlgidgui
+```
+
+Your data files are not touched. On its first start mlgidGUI copies your
+mlgidLAB settings (recent files, layout, theme, colours) and leaves the old
+ones where they were. Files written by mlgidLAB open as before. Scripts that
+`import mlgidlab` must be changed to `import mlgidgui`; there is no
+compatibility layer, and the `mlgidlab` command is gone.
 
 ## First-file walkthrough
 
@@ -172,7 +218,7 @@ A working sample is bundled under `example/` (`organic_labeled.h5`,
 ## Troubleshooting
 
 - **Run buttons are disabled / "view-only"**: the `[pipeline]` extra
-  isn't installed. `pip install "mlgidlab[pipeline] @ git+…"`.
+  isn't installed. `pip install "mlgidgui[pipeline]"`.
 - **Qt / "could not load platform plugin"** on Linux: install the
   system Qt libs listed above.
 - **An operation seems to do nothing**: check the **Logs** dock — some

@@ -1,0 +1,161 @@
+# Build the sdist and wheel and publish them with PyPI Trusted Publishing
+# (OpenID Connect, no stored token).
+#
+# Pushing a tag that starts with "v" runs this workflow:
+#   v1.0.0      -> PyPI          (environment "pypi")
+#   v1.0.0rc1   -> TestPyPI      (environment "testpypi"), for rehearsals
+# A tag whose version is a pre-release (rc, a, b, dev) never reaches the real
+# index. "Run workflow" by hand only builds and checks, it publishes nothing.
+#
+# The file name is part of the Trusted Publisher registration on pypi.org and
+# test.pypi.org (owner mlgid-project, repository mlgidGUI, workflow
+# publish-to-pypi.yml, environment pypi / testpypi). Renaming this file
+# breaks publishing until both registrations are changed to match.
+#
+# The GitHub release page is created by hand AFTER the files are on PyPI: the
+# in-app updater reads the release page and installs from PyPI, so a release
+# page that is live first would send every user into a failed update.
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build and check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install build twine packaging
+
+      # A tag must say what the package says, or the wrong number goes to the
+      # index and a PyPI version can never be reused. The tag arrives through
+      # an environment variable, not spliced into the script.
+      - name: Check the tag against the package version
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          from packaging.version import Version
+
+          package = Version(
+              tomllib.loads(Path("pyproject.toml").read_text("utf-8"))["project"]["version"])
+          prerelease = package.is_prerelease or package.is_devrelease
+          if os.environ["REF_TYPE"] == "tag":
+              tag = os.environ["REF_NAME"]
+              if not tag.startswith("v") or Version(tag[1:]) != package:
+                  raise SystemExit(
+                      f"tag {tag!r} does not match pyproject.toml version {package}")
+          print(f"version {package}, pre-release: {prerelease}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"prerelease={'true' if prerelease else 'false'}\n")
+          PY
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      # --strict also fails on warnings, so a README that PyPI cannot render
+      # stops the release before it is uploaded.
+      - name: Check the package metadata
+        run: python -m twine check --strict dist/*
+
+      # Files the app needs at run time and that only the wheel carries: the
+      # SVG glyphs, the app icons, the logo and the bundled changelog.
+      - name: Check the wheel contents
+        run: |
+          python - <<'PY'
+          import glob
+          import zipfile
+
+          (wheel,) = glob.glob("dist/*.whl")
+          names = set(zipfile.ZipFile(wheel).namelist())
+          required = [
+              "mlgidgui/__init__.py",
+              "mlgidgui/CHANGELOG.md",
+              "mlgidgui/assets/app/mlgidgui.ico",
+              "mlgidgui/assets/app/mlgidgui_256.png",
+              "mlgidgui/assets/app/mlgid_logo_mlgidgui.png",
+          ]
+          missing = [name for name in required if name not in names]
+          if missing:
+              raise SystemExit(f"missing from {wheel}: {missing}")
+          if not any(n.startswith("mlgidgui/assets/icons/") and n.endswith(".svg")
+                     for n in names):
+              raise SystemExit("no SVG icons in the wheel")
+          print(f"{wheel}: {len(names)} files, all required files present")
+          PY
+
+      - name: Store the distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: publish to TestPyPI
+    needs: build
+    if: github.ref_type == 'tag' && needs.build.outputs.prerelease == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/mlgidgui
+    permissions:
+      id-token: write
+    steps:
+      - name: Fetch the distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: publish to PyPI
+    needs: build
+    if: github.ref_type == 'tag' && needs.build.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mlgidgui
+    permissions:
+      id-token: write
+    steps:
+      - name: Fetch the distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

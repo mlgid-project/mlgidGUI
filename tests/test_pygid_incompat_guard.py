@@ -17,8 +17,8 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.pipeline import PipelineCommand, execute
+from mlgidgui import file_model
+from mlgidgui.pipeline import PipelineCommand, execute
 
 
 def test_detects_raw_style_top_level(tmp_path):

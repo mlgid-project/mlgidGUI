@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab import peak_clipboard
-from mlgidlab.image_viewer import SelectedPeak
-from mlgidlab.session import NexusSession
+from mlgidgui import peak_clipboard
+from mlgidgui.image_viewer import SelectedPeak
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -85,7 +85,7 @@ def test_copy_then_paste_round_trip_appends_row(
 ):
     """Copy a detected peak, paste on the same frame; assert a new
     detected row appears with matching polar fields."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     sel = _select_first_detected(main_window, 0)
     before = main_window.viewer._frame_peaks[0]["detected"]
@@ -115,7 +115,7 @@ def test_paste_lands_on_current_frame_not_source_frame(
 ):
     """Copy on frame 0, navigate to frame 1, paste — the new row
     should land on frame 1, not frame 0."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     _select_first_detected(main_window, 0)
     main_window._on_copy_peaks()
@@ -147,7 +147,7 @@ def test_paste_blocked_on_different_entry(
 ):
     """Set the clipboard with a fake entry name; paste on the real
     entry must be a no-op."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     # Seed the clipboard with one item attributed to a different entry.
     peak_clipboard.set_items(
@@ -171,7 +171,7 @@ def test_paste_undo_removes_appended_row(
     main_window, synthetic_nexus_with_peaks,
 ):
     """One Ctrl+Z reverses the paste — the new detected row goes away."""
-    from mlgidlab import file_model
+    from mlgidgui import file_model
     _open(main_window, synthetic_nexus_with_peaks)
     _select_first_detected(main_window, 0)
     n_before = len(file_model.load_peaks(

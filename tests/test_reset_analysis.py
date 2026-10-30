@@ -23,8 +23,8 @@ import faulthandler
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab import file_model
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -121,7 +121,7 @@ def test_delete_dialog_defaults_to_yes(
     """The peak-delete confirmation defaults to Yes too (one Enter
     confirms). Drives ``_delete_peaks_scoped`` with a detected selection
     on frame 0 and returns Cancel so nothing is actually removed."""
-    from mlgidlab.image_viewer import SelectedPeak
+    from mlgidgui.image_viewer import SelectedPeak
 
     _open(main_window, synthetic_nexus_with_peaks)
     captured: list = []

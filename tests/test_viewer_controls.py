@@ -13,10 +13,10 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication, QToolButton
 
-from mlgidlab import skin
-from mlgidlab.image_viewer import GIWAXSImageViewer
-from mlgidlab.theme import apply_dark_theme
-from mlgidlab.viewer_styles import (
+from mlgidgui import skin
+from mlgidgui.image_viewer import GIWAXSImageViewer
+from mlgidgui.theme import apply_dark_theme
+from mlgidgui.viewer_styles import (
     COLORMAPS,
     DEFAULT_COLORMAP,
     MODE_CARTESIAN,

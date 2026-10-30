@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab import file_model
-from mlgidlab.session import RawSession
+from mlgidgui import file_model
+from mlgidgui.session import RawSession
 
 
 def test_list_raw_entries_applies_size_and_ndim_filter(synthetic_raw):
@@ -40,7 +40,7 @@ def test_raw_session_open_happy(synthetic_raw):
 
 
 def test_add_paths_appends_and_skips_known_files(tmp_path):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     a, b = tmp_path / "a.h5", tmp_path / "b.h5"
     a.write_bytes(b"")
@@ -62,7 +62,7 @@ def test_add_paths_appends_and_skips_known_files(tmp_path):
 def test_add_paths_rejects_a_missing_file(tmp_path):
     import pytest
 
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     a = tmp_path / "a.h5"
     a.write_bytes(b"")

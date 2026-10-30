@@ -24,7 +24,7 @@ import types
 
 import pytest
 
-from mlgidlab import pipeline
+from mlgidgui import pipeline
 
 # The numpy wording mlgidmatch lets through for an empty pattern.
 _NUMPY_EMPTY = (

@@ -15,9 +15,9 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QDialog, QInputDialog, QMenu, QMessageBox
 
-from mlgidlab import h5_edit
-from mlgidlab.session import NexusSession
-from mlgidlab.structure_clipboard import StructureClip, free_name
+from mlgidgui import h5_edit
+from mlgidgui.session import NexusSession
+from mlgidgui.structure_clipboard import StructureClip, free_name
 
 pytestmark = pytest.mark.gui
 
@@ -428,7 +428,7 @@ def test_paste_from_file_picks_a_node_and_copies_it(
     editing, monkeypatch, tmp_path
 ):
     other = _second_nexus(tmp_path)
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     monkeypatch.setattr(
         mws.file_dialogs, "open_file", lambda *a, **k: str(other),
@@ -457,7 +457,7 @@ def test_paste_from_file_cancelled_at_the_picker_does_nothing(
     editing, monkeypatch, tmp_path
 ):
     other = _second_nexus(tmp_path)
-    from mlgidlab import main_window_structure as mws
+    from mlgidgui import main_window_structure as mws
 
     monkeypatch.setattr(
         mws.file_dialogs, "open_file", lambda *a, **k: str(other),
@@ -490,7 +490,7 @@ def test_paste_from_file_cancelled_at_the_picker_does_nothing(
 
 
 def test_a_second_open_file_is_a_second_root(editing, tmp_path):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     other = NexusSession.open(_second_nexus(tmp_path))
     editing._sessions.append(other)
@@ -502,7 +502,7 @@ def test_a_second_open_file_is_a_second_root(editing, tmp_path):
 
 def test_copy_from_one_root_and_paste_into_another(editing, tmp_path,
                                                     monkeypatch):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     first = editing.session
     other = NexusSession.open(_second_nexus(tmp_path))
@@ -529,7 +529,7 @@ def test_copy_from_one_root_and_paste_into_another(editing, tmp_path,
 
 def test_selecting_the_second_file_promotes_its_session(editing, tmp_path):
     """An edit marks the *active* session dirty, so it has to follow."""
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     other = NexusSession.open(_second_nexus(tmp_path))
     editing._sessions.append(other)
@@ -667,27 +667,27 @@ def test_a_group_and_its_child_are_not_copied_twice(editing, monkeypatch):
 
 
 def test_prune_drops_a_child_of_a_selected_group():
-    from mlgidlab.structure_clipboard import prune_descendants
+    from mlgidgui.structure_clipboard import prune_descendants
     picked = [("a.h5", "/entry"), ("a.h5", "/entry/data"),
               ("a.h5", "/other")]
     assert prune_descendants(picked) == [("a.h5", "/entry"), ("a.h5", "/other")]
 
 
 def test_prune_keeps_the_same_path_in_another_file():
-    from mlgidlab.structure_clipboard import prune_descendants
+    from mlgidgui.structure_clipboard import prune_descendants
     picked = [("a.h5", "/entry"), ("b.h5", "/entry/data")]
     assert prune_descendants(picked) == picked
 
 
 def test_prune_keeps_siblings_and_order():
-    from mlgidlab.structure_clipboard import prune_descendants
+    from mlgidgui.structure_clipboard import prune_descendants
     picked = [("a.h5", "/e/z"), ("a.h5", "/e/a"), ("a.h5", "/e/m")]
     assert prune_descendants(picked) == picked
 
 
 def test_a_batch_undoes_in_reverse():
     """A batch that made a then b must remove b first."""
-    from mlgidlab.h5_edit_ops import BatchOp
+    from mlgidgui.h5_edit_ops import BatchOp
 
     order = []
 

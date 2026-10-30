@@ -14,9 +14,9 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication, QPushButton
 
-from mlgidlab import skin, theme_tokens
-from mlgidlab.theme import apply_dark_theme, apply_light_theme
-from mlgidlab.widgets import DANGER, PRIMARY, set_variant
+from mlgidgui import skin, theme_tokens
+from mlgidgui.theme import apply_dark_theme, apply_light_theme
+from mlgidgui.widgets import DANGER, PRIMARY, set_variant
 
 pytestmark = pytest.mark.gui
 
@@ -78,16 +78,16 @@ def pipeline_panel(monkeypatch):
     Backend-less (CI), the panel builds a stub without the run buttons.
     ``pipeline_panel`` binds ``is_mlgidbase_available`` by name at import,
     so the patch has to target the panel module — patching
-    ``mlgidlab.pipeline`` leaves the already-bound name untouched.
+    ``mlgidgui.pipeline`` leaves the already-bound name untouched.
     """
-    from mlgidlab import pipeline_panel as panel_mod
+    from mlgidgui import pipeline_panel as panel_mod
 
     monkeypatch.setattr(panel_mod, "is_mlgidbase_available", lambda: True)
     return panel_mod.PipelinePanel()
 
 
 def test_pipeline_and_conversion_actions_are_tagged(main_window, pipeline_panel):
-    from mlgidlab.conversion_panel import ConversionPanel
+    from mlgidgui.conversion_panel import ConversionPanel
 
     for name in ("btn_run_all", "btn_detect", "btn_fit", "btn_match"):
         assert _variant(getattr(pipeline_panel, name)) == "primary", name

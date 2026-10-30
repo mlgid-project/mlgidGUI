@@ -2,7 +2,7 @@
 
 The alpha-test complaint this locks down: opening a scan, then
 picking a mask, then saving a PONI used to walk through three
-unrelated starting directories. ``mlgidlab.file_dialogs`` is now the
+unrelated starting directories. ``mlgidgui.file_dialogs`` is now the
 only way a dialog is built, so the rule is testable in one place --
 plus a source guard so the next Browse button cannot quietly
 reintroduce its own ``QFileDialog``.
@@ -16,7 +16,7 @@ import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QDialog, QFileDialog
 
-from mlgidlab import file_dialogs
+from mlgidgui import file_dialogs
 
 
 @pytest.fixture(autouse=True)
@@ -179,7 +179,7 @@ def test_pickers_are_non_native_and_use_the_fast_icon_provider(
     """Now that every picker starts in the last-used directory, any of
     them can land in a folder of thousands of detector images -- the
     case the constant-time provider was written for."""
-    from mlgidlab.browser_widgets import _FastFileIconProvider
+    from mlgidgui.browser_widgets import _FastFileIconProvider
 
     seen: dict = {}
 
@@ -272,6 +272,6 @@ def test_no_module_builds_its_own_file_picker():
             if call in text:
                 offenders.append(f"{module.name}: {call}")
     assert not offenders, (
-        "these build a picker outside mlgidlab.file_dialogs, so they get "
+        "these build a picker outside mlgidgui.file_dialogs, so they get "
         f"their own starting directory: {offenders}"
     )

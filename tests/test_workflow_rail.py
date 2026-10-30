@@ -14,9 +14,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mlgidlab import skin
-from mlgidlab.file_model import PeakTable
-from mlgidlab.workflow_rail import STAGES, WorkflowRail
+from mlgidgui import skin
+from mlgidgui.file_model import PeakTable
+from mlgidgui.workflow_rail import STAGES, WorkflowRail
 
 pytestmark = pytest.mark.gui
 
@@ -73,7 +73,7 @@ def test_the_rail_is_hidden_with_no_session(main_window):
 
 
 def test_the_rail_appears_and_reports_the_frame(main_window, synthetic_nexus):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     rail = main_window.workflow_rail
@@ -93,7 +93,7 @@ def test_the_counts_are_per_frame_and_move_with_it(main_window,
                                                    synthetic_nexus):
     """"done" here means "this frame has rows", which is why the chip
     says so — an entry-wide claim would need a sweep over every frame."""
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     viewer = main_window.viewer
@@ -110,7 +110,7 @@ def test_the_counts_are_per_frame_and_move_with_it(main_window,
 
 
 def test_clicking_a_stage_raises_its_dock(main_window, synthetic_nexus):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     main_window._pipeline_dock.hide()
@@ -165,7 +165,7 @@ def test_every_stage_maps_to_a_real_dock_and_button(main_window):
         assert panel is not None, panel_attr
         # The pipeline panel drops its run buttons without the backend,
         # which is a legitimate absence rather than a mapping error.
-        from mlgidlab.pipeline import is_mlgidbase_available
+        from mlgidgui.pipeline import is_mlgidbase_available
         if is_mlgidbase_available() or panel_attr != "pipeline_panel":
             assert getattr(panel, button_attr, None) is not None, button_attr
 
@@ -190,7 +190,7 @@ def test_the_rail_catches_up_when_a_run_s_results_land(main_window,
     counts the tables from before the run: the chip for the run that just
     finished kept saying "not run" until something else moved.
     """
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     main_window._set_active_session(NexusSession.open(synthetic_nexus))
     frame = int(main_window.viewer.current_frame)
@@ -253,7 +253,7 @@ def run_opens_dock():
     """Drop the setting around a test, so it starts from the default."""
     from PySide6.QtCore import QSettings
 
-    from mlgidlab.main_window_build import RAIL_RUN_OPENS_DOCK_KEY
+    from mlgidgui.main_window_build import RAIL_RUN_OPENS_DOCK_KEY
 
     QSettings().remove(RAIL_RUN_OPENS_DOCK_KEY)
     yield RAIL_RUN_OPENS_DOCK_KEY
@@ -321,8 +321,8 @@ def test_the_settings_dialog_round_trips_the_option(
         main_window, run_opens_dock):
     from PySide6.QtCore import QSettings
 
-    from mlgidlab.main_window_dialogs import _SettingsDialog
-    from mlgidlab.peak_link import read_bool
+    from mlgidgui.main_window_dialogs import _SettingsDialog
+    from mlgidgui.peak_link import read_bool
 
     dlg = _SettingsDialog(main_window)
     assert dlg._chk_rail_run_opens_dock.isChecked()     # default on

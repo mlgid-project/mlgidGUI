@@ -22,8 +22,8 @@ _HEAVY_BACKENDS = {"mlgidbase", "pygid", "pygidfit", "pygidsim", "torch"}
 
 def test_pure_path_has_no_heavy_backend():
     before = set(sys.modules)
-    import mlgidlab.file_model  # noqa: F401
-    import mlgidlab.fit  # noqa: F401
+    import mlgidgui.file_model  # noqa: F401
+    import mlgidgui.fit  # noqa: F401
     newly_loaded = set(sys.modules) - before
     heavy_added = _HEAVY_BACKENDS & newly_loaded
     assert not heavy_added, (
@@ -43,8 +43,8 @@ def test_structure_editor_primitives_have_no_heavy_backend():
     exactly the installs that most need a plain HDF5 editor.
     """
     before = set(sys.modules)
-    import mlgidlab.h5_edit  # noqa: F401
-    import mlgidlab.nexus_schema  # noqa: F401
+    import mlgidgui.h5_edit  # noqa: F401
+    import mlgidgui.nexus_schema  # noqa: F401
     heavy_added = _HEAVY_BACKENDS & (set(sys.modules) - before)
     assert not heavy_added, (
         f"Importing h5_edit + nexus_schema pulled in {heavy_added!r}."
@@ -60,7 +60,7 @@ def test_the_structure_tree_has_no_heavy_backend_and_no_h5py():
     open read handle is exactly what stops the editor taking its ``r+``.
     """
     before = set(sys.modules)
-    import mlgidlab.structure_tree  # noqa: F401
+    import mlgidgui.structure_tree  # noqa: F401
     newly_loaded = set(sys.modules) - before
     assert not (_HEAVY_BACKENDS & newly_loaded), (
         f"structure_tree pulled in {_HEAVY_BACKENDS & newly_loaded!r}."

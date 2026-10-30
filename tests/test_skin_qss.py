@@ -16,8 +16,8 @@ import re
 
 import pytest
 
-from mlgidlab import skin, theme_tokens
-from mlgidlab.theme_tokens import THEMES
+from mlgidgui import skin, theme_tokens
+from mlgidgui.theme_tokens import THEMES
 
 # Ancestor-scoped rules that are deliberately allowed: the root is a
 # widget this application tags itself AND never parents a dialog, so the
@@ -121,8 +121,8 @@ def test_a_boxed_region_actually_paints_its_border(qtbot, theme):
     """
     from PySide6.QtWidgets import QApplication, QLabel
 
-    from mlgidlab.theme import apply_dark_theme, apply_light_theme
-    from mlgidlab.widgets import boxed
+    from mlgidgui.theme import apply_dark_theme, apply_light_theme
+    from mlgidgui.widgets import boxed
 
     app = QApplication.instance()
     (apply_dark_theme if theme == "dark" else apply_light_theme)(app)
@@ -148,7 +148,7 @@ def test_applying_a_theme_installs_that_theme_s_skin(main_window):
     on is still intact (`test_theme_apply` pins the palette literals)."""
     from PySide6.QtWidgets import QApplication
 
-    from mlgidlab.theme import apply_dark_theme, apply_light_theme
+    from mlgidgui.theme import apply_dark_theme, apply_light_theme
 
     app = QApplication.instance()
 
@@ -194,7 +194,7 @@ def test_untagged_widgets_are_untouched_by_the_skin(main_window, qtbot):
     repolish()
     baseline = plain.palette().buttonText().color().name()
 
-    from mlgidlab.theme import apply_dark_theme
+    from mlgidgui.theme import apply_dark_theme
 
     apply_dark_theme(app)
     repolish()

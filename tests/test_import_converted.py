@@ -23,7 +23,7 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab.conversion import import_converted_stack
+from mlgidgui.conversion import import_converted_stack
 
 pytestmark = pytest.mark.gui
 
@@ -77,10 +77,10 @@ def test_import_writes_mlgid_minimum_schema(tmp_path):
         # q ranges but NO wavelength → still no geometry (the pipeline
         # needs both); provenance note explains the re-import path.
         assert "instrument/detector" not in g
-        assert "no detector" in str(g["process/mlgidlab/NOTE"][()]).lower()
+        assert "no detector" in str(g["process/mlgidgui/NOTE"][()]).lower()
 
     # The GUI classifies it as a converted mlgid entry.
-    from mlgidlab import file_model
+    from mlgidgui import file_model
 
     with h5py.File(out, "r") as f:
         assert file_model.entry_group_names(f) == ["entry_0000"]
@@ -172,7 +172,7 @@ def test_import_with_wavelength_writes_pipeline_geometry(
         ):
             assert det[field][()] == 0.0
             assert "placeholder" in det[field].attrs
-        assert "placeholder" in str(g["process/mlgidlab/NOTE"][()]).lower()
+        assert "placeholder" in str(g["process/mlgidgui/NOTE"][()]).lower()
     # The pipeline pre-flight accepts it now.
     assert not main_window._entry_missing_geometry(out, "entry_0000")
 
@@ -237,8 +237,8 @@ def test_float_batch_offers_import_integer_opens_raw(
 ):
     from PySide6.QtWidgets import QMessageBox as _RealBox
 
-    from mlgidlab import main_window as mw_mod
-    from mlgidlab import main_window_files as mwf_mod
+    from mlgidgui import main_window as mw_mod
+    from mlgidgui import main_window_files as mwf_mod
 
     offered: dict = {}
 
@@ -315,7 +315,7 @@ def test_pipeline_guard_refuses_imported_entry(main_window, tmp_path):
 
     # A minimal/foreign mlgid file WITHOUT the import provenance also
     # passes even though it lacks the detector group — the guard keys
-    # on ``process/mlgidlab`` so synthetic fixtures and foreign files
+    # on ``process/mlgidgui`` so synthetic fixtures and foreign files
     # keep the pre-existing let-pygid-report-it behavior (a
     # geometry-only probe silently skipped every pipeline run on the
     # test fixtures).
@@ -331,7 +331,7 @@ def test_import_dialog_takes_an_angle_per_image(
     main_window, qtbot, tmp_path
 ):
     """Same grammar as the Conversion panel, checked against the image count."""
-    from mlgidlab.import_dialog import ImportConvertedDialog
+    from mlgidgui.import_dialog import ImportConvertedDialog
 
     # Five images, so three numbers are unambiguously a ramp (with
     # exactly three they would read as three angles, by design).
@@ -376,7 +376,7 @@ def test_import_writes_one_angle_per_frame(tmp_path):
 def test_import_dialog_values_round_trip(
     main_window, qtbot, tmp_path, monkeypatch
 ):
-    from mlgidlab.import_dialog import ImportConvertedDialog
+    from mlgidgui.import_dialog import ImportConvertedDialog
 
     tifs = _write_float_tiffs(tmp_path / "maps")
     dlg = ImportConvertedDialog(tifs, parent=main_window)
@@ -416,7 +416,7 @@ def test_import_dialog_values_round_trip(
     # Invalid range (min >= max) blocks accept.
     dlg.qxy_max.setValue(-1.0)
     warned: list = []
-    import mlgidlab.import_dialog as dlg_mod
+    import mlgidgui.import_dialog as dlg_mod
 
     class _W:
         @staticmethod
@@ -426,3 +426,13 @@ def test_import_dialog_values_round_trip(
     monkeypatch.setattr(dlg_mod, "QMessageBox", _W)
     dlg._validate_and_accept()
     assert warned and dlg.result() != 1
+
+
+def test_an_import_written_by_an_alpha_is_still_recognised(main_window, tmp_path):
+    """The alphas stamped the provenance group ``process/mlgidlab``; the guard
+    must keep refusing pipeline runs on those files."""
+    tifs = _write_float_tiffs(tmp_path / "maps")
+    out = import_converted_stack(tifs, tmp_path / "imported.h5")
+    with h5py.File(out, "r+") as f:
+        f["entry_0000/process"].move("mlgidgui", "mlgidlab")
+    assert main_window._entry_missing_geometry(out, "entry_0000")

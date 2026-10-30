@@ -13,8 +13,8 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QScrollArea
 
-from mlgidlab.main_window import MainWindow
-from mlgidlab.widgets import Card
+from mlgidgui.main_window import MainWindow
+from mlgidgui.widgets import Card
 
 pytestmark = pytest.mark.gui
 
@@ -160,7 +160,7 @@ def _front_right_tab(window) -> str:
 
 
 def _open_nexus(window, path):
-    from mlgidlab.session import NexusSession
+    from mlgidgui.session import NexusSession
 
     session = NexusSession.open(path)
     window._sessions.append(session)
@@ -213,7 +213,7 @@ def test_switching_entries_keeps_the_tab_the_user_chose(
 def test_raw_shows_conversion_and_nexus_falls_back_to_pipeline(
     main_window, synthetic_raw, synthetic_nexus
 ):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     main_window.show()
     raw = RawSession.open([synthetic_raw])

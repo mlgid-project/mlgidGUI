@@ -20,8 +20,8 @@ import h5py
 import numpy as np
 import pytest
 
-from mlgidlab import h5_repack
-from mlgidlab.session import NexusSession
+from mlgidgui import h5_repack
+from mlgidgui.session import NexusSession
 
 
 def _frames(path, n=6, side=512, **kw):
@@ -249,7 +249,7 @@ def test_no_staging_file_is_left_behind(tmp_path):
     out = tmp_path / "out.h5"
     h5_repack.copy_or_repack(orig, out)
     leftovers = [p.name for p in tmp_path.iterdir()
-                 if "mlgidlab-save" in p.name]
+                 if "mlgidgui-save" in p.name]
     assert leftovers == []
 
 
@@ -264,7 +264,7 @@ def test_a_failure_removes_the_staging_file(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         h5_repack.copy_or_repack(orig, out)
     leftovers = [p.name for p in tmp_path.iterdir()
-                 if "mlgidlab-save" in p.name]
+                 if "mlgidgui-save" in p.name]
     assert leftovers == []
 
 

@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from mlgidlab import file_model, h5_edit
-from mlgidlab.session import NexusSession
+from mlgidgui import file_model, h5_edit
+from mlgidgui.session import NexusSession
 
 pytestmark = pytest.mark.gui
 
@@ -372,7 +372,7 @@ def test_closing_the_session_releases_the_handle_and_the_history(
 
 
 def test_a_raw_session_cannot_be_edited(main_window, synthetic_raw, monkeypatch):
-    from mlgidlab.session import RawSession
+    from mlgidgui.session import RawSession
 
     session = RawSession.open([synthetic_raw])
     main_window._sessions.append(session)

@@ -28,7 +28,7 @@ import pytest
 
 pytest.importorskip("pygidsim")  # CI lacks the private backend; skip module.
 
-from mlgidlab.pipeline import _EnergyOutOfRangeError, _exp_params_from_nexus  # noqa: E402
+from mlgidgui.pipeline import _EnergyOutOfRangeError, _exp_params_from_nexus  # noqa: E402
 
 
 def _make_nexus_with_wavelength(path: Path, wavelength_m: float) -> Path:

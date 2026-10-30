@@ -25,8 +25,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QCheckBox, QDoubleSpinBox, QLineEdit
 
-from mlgidlab import detection_model
-from mlgidlab.detection_config import (
+from mlgidgui import detection_model
+from mlgidgui.detection_config import (
     DETECT_DEFAULTS,
     build_config_detect,
     flatten_defaults,
@@ -41,7 +41,7 @@ def panel(qtbot, monkeypatch):
     # command actually RUNS), but the panel builds only an install hint
     # without mlgidbase. Force availability so these tests cover the
     # real widgets on a backend-free box too.
-    from mlgidlab import pipeline_panel as panel_mod
+    from mlgidgui import pipeline_panel as panel_mod
 
     monkeypatch.setattr(panel_mod, "is_mlgidbase_available", lambda: True)
     p = panel_mod.PipelinePanel()
@@ -373,7 +373,7 @@ def preflight(monkeypatch, tmp_path):
 def test_an_explicit_onnx_path_skips_the_preflight(preflight, caplog):
     config = {"MODEL": {"ONNX_BASE": "/models/custom.onnx"}}
 
-    with caplog.at_level("INFO", logger="mlgidlab.detection_model"):
+    with caplog.at_level("INFO", logger="mlgidgui.detection_model"):
         assert detection_model.ensure_detection_model(config_detect=config) is None
 
     assert preflight == []

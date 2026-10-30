@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QSettings
 
-from mlgidlab import file_model, peak_lists, pipeline
+from mlgidgui import file_model, peak_lists, pipeline
 
 ENTRY = "entry_0000"
 DET = "my_detected"
@@ -273,7 +273,7 @@ def test_an_interrupted_run_is_repaired_on_the_next_one(
     with h5py.File(path, "r") as f:
         group = f[_group_path(0)]
         assert not [k for k in group if k.startswith(peak_lists.STASH_PREFIX)]
-        assert f"{ENTRY}/process/mlgidlab/pipeline_swap" not in f
+        assert f"{ENTRY}/process/mlgidgui/pipeline_swap" not in f
 
 
 def test_recovery_works_from_the_stash_names_alone(
@@ -289,7 +289,7 @@ def test_recovery_works_from_the_stash_names_alone(
 
     pipeline._swap_in(path, ENTRY, 0, plan)
     with h5py.File(path, "r+") as f:
-        del f[f"{ENTRY}/process/mlgidlab/pipeline_swap"]
+        del f[f"{ENTRY}/process/mlgidgui/pipeline_swap"]
 
     assert pipeline.recover_swaps(path) == 1
 
@@ -310,14 +310,14 @@ def test_a_second_recovery_keeps_the_first_orphan(
     first = _read(path, DET)
     pipeline._swap_in(path, ENTRY, 0, plan)
     with h5py.File(path, "r+") as f:
-        del f[f"{ENTRY}/process/mlgidlab/pipeline_swap"]
+        del f[f"{ENTRY}/process/mlgidgui/pipeline_swap"]
     assert pipeline.recover_swaps(path) == 1
 
     _seed(path, DET, 4, first_id=700)
     second = _read(path, DET)
     pipeline._swap_in(path, ENTRY, 0, plan)
     with h5py.File(path, "r+") as f:
-        del f[f"{ENTRY}/process/mlgidlab/pipeline_swap"]
+        del f[f"{ENTRY}/process/mlgidgui/pipeline_swap"]
     assert pipeline.recover_swaps(path) == 1
 
     assert _read(path, f"{pipeline._ORPHAN_PREFIX}detected_peaks") == first
@@ -335,7 +335,7 @@ def test_an_exception_in_the_run_still_restores(synthetic_nexus_with_peaks):
 
     assert _read(path, "detected_peaks") == standard_before
     with h5py.File(path, "r") as f:
-        assert f"{ENTRY}/process/mlgidlab/pipeline_swap" not in f
+        assert f"{ENTRY}/process/mlgidgui/pipeline_swap" not in f
 
 
 def test_recovery_is_a_no_op_on_an_untouched_file(
@@ -401,7 +401,7 @@ def test_two_primaries_of_one_flavour_load_as_one():
 
 
 def _dialog(main_window):
-    from mlgidlab.main_window_dialogs import _SettingsDialog
+    from mlgidgui.main_window_dialogs import _SettingsDialog
 
     return _SettingsDialog(main_window)
 
@@ -484,7 +484,7 @@ def test_the_queue_stamps_the_plan_onto_every_command(main_window):
     command, so stamping at construction would lose it."""
     from pathlib import Path
 
-    from mlgidlab.pipeline import PipelineCommand
+    from mlgidgui.pipeline import PipelineCommand
 
     peak_lists.save_specs(_specs(detected=True))
     main_window._pipeline_queue = []
@@ -502,3 +502,41 @@ def test_the_queue_stamps_the_plan_onto_every_command(main_window):
 
     main_window._pipe_thread = None
     main_window._pipeline_queue = []
+
+
+def _age_to_alpha_names(path):
+    """Rewrite a swapped-in file the way an mlgidLAB alpha left it: the
+    marker under ``process/mlgidlab`` and the stash under the old prefix."""
+    with h5py.File(path, "r+") as f:
+        process = f[f"{ENTRY}/process"]
+        process.move("mlgidgui", "mlgidlab")
+        group = f[_group_path(0)]
+        new, old = peak_lists.STASH_PREFIX, "__mlgidlab_stash__"
+        for key in [k for k in group if k.startswith(new)]:
+            group.move(key, old + key[len(new):])
+
+
+@pytest.mark.parametrize("keep_marker", [True, False])
+def test_a_file_an_alpha_left_mid_swap_is_still_repaired(
+    synthetic_nexus_with_peaks, keep_marker,
+):
+    """The names changed with the rename; a file an alpha crashed on must
+    still come back, with its marker or from the stash name alone."""
+    path = synthetic_nexus_with_peaks
+    _seed(path, DET, 6, first_id=900)
+    standard_before = _read(path, "detected_peaks")
+    plan = peak_lists.swap_plan("run_detection", _specs(detected=True))
+
+    pipeline._swap_in(path, ENTRY, 0, plan)
+    _age_to_alpha_names(path)
+    if not keep_marker:
+        with h5py.File(path, "r+") as f:
+            del f[f"{ENTRY}/process/mlgidlab/pipeline_swap"]
+
+    assert pipeline.recover_swaps(path) == 1
+
+    assert _read(path, "detected_peaks") == standard_before
+    with h5py.File(path, "r") as f:
+        group = f[_group_path(0)]
+        assert not [k for k in group if "_stash__" in k]
+        assert f"{ENTRY}/process/mlgidlab/pipeline_swap" not in f

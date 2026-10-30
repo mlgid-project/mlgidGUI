@@ -16,8 +16,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from mlgidlab.pipeline import PipelineCommand
-from mlgidlab.session import NexusSession
+from mlgidgui.pipeline import PipelineCommand
+from mlgidgui.session import NexusSession
 
 
 def _make_file(path: Path, entries: list[str], n_frames: int = 2) -> Path:

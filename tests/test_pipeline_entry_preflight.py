@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from mlgidlab.pipeline import PipelineCommand, execute
+from mlgidgui.pipeline import PipelineCommand, execute
 
 
 def test_execute_rejects_unknown_entry(synthetic_nexus):
