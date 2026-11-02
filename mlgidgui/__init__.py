@@ -83,6 +83,22 @@ def main() -> int:
     from mlgidgui.main_window import MainWindow
     from mlgidgui.theme import apply_dark_theme, apply_light_theme
 
+    if sys.platform == "win32":
+        # Without an explicit AppUserModelID, Windows groups the app
+        # under python.exe's icon in the taskbar no matter what
+        # setWindowIcon says. Set before the QApplication exists: the
+        # taskbar button is keyed on the ID the process has when its first
+        # window appears, and the installer's shortcuts carry the same ID
+        # (``AppUserModelID`` in packaging/windows/installer.iss) so a pinned
+        # button and the running window are one button.
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "mlgidGUI.mlgidGUI")
+        except Exception:
+            logging.getLogger("mlgidgui").debug(
+                "could not set the Windows AppUserModelID", exc_info=True)
     # Before the QApplication, so a crash inside Qt's own start-up is
     # caught too.
     _enable_crash_log()
@@ -132,7 +148,7 @@ def main() -> int:
         logging.getLogger("mlgidgui").debug(
             "could not set the application icon", exc_info=True)
     if desktop_entry.is_supported():
-        # The Linux counterpart of the AppUserModelID below. GNOME takes
+        # The Linux counterpart of the AppUserModelID above. GNOME takes
         # an app's icon from its ``.desktop`` file, and pip installs no
         # such file, so one is written to the user's XDG data dir on
         # first run (and refreshed if the environment moved). Guarded
@@ -143,18 +159,6 @@ def main() -> int:
         except Exception:
             logging.getLogger("mlgidgui").debug(
                 "could not install the desktop entry", exc_info=True)
-    if sys.platform == "win32":
-        # Without an explicit AppUserModelID, Windows groups the app
-        # under python.exe's icon in the taskbar no matter what
-        # setWindowIcon says.
-        try:
-            import ctypes
-
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "mlgidGUI.mlgidGUI")
-        except Exception:
-            logging.getLogger("mlgidgui").debug(
-                "could not set the Windows AppUserModelID", exc_info=True)
     # Honor the persisted theme choice (View → Theme). Defaults to
     # dark; the menu sync inside MainWindow reads the same key.
     theme = str(QSettings().value("theme", "dark")).lower()

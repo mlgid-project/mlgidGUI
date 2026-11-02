@@ -4,6 +4,16 @@ All notable changes to mlgidGUI (called mlgidLAB until 1.0.0) are recorded
 here. Versions follow [PEP 440](https://peps.python.org/pep-0440/); `aN`
 suffixes are alpha pre-releases.
 
+## Unreleased
+
+### Fixed
+
+- **Windows taskbar icon.** The running window now shows the mlgidGUI icon
+  in the taskbar instead of Windows' default symbol. The application ID is
+  set before the window system starts, and the installer's start menu and
+  desktop shortcuts carry the same ID, so a pinned button and the running
+  window are one button.
+
 ## 1.0.0 (2026-10-30): mlgidLAB is now mlgidGUI
 
 The application you know as mlgidLAB is called **mlgidGUI** from this
