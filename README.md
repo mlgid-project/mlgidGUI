@@ -139,9 +139,9 @@ use that tool, cite that paper.
 
 ## Name
 
-mlgidGUI was called mlgidLAB until version 1.0. An earlier, unrelated
-annotation tool also carried the name mlgidGUI (versions 0.3.8.6 to 0.6.2).
-Its full history is part of this repository: see tag
+mlgidGUI was called mlgidLAB until version 1.0. A previous annotation tool
+from the same group also carried the name mlgidGUI (versions 0.3.8.6 to
+0.6.2). Its full history is part of this repository: see tag
 [0.6.2](https://github.com/mlgid-project/mlgidGUI/tree/0.6.2) for its last
 release. The former standalone repository `mlgidGUI-legacy` is archived.
 
