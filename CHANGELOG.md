@@ -49,8 +49,9 @@ where it lives.
 - **Already have the older mlgidGUI (the annotation tool, up to 0.6.2)?**
   It is a different program with the same name. `pip install --upgrade
   mlgidgui` into the same environment replaces it with this application;
-  use a separate environment if you want to keep both. The old tool is
-  kept as `mlgid-project/mlgidGUI-legacy`.
+  use a separate environment if you want to keep both. The old tool's full
+  history and releases (0.3.8.6 to 0.6.2) are part of this repository; the
+  former standalone repository `mlgid-project/mlgidGUI-legacy` is archived.
 
 **What carries over**
 

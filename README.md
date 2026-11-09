@@ -130,11 +130,20 @@ For contributor-facing architecture and module reference docs please contact me.
 The citation for mlgidGUI will be listed here once the paper about it is
 published.
 
+**Looking for the version described in the JOSS paper?** The paper
+([doi:10.21105/joss.08499](https://doi.org/10.21105/joss.08499)) describes the
+original mlgidGUI annotation tool. Its code is in this repository at tag
+[0.5.1](https://github.com/mlgid-project/mlgidGUI/tree/0.5.1), archived at
+[doi:10.5281/zenodo.17426687](https://doi.org/10.5281/zenodo.17426687). If you
+use that tool, cite that paper.
+
 ## Name
 
 mlgidGUI was called mlgidLAB until version 1.0. An earlier, unrelated
-annotation tool also carried the name mlgidGUI (versions up to 0.6.2); it is
-kept as [mlgidGUI-legacy](https://github.com/mlgid-project/mlgidGUI-legacy).
+annotation tool also carried the name mlgidGUI (versions 0.3.8.6 to 0.6.2).
+Its full history is part of this repository: see tag
+[0.6.2](https://github.com/mlgid-project/mlgidGUI/tree/0.6.2) for its last
+release. The former standalone repository `mlgidGUI-legacy` is archived.
 
 ## License
 
