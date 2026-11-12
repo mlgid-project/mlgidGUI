@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 # split (conversion_config.py, widgets.py); re-imported here so panel
 # internals, tests and older references resolve unchanged.
 from mlgidgui.conversion_config import (
+    BEAMTIME_FIELDS,
     CONV_DET2POL,
     CONV_DET2POL_GID,
     CONV_DET2Q,
@@ -67,13 +68,16 @@ from mlgidgui.conversion_config import (
     OUTPUT_SINGLE_ENTRY,
     ConversionConfig,
     RawScan,
+    TECHNIQUE_FIELDS,
+    USER_FIELD_NAME_KEY,
+    USER_FIELDS,
+    USER_ROLES,
     _expand_fabio_scans,
     parse_poni_overrides,
 )
 from mlgidgui.widgets import CollapsibleSection as _CollapsibleSection
 from mlgidgui.widgets import make_form as _make_form
 from mlgidgui.widgets import skin_item_view as _skin_item_view
-from mlgidgui.widgets import section_label as _section_label
 from mlgidgui.widgets import DANGER as _DANGER, PRIMARY as _PRIMARY, set_variant as _set_variant
 
 
@@ -94,6 +98,13 @@ def _row(*widgets: QWidget) -> QWidget:
         # buttons stay at their natural width.
         h.addWidget(child, 1 if i == 0 else 0)
     return w
+
+
+def _input_text(widget: QWidget) -> str:
+    """Stripped text of a QLineEdit or (editable) QComboBox."""
+    if isinstance(widget, QComboBox):
+        return widget.currentText().strip()
+    return widget.text().strip()
 
 
 def _spin_or_none(spin: QDoubleSpinBox) -> float | None:
@@ -1105,8 +1116,13 @@ class ConversionPanel(QWidget):
     def _build_metadata_section(self) -> _CollapsibleSection:
         section = _CollapsibleSection("Metadata", expanded=False)
 
-        smpl_label = _section_label("Sample metadata (YAML)")
-        section.body_layout.addWidget(smpl_label)
+        # All five metadata blocks are collapsed dropdowns nested in
+        # this card (same nesting as the Detection card's "Advanced").
+        self.smpl_meta_section = _CollapsibleSection(
+            "Sample metadata (YAML)", expanded=False
+        )
+        section.body_layout.addWidget(self.smpl_meta_section)
+        smpl_body = self.smpl_meta_section.body_layout
 
         smpl_buttons = QHBoxLayout()
         smpl_buttons.setContentsMargins(0, 0, 0, 0)
@@ -1122,7 +1138,7 @@ class ConversionPanel(QWidget):
         smpl_buttons.addStretch(1)
         smpl_btn_widget = QWidget()
         smpl_btn_widget.setLayout(smpl_buttons)
-        section.body_layout.addWidget(smpl_btn_widget)
+        smpl_body.addWidget(smpl_btn_widget)
 
         self.smpl_yaml = QPlainTextEdit()
         self.smpl_yaml.setFont(QFont("monospace"))
@@ -1130,11 +1146,13 @@ class ConversionPanel(QWidget):
             "data:\n  name: my_sample\n  ..."
         )
         self.smpl_yaml.setMaximumHeight(120)
-        section.body_layout.addWidget(self.smpl_yaml)
+        smpl_body.addWidget(self.smpl_yaml)
 
-        section.body_layout.addSpacing(8)
-        exp_label = _section_label("Experimental metadata")
-        section.body_layout.addWidget(exp_label)
+        self.exp_meta_section = _CollapsibleSection(
+            "Experimental metadata", expanded=False
+        )
+        section.body_layout.addWidget(self.exp_meta_section)
+        exp_body = self.exp_meta_section.body_layout
 
         self.exp_meta_table = _skin_item_view(QTableWidget(0, 3))
         self.exp_meta_table.setHorizontalHeaderLabels(["Key", "Value", "Source"])
@@ -1148,7 +1166,7 @@ class ConversionPanel(QWidget):
             2, QHeaderView.ResizeMode.ResizeToContents
         )
         self.exp_meta_table.setMaximumHeight(140)
-        section.body_layout.addWidget(self.exp_meta_table)
+        exp_body.addWidget(self.exp_meta_table)
 
         meta_buttons = QHBoxLayout()
         meta_buttons.setContentsMargins(0, 0, 0, 0)
@@ -1166,9 +1184,177 @@ class ConversionPanel(QWidget):
         meta_buttons.addStretch(1)
         meta_btn_widget = QWidget()
         meta_btn_widget.setLayout(meta_buttons)
-        section.body_layout.addWidget(meta_btn_widget)
+        exp_body.addWidget(meta_btn_widget)
 
+        self._build_nexus_info_blocks(section)
         return section
+
+    # -- User / technique / beamtime information ---------------------------
+    #
+    # pygid's NeXus metadata that it cannot take during conversion; the
+    # engine writes it into every converted entry afterwards
+    # (``conversion.write_post_metadata``). Labels are pygid's field
+    # names verbatim because they become the HDF5 dataset names.
+    # Nothing is mandatory. Each block is its own collapsed dropdown
+    # inside Metadata, like the sample and experimental blocks above.
+
+    def _build_nexus_info_blocks(self, section: _CollapsibleSection) -> None:
+        self.user_info_section = _CollapsibleSection(
+            "User information", expanded=False
+        )
+        section.body_layout.addWidget(self.user_info_section)
+        body = self.user_info_section.body_layout
+        users_hint = QLabel(
+            "<i>Written to &lt;entry&gt;/users/&lt;field_name&gt;. "
+            "A user with no field filled is skipped.</i>"
+        )
+        users_hint.setWordWrap(True)
+        body.addWidget(users_hint)
+        self._user_blocks_layout = QVBoxLayout()
+        self._user_blocks_layout.setContentsMargins(0, 0, 0, 0)
+        users_host = QWidget()
+        users_host.setLayout(self._user_blocks_layout)
+        body.addWidget(users_host)
+        # Each entry: (frame widget, {pygid field: input widget}).
+        self._user_blocks: list[tuple[QWidget, dict[str, QWidget]]] = []
+        add_user_btn = QPushButton("Add user")
+        add_user_btn.clicked.connect(lambda: self._add_user_block())
+        body.addWidget(_row(add_user_btn))
+        self._add_user_block()
+
+        self.technique_info_section = _CollapsibleSection(
+            "Technique information", expanded=False
+        )
+        section.body_layout.addWidget(self.technique_info_section)
+        body = self.technique_info_section.body_layout
+        tech_hint = QLabel(
+            "<i>pygid always records x-ray diffraction (and grazing "
+            "incidence wide angle x-ray scattering for GID); techniques "
+            "entered here are added after those.</i>"
+        )
+        tech_hint.setWordWrap(True)
+        body.addWidget(tech_hint)
+        self.technique_table = _skin_item_view(
+            QTableWidget(0, len(TECHNIQUE_FIELDS))
+        )
+        self.technique_table.setHorizontalHeaderLabels(list(TECHNIQUE_FIELDS))
+        for col in range(len(TECHNIQUE_FIELDS)):
+            self.technique_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeMode.Stretch
+            )
+        self.technique_table.setMaximumHeight(110)
+        body.addWidget(self.technique_table)
+        add_tech_btn = QPushButton("Add technique")
+        add_tech_btn.clicked.connect(self._add_technique_row)
+        del_tech_btn = _set_variant(QPushButton("Remove"), _DANGER)
+        del_tech_btn.clicked.connect(self._remove_technique_rows)
+        body.addWidget(_row(add_tech_btn, del_tech_btn))
+        self._add_technique_row()
+
+        self.beamtime_info_section = _CollapsibleSection(
+            "Beamtime information", expanded=False
+        )
+        section.body_layout.addWidget(self.beamtime_info_section)
+        body = self.beamtime_info_section.body_layout
+        bt_hint = QLabel(
+            "<i>Written to &lt;entry&gt;/instrument/source/notes. Once any "
+            "field is filled, pygid writes 'nan' for the empty ones.</i>"
+        )
+        bt_hint.setWordWrap(True)
+        body.addWidget(bt_hint)
+        bt_form = _make_form()
+        bt_form.setContentsMargins(0, 0, 0, 0)
+        bt_form.setSpacing(4)
+        self.beamtime_fields: dict[str, QLineEdit] = {}
+        for key in BEAMTIME_FIELDS:
+            edit = QLineEdit()
+            self.beamtime_fields[key] = edit
+            bt_form.addRow(f"{key}:", edit)
+        bt_host = QWidget()
+        bt_host.setLayout(bt_form)
+        body.addWidget(bt_host)
+
+    def _add_user_block(self) -> None:
+        frame = QFrame()
+        frame.setFrameShape(QFrame.Shape.StyledPanel)
+        form = _make_form()
+        form.setContentsMargins(6, 6, 6, 6)
+        form.setSpacing(4)
+        inputs: dict[str, QWidget] = {}
+
+        name_edit = QLineEdit(self._next_user_field_name())
+        name_edit.setToolTip(
+            "Name of this user's subgroup in the file "
+            "(<entry>/users/<field_name>)."
+        )
+        inputs[USER_FIELD_NAME_KEY] = name_edit
+        form.addRow(f"{USER_FIELD_NAME_KEY}:", name_edit)
+        for key in USER_FIELDS:
+            if key == "role":
+                # pygid documents three roles but accepts any text.
+                widget: QWidget = QComboBox()
+                widget.setEditable(True)
+                widget.addItems(["", *USER_ROLES])
+            else:
+                widget = QLineEdit()
+            inputs[key] = widget
+            form.addRow(f"{key}:", widget)
+
+        remove_btn = _set_variant(QPushButton("Remove user"), _DANGER)
+        remove_btn.clicked.connect(lambda: self._remove_user_block(frame))
+        form.addRow("", _row(remove_btn))
+        frame.setLayout(form)
+        self._user_blocks.append((frame, inputs))
+        self._user_blocks_layout.addWidget(frame)
+
+    def _next_user_field_name(self) -> str:
+        taken = {
+            _input_text(inputs[USER_FIELD_NAME_KEY])
+            for _frame, inputs in self._user_blocks
+        }
+        n = 1
+        while f"user_{n}" in taken:
+            n += 1
+        return f"user_{n}"
+
+    def _remove_user_block(self, frame: QWidget) -> None:
+        self._user_blocks = [
+            (f, inputs) for f, inputs in self._user_blocks if f is not frame
+        ]
+        self._user_blocks_layout.removeWidget(frame)
+        frame.deleteLater()
+
+    def _add_technique_row(self) -> None:
+        row = self.technique_table.rowCount()
+        self.technique_table.insertRow(row)
+        for col in range(len(TECHNIQUE_FIELDS)):
+            self.technique_table.setItem(row, col, QTableWidgetItem(""))
+
+    def _remove_technique_rows(self) -> None:
+        rows = sorted(
+            {i.row() for i in self.technique_table.selectedItems()},
+            reverse=True,
+        )
+        for r in rows:
+            self.technique_table.removeRow(r)
+
+    def _collect_nexus_info(self, cfg: ConversionConfig) -> None:
+        cfg.user_info = [
+            {key: _input_text(widget) for key, widget in inputs.items()}
+            for _frame, inputs in self._user_blocks
+        ]
+        techniques: list[dict[str, str]] = []
+        for r in range(self.technique_table.rowCount()):
+            tech = {}
+            for col, key in enumerate(TECHNIQUE_FIELDS):
+                item = self.technique_table.item(r, col)
+                tech[key] = item.text().strip() if item is not None else ""
+            techniques.append(tech)
+        cfg.technique_info = techniques
+        cfg.beamtime_info = {
+            key: edit.text().strip()
+            for key, edit in self.beamtime_fields.items()
+        }
 
     def _load_smpl_yaml(self) -> None:
         path = file_dialogs.open_file(
@@ -1823,6 +2009,7 @@ class ConversionPanel(QWidget):
             if key:
                 kv[key] = value
         cfg.expmeta_kv = kv
+        self._collect_nexus_info(cfg)
 
         # Output.
         out_text = self.output_dir.text().strip()

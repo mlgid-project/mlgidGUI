@@ -35,6 +35,45 @@ OUTPUT_SEPARATE_DATASETS = "Separate datasets in single file"
 OUTPUT_SINGLE_ENTRY = "Single entry in single file"
 
 
+# Post-conversion NeXus metadata (user / technique / beamtime). pygid
+# 0.2.20 cannot take these during conversion; they are written after it
+# by ``conversion.write_post_metadata`` with pygid's own NeXus writers
+# (the ones behind ``pygid.NexusFile.set_user_info`` /
+# ``set_techniques_info`` / ``set_beamtime_info``). The field names are
+# pygid's, verbatim, because they become HDF5 dataset names.
+#
+# ``field_name`` is not written as a dataset: it names the user's
+# subgroup, ``<entry>/users/<field_name>`` (pygid default ``user_1``).
+USER_FIELD_NAME_KEY = "field_name"
+USER_FIELDS = (
+    "name",
+    "role",
+    "affiliation",
+    "address",
+    "telephone_number",
+    "fax_number",
+    "email",
+    "facility_user_id",
+    "ORCID",
+)
+# The roles pygid's docstring documents. It does not enforce them, so
+# the panel offers them in an editable dropdown.
+USER_ROLES = ("local_contact", "principal_investigator", "proposer")
+# One ``<entry>/instrument/techniques/technique_N`` group per technique.
+TECHNIQUE_FIELDS = ("name", "pid")
+# ``<entry>/instrument/source/notes``. These are the keys pygid's writer
+# treats as required: once any one is given, pygid fills every missing
+# one with the string 'nan'. (Its docstring lists only ``name``; the
+# code is what decides the file layout.)
+BEAMTIME_FIELDS = (
+    "description",
+    "proposal_id",
+    "principal_investigator",
+    "title",
+    "DOI",
+)
+
+
 @dataclass
 class RawScan:
     """One (file, entry, frames) triple selected for conversion.
@@ -131,6 +170,15 @@ class ConversionConfig:
     smplmeta_yaml: str = ""
     # Experimental metadata key/value pairs from the metadata table.
     expmeta_kv: dict[str, str] = field(default_factory=dict)
+    # Post-conversion NeXus metadata, all optional (see USER_FIELDS etc.).
+    # One dict per user (keys: USER_FIELD_NAME_KEY + USER_FIELDS), one per
+    # technique (TECHNIQUE_FIELDS), and one beamtime dict
+    # (BEAMTIME_FIELDS). Empty values are dropped before writing; a user
+    # or technique with nothing filled is skipped, and an all-empty
+    # beamtime dict writes nothing.
+    user_info: list[dict[str, str]] = field(default_factory=list)
+    technique_info: list[dict[str, str]] = field(default_factory=list)
+    beamtime_info: dict[str, str] = field(default_factory=dict)
     # Output config.
     output_mode: str = OUTPUT_SEPARATE_FILES
     output_dir: Path | None = None

@@ -6,6 +6,21 @@ suffixes are alpha pre-releases.
 
 ## Unreleased
 
+### Added
+
+- **User, technique and beamtime information on conversion.** The
+  Conversion panel's Metadata card has three new dropdowns, *User
+  information*, *Technique information* and *Beamtime information*, with
+  pygid's own field names. Nothing is mandatory. You can add several
+  users (each saved under `users/<field_name>`), add techniques (they are
+  listed after the x-ray diffraction / GIWAXS entries pygid records
+  itself), and fill the beamtime's description, proposal_id,
+  principal_investigator, title and DOI. pygid cannot take these during
+  conversion, so mlgidGUI writes them into every converted entry right
+  after it. As in pygid, once any beamtime field is filled the empty
+  ones are saved as `nan`. The existing sample and experimental metadata
+  blocks are now dropdowns too, so the card opens compact.
+
 ### Fixed
 
 - **Windows taskbar icon.** The running window now shows the mlgidGUI icon

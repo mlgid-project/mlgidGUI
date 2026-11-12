@@ -18,10 +18,12 @@ testable.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from mlgidgui.conversion_config import (
+    BEAMTIME_FIELDS,
     CONV_DET2POL,
     CONV_DET2POL_GID,
     CONV_DET2Q,
@@ -30,6 +32,9 @@ from mlgidgui.conversion_config import (
     OUTPUT_SINGLE_ENTRY,
     ConversionConfig,
     RawScan,
+    TECHNIQUE_FIELDS,
+    USER_FIELD_NAME_KEY,
+    USER_FIELDS,
     parse_poni_overrides,
 )
 
@@ -135,6 +140,10 @@ def execute(
         )
     if isinstance(cfg.ai, list):
         _check_per_frame_ai(cfg.ai, scans)
+    # Validated here, before any pixel is converted: a bad user group
+    # name found only after conversion would leave files without the
+    # metadata the user typed.
+    post_metadata = clean_post_metadata(cfg)
 
     # Imported here, below the checks above and not at the top of
     # ``execute``: every one of them is a pure config check that needs
@@ -240,6 +249,10 @@ def execute(
         entry_counters[shared_out] = idx + 1
         single_entry_group = _entry_group_name(idx)
 
+    # (output file, entry group) pairs this run wrote, in order, for the
+    # post-conversion metadata pass.
+    written_entries: list[tuple[Path, str]] = []
+
     for scan in scans:
         out_path = raw_file_outputs[scan.file_path]
         if cfg.append_frames:
@@ -302,6 +315,8 @@ def execute(
         if smpl_metadata is not None:
             method_kwargs["smpl_metadata"] = smpl_metadata
         method(**method_kwargs)
+        if (out_path, h5_group) not in written_entries:
+            written_entries.append((out_path, h5_group))
 
         if first_touch:
             written.append(out_path)
@@ -309,6 +324,11 @@ def execute(
 
     if single_entry_group is not None and written:
         _warn_if_frames_diverted(written[0], single_entry_group, len(scans))
+
+    # After every scan, not per scan: in single-entry and append mode
+    # later scans write into the same entry again, and writing once at
+    # the end keeps the technique list free of repeats.
+    write_post_metadata(written_entries, post_metadata)
 
     return written
 
@@ -903,3 +923,189 @@ def _build_exp_metadata(pygid_mod: Any, kv: dict[str, str]) -> Any:
         logger.debug("suppressed exception in _build_exp_metadata", exc_info=True)
         pass
     return obj
+
+
+# --- Post-conversion NeXus metadata (user / technique / beamtime) ------------
+
+@dataclass
+class PostMetadata:
+    """Cleaned user, technique and beamtime metadata, ready to write.
+
+    Every value is a non-empty string. ``users`` keeps
+    ``USER_FIELD_NAME_KEY`` in each dict (the subgroup name);
+    ``techniques`` and ``beamtime`` hold only pygid's field names.
+    """
+
+    users: list[dict[str, str]] = field(default_factory=list)
+    techniques: list[dict[str, str]] = field(default_factory=list)
+    beamtime: dict[str, str] = field(default_factory=dict)
+
+    def is_empty(self) -> bool:
+        return not (self.users or self.techniques or self.beamtime)
+
+
+def _filled(values: dict[str, str] | None, keys) -> dict[str, str]:
+    """``values`` restricted to ``keys``, stripped, empties dropped."""
+    out: dict[str, str] = {}
+    for key in keys:
+        text = str((values or {}).get(key, "") or "").strip()
+        if text:
+            out[key] = text
+    return out
+
+
+def clean_post_metadata(cfg: ConversionConfig) -> PostMetadata:
+    """Validate and clean the config's user / technique / beamtime input.
+
+    Nothing is mandatory: empty fields are dropped, and a user or
+    technique with no field filled is skipped. A user with fields but no
+    ``field_name`` gets ``user_<n>`` (n counts the users kept, from 1,
+    matching pygid's ``user_1`` default). Raises ``ValueError`` for a
+    ``field_name`` containing ``/`` (it would nest HDF5 groups) and for
+    two users sharing one ``field_name`` (pygid's writer deletes and
+    recreates the subgroup, so the second would silently replace the
+    first). Backend-free, so ``execute`` runs it before importing pygid.
+    """
+    users: list[dict[str, str]] = []
+    seen_names: set[str] = set()
+    for raw in cfg.user_info or []:
+        fields = _filled(raw, USER_FIELDS)
+        if not fields:
+            continue
+        name = str(raw.get(USER_FIELD_NAME_KEY, "") or "").strip()
+        if not name:
+            name = f"user_{len(users) + 1}"
+        if "/" in name:
+            raise ValueError(
+                f"User field_name {name!r} must not contain '/'"
+            )
+        if name in seen_names:
+            raise ValueError(
+                f"Two users share the field_name {name!r}; each user "
+                "needs its own"
+            )
+        seen_names.add(name)
+        users.append({USER_FIELD_NAME_KEY: name, **fields})
+
+    techniques = [
+        t for t in (_filled(raw, TECHNIQUE_FIELDS)
+                    for raw in cfg.technique_info or [])
+        if t
+    ]
+    beamtime = _filled(cfg.beamtime_info, BEAMTIME_FIELDS)
+    return PostMetadata(users=users, techniques=techniques, beamtime=beamtime)
+
+
+def _read_text(dataset) -> str:
+    value = dataset[()]
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _existing_techniques(techniques_grp) -> list[dict[str, str]]:
+    """The ``technique_N`` groups of ``techniques_grp`` as dicts, by N."""
+    import h5py
+
+    def _index(name: str) -> int:
+        try:
+            return int(name.rsplit("_", 1)[1])
+        except (IndexError, ValueError):
+            return 1 << 30  # unexpected names after the numbered ones
+
+    out: list[dict[str, str]] = []
+    for name in sorted(techniques_grp.keys(), key=_index):
+        grp = techniques_grp[name]
+        if not isinstance(grp, h5py.Group):
+            continue
+        out.append({
+            key: _read_text(ds) for key, ds in grp.items()
+            if isinstance(ds, h5py.Dataset)
+        })
+    return out
+
+
+def _write_entry_metadata(entry_grp, meta: PostMetadata, nexus_reader) -> None:
+    """Write ``meta`` into one NXentry with pygid's own writers.
+
+    Mirrors ``pygid.NexusFile.set_user_info`` / ``set_techniques_info``
+    / ``set_beamtime_info`` for one entry, but calls their per-entry
+    helpers on the open group: ``NexusFile`` itself first parses EVERY
+    top-level group of the file and refuses a file with any non-pygid
+    group (see ``file_model.list_pygid_incompatible_top_level``), which
+    an append target may have.
+
+    Techniques are appended to the ones already there (pygid writes
+    x-ray diffraction, plus GIWAXS for GID conversions, during the
+    conversion) and a technique already present is not repeated. The
+    group is rebuilt the way ``set_techniques_info`` does it, because
+    pygid's helper numbers from ``technique_0`` on every call.
+    """
+    for user in meta.users:
+        # pygid's helper pops ``field_name`` from the dict it is given.
+        nexus_reader._set_user_information_single_entry(entry_grp, dict(user))
+
+    if meta.techniques:
+        instrument = entry_grp.require_group("instrument")
+        existing = (
+            _existing_techniques(instrument["techniques"])
+            if "techniques" in instrument else []
+        )
+        combined = list(existing)
+        for tech in meta.techniques:
+            if tech not in combined:
+                combined.append(tech)
+        if combined != existing:
+            if "techniques" in instrument:
+                del instrument["techniques"]
+            grp = instrument.create_group("techniques")
+            grp.attrs.update({"NX_class": "NXnote", "EX_required": "true"})
+            nexus_reader._set_techniques_info_single_entry(grp, combined)
+
+    if meta.beamtime:
+        source = entry_grp.require_group("instrument/source")
+        nexus_reader._set_beamtime_information_single_entry(
+            source, dict(meta.beamtime),
+        )
+
+
+def write_post_metadata(
+    entries: list[tuple[Path, str]], meta: PostMetadata,
+) -> None:
+    """Write user / technique / beamtime metadata into converted entries.
+
+    pygid cannot take these during conversion, so ``execute`` calls this
+    once after the last scan with every ``(output file, entry)`` it
+    wrote. A failure is logged as a warning (it reaches the Conversion
+    log) and does not fail the run: the converted data is already on
+    disk and valid without the metadata.
+    """
+    if meta.is_empty() or not entries:
+        return
+    import h5py
+    from pygid import nexus_reader  # lazy; pygid is already imported here
+
+    by_file: dict[Path, list[str]] = {}
+    for path, group in entries:
+        by_file.setdefault(Path(path), []).append(group)
+    for path, groups in by_file.items():
+        try:
+            with h5py.File(path, "r+") as f:
+                for group in groups:
+                    if group not in f:
+                        logger.warning(
+                            "Metadata not written: %s has no entry %r",
+                            path.name, group,
+                        )
+                        continue
+                    _write_entry_metadata(f[group], meta, nexus_reader)
+        except Exception as exc:  # noqa: BLE001 - reported, run continues
+            logger.warning(
+                "User/technique/beamtime metadata could not be written "
+                "to %s: %s", path, exc,
+            )
+            continue
+        logger.info(
+            "Wrote user/technique/beamtime metadata to %s (%s)",
+            path.name, ", ".join(groups),
+        )
