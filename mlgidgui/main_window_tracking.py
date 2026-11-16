@@ -1127,3 +1127,10 @@ class TrackingMixin:
             else:
                 self.session.mark_dirty()
                 self._update_title()
+                # The Peaks dock builds its own rows from the table, so
+                # a score edit or a drag left it showing the old values
+                # until the next frame change. Patch the row in place
+                # (keeps the user's table selection); the dock only ever
+                # shows the current frame.
+                if int(frame) == int(self.viewer.current_frame):
+                    self.peaks_table_panel.update_row(kind, peak_id, polar)

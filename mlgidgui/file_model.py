@@ -881,7 +881,7 @@ class _LazyPolarStack:
     Mirrors ``_LazyImageStack`` but routes to ``FrameSource.get_polar``.
     Supports two indexing forms used by the GUI:
 
-    - ``stack[i]`` — return a polar frame (``profile_viewer.py:341``)
+    - ``stack[i]`` — return a polar frame
     - ``stack[frame, r, a]`` — single-pixel lookup used by the cursor
       readout (``image_viewer._compute_cursor_info``)
     """

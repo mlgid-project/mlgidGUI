@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import math
 import os
-import warnings
 
 os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
 
@@ -19,6 +19,14 @@ from mlgidgui.fit import (
     gaussian_at_stored_shape,
 )
 from mlgidgui.manual_fit import PeakBox
+from mlgidgui.profile_binning import (
+    PixelGeometry,
+    angle_step_deg,
+    angular_profile,
+    band_pixels,
+    pixel_geometry,
+    radial_profile,
+)
 from mlgidgui.profile_masking import neighbour_mask
 from mlgidgui.image_viewer import (
     OVERLAY_STYLE,
@@ -206,7 +214,14 @@ class ProfileViewer(QWidget):
         self._angular_marks = self._build_stored_marks(self._angular_plot)
         layout.addWidget(self._angular_plot)
 
-        self._polar_stack: np.ndarray | None = None
+        # Cartesian (q_z, q_xy) frames of the active entry, indexable by
+        # frame (``file_model._LazyImageStack`` in the app), and the
+        # per-pixel |q| / angle they share. The profiles are binned from
+        # these pixels directly (``profile_binning``).
+        self._stack = None
+        self._geom: PixelGeometry | None = None
+        # x axes of the curves currently drawn (bin centres): |q| in 1/A
+        # and angle in degrees. The fits run on these.
         self._radius: np.ndarray | None = None
         self._angle: np.ndarray | None = None
         # SelectedPeak (any kind) so profiles/fits can render for detected /
@@ -233,13 +248,19 @@ class ProfileViewer(QWidget):
 
     # -- Public API --
 
-    def set_polar_stack(
-        self, polar_stack: np.ndarray, radius: np.ndarray, angle: np.ndarray
+    def set_cartesian_stack(
+        self, stack, q_xy: np.ndarray, q_z: np.ndarray,
     ) -> None:
-        """Load the polar-stack data; renders frame 0 immediately."""
-        self._polar_stack = polar_stack
-        self._radius = radius
-        self._angle = angle
+        """Load an entry's Cartesian frames; renders frame 0 immediately.
+
+        ``stack[i]`` must return frame ``i`` as a ``(len(q_z),
+        len(q_xy))`` array. The per-pixel geometry is computed here,
+        once per entry.
+        """
+        self._stack = stack
+        self._geom = pixel_geometry(q_xy, q_z)
+        self._radius = None
+        self._angle = None
         self._current_frame = 0
         self._recompute_curves()
 
@@ -258,22 +279,27 @@ class ProfileViewer(QWidget):
         """Redraw the profiles, e.g. after the masking setting changed."""
         self._recompute_curves()
 
-    def _masked_for_neighbours(self, img: np.ndarray) -> tuple[np.ndarray, bool]:
-        """``img`` with the neighbours of the selected peak set to NaN.
+    def _drop_neighbours(
+        self, pixel_sets: list[np.ndarray],
+    ) -> tuple[list[np.ndarray], bool]:
+        """Remove the selected peak's neighbours from each pixel set.
 
-        Returns ``(image, masked)``. The cached frame is never edited in
-        place; a masked frame is a copy. Any provider failure means no
-        masking rather than a broken plot.
+        ``pixel_sets`` are flat pixel indices (one band per profile).
+        Returns ``(sets, masked)``. Only the band pixels are tested, so
+        the cost follows the band, and the cached frame is never
+        touched. Any provider failure means no masking rather than a
+        broken plot.
         """
         peak = self._selected
-        if peak is None or self._neighbour_provider is None:
-            return img, False
+        geom = self._geom
+        if peak is None or geom is None or self._neighbour_provider is None:
+            return pixel_sets, False
         try:
             boxes = self._neighbour_provider(self._current_frame, peak)
         except Exception:
-            return img, False
+            return pixel_sets, False
         if not boxes:
-            return img, False
+            return pixel_sets, False
         target = PeakBox(
             radius=float(peak.radius), radius_width=float(peak.radius_width),
             angle=float(peak.angle), angle_width=float(peak.angle_width),
@@ -284,20 +310,26 @@ class ProfileViewer(QWidget):
                 distance = self._cluster_distance_provider()
             except Exception:
                 distance = None
-        mask = neighbour_mask(
-            img.shape, self._radius, self._angle, target, boxes,
-            cluster_distance=distance,
-        )
-        if mask is None:
-            return img, False
-        out = np.array(img, dtype=np.float32 if img.dtype.kind != "f" else img.dtype)
-        out[mask] = np.nan
-        return out, True
+        radius = geom.radius.reshape(-1)
+        angle = geom.angle.reshape(-1)
+        out: list[np.ndarray] = []
+        masked = False
+        for pixels in pixel_sets:
+            mask = neighbour_mask(
+                radius[pixels], angle[pixels], target, boxes,
+                cluster_distance=distance, q_abs_max=geom.r_max,
+            )
+            if mask is None:
+                out.append(pixels)
+            else:
+                out.append(pixels[~mask])
+                masked = True
+        return out, masked
 
     def set_frame(self, frame: int) -> None:
-        if self._polar_stack is None:
+        if self._stack is None:
             return
-        if not 0 <= frame < self._polar_stack.shape[0]:
+        if not 0 <= frame < len(self._stack):
             return
         self._current_frame = frame
         self._recompute_curves()
@@ -309,7 +341,8 @@ class ProfileViewer(QWidget):
         self._angular_fit_curve.setData([], [])
         self._clear_backgrounds()
         self._hide_stored_marks()
-        self._polar_stack = None
+        self._stack = None
+        self._geom = None
         self._radius = None
         self._angle = None
         self._set_fit_cache(None, None)
@@ -404,12 +437,12 @@ class ProfileViewer(QWidget):
         }
 
     def radius_axis(self) -> np.ndarray | None:
-        """Polar radius axis the viewer is currently plotting on, or
-        None if no polar stack has been loaded yet."""
+        """|q| bin centres of the radial curve now drawn, or None if no
+        frame has been profiled yet."""
         return self._radius
 
     def angle_axis(self) -> np.ndarray | None:
-        """Polar angle axis the viewer is currently plotting on."""
+        """Angle bin centres of the angular curve now drawn."""
         return self._angle
 
     # -- Selected-peak edge handles --
@@ -529,83 +562,73 @@ class ProfileViewer(QWidget):
     def _recompute_curves(self) -> None:
         """Re-render both profile curves and any fit overlays.
 
-        Selected: radial profile averages columns within the angular
-        slice of the integration box (the user-drawn ROI,
-        ``self._selected.{radius, angle, *_width}``); angular profile
-        averages rows within the radial slice. Unselected: full-image
-        averages, fit curves cleared.
+        Binned from the frame's pixels (``profile_binning``), as silx
+        does: every finite pixel in the band counts once, at its own
+        |q| and angle, and each bin shows the mean of its pixels.
+        Selected: the radial profile takes the pixels inside the box's
+        angular extent, the angular profile those inside its |q|
+        extent. Unselected: every pixel, fit curves cleared.
         """
-        if (
-            self._polar_stack is None
-            or self._radius is None
-            or self._angle is None
-        ):
+        if self._stack is None or self._geom is None:
             return
-        if not 0 <= self._current_frame < self._polar_stack.shape[0]:
+        if not 0 <= self._current_frame < len(self._stack):
             return
         # Selection-change signals can race the silx detach/reattach
         # dance (pipeline runs, file close): the FrameSource is briefly
-        # released and the lazy polar stack raises until the host
-        # re-acquires. Bail silently — the next `frameChanged` or
-        # `selectionChanged` after reattach will redraw correctly.
+        # released and the lazy stack raises until the host re-acquires.
+        # Bail silently -- the next `frameChanged` or `selectionChanged`
+        # after reattach will redraw correctly.
         try:
-            img = self._polar_stack[self._current_frame]
+            img = np.asarray(self._stack[self._current_frame])
         except (RuntimeError, ValueError, OSError, KeyError):
             return
+        geom = self._geom
+        if img.shape != geom.radius.shape:
+            return
 
-        img, masked = self._masked_for_neighbours(img)
+        peak = self._selected
+        if peak is None:
+            radial_px = angular_px = band_pixels(img, geom)
+            step = angle_step_deg(geom, geom.r_max / 2.0)
+            masked = False
+        else:
+            box_r, box_dr = float(peak.radius), float(peak.radius_width)
+            box_a, box_da = float(peak.angle), float(peak.angle_width)
+            # Half-extent of the band each profile takes in, as a
+            # multiple of the stored/drawn width. A manual / detected
+            # box is a drawn extent (width / 2 each side). A saved peak
+            # stores 2 sigma, so width / 2 would cover only +-sigma and
+            # the profile height would depend on how wide the box it
+            # came from was; the full stored width (+-2 sigma) takes in
+            # ~95% of the other axis' Gaussian whatever the box was.
+            half = (
+                STORED_BAND_HALF_FACTOR
+                if peak.kind in ("fitted", "matched") else 0.5
+            )
+            # Never narrower than one pixel, so a hairline box still
+            # has pixels to average.
+            r_half = max(half * box_dr, geom.q_step / 2.0)
+            a_half = half * box_da
+            if math.isfinite(box_r) and box_r > 0:
+                a_half = max(
+                    a_half, 0.5 * math.degrees(geom.q_step / box_r),
+                )
+            radial_px = band_pixels(
+                img, geom, a_lo=box_a - a_half, a_hi=box_a + a_half,
+            )
+            angular_px = band_pixels(
+                img, geom, r_lo=box_r - r_half, r_hi=box_r + r_half,
+            )
+            step = angle_step_deg(geom, box_r)
+            (radial_px, angular_px), masked = self._drop_neighbours(
+                [radial_px, angular_px]
+            )
         suffix = " (neighbours masked)" if masked else ""
         self._radial_plot.setTitle("Radial profile" + suffix)
         self._angular_plot.setTitle("Angular profile" + suffix)
 
-        # Polar maps legitimately hold all-NaN rows/columns — bins the
-        # detector never covers (missing wedge, gaps). ``nanmean`` of
-        # such a slice is NaN by design and pyqtgraph gaps the curve
-        # there, but numpy emits a "Mean of empty slice" RuntimeWarning
-        # for every one, spamming the console on each frame or
-        # selection change. Suppress exactly that warning, exactly here.
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore", message="Mean of empty slice",
-                category=RuntimeWarning,
-            )
-            if self._selected is not None:
-                peak = self._selected
-                box_r, box_dr = peak.radius, peak.radius_width
-                box_a, box_da = peak.angle, peak.angle_width
-                # Half-extent of the band each profile averages over,
-                # as a multiple of the stored/drawn width. A manual /
-                # detected box is a drawn extent (width / 2 each side).
-                # A saved peak stores 2σ, so width / 2 would average
-                # over only ±σ and the profile height would depend on
-                # how wide the box it came from was; the full stored
-                # width (±2σ) takes in ~95% of the other axis' Gaussian
-                # whatever the original box was.
-                half = (
-                    STORED_BAND_HALF_FACTOR
-                    if peak.kind in ("fitted", "matched") else 0.5
-                )
-                a_slice = _bounds_to_slice(
-                    self._angle,
-                    box_a - half * box_da,
-                    box_a + half * box_da,
-                )
-                r_slice = _bounds_to_slice(
-                    self._radius,
-                    box_r - half * box_dr,
-                    box_r + half * box_dr,
-                )
-                radial_src = (
-                    img[:, a_slice] if a_slice.stop > a_slice.start else img
-                )
-                angular_src = (
-                    img[r_slice, :] if r_slice.stop > r_slice.start else img
-                )
-                radial = np.nanmean(radial_src, axis=1)
-                angular = np.nanmean(angular_src, axis=0)
-            else:
-                radial = np.nanmean(img, axis=1)
-                angular = np.nanmean(img, axis=0)
+        self._radius, radial = radial_profile(img, geom, radial_px)
+        self._angle, angular = angular_profile(img, geom, angular_px, step)
 
         self._radial_curve.setData(self._radius, radial)
         self._angular_curve.setData(self._angle, angular)
@@ -952,20 +975,3 @@ def _angular_fit_range(peak: SelectedPeak) -> tuple[float, float] | None:
 def _hex_to_rgb(hexstr: str) -> tuple[int, int, int]:
     h = hexstr.lstrip("#")
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-
-
-def _bounds_to_slice(axis: np.ndarray, lo: float, hi: float) -> slice:
-    """Convert a (lo, hi) range in physical units to an index slice into a
-    monotonic 1D axis. Tolerates non-finite bounds (treated as full range).
-    """
-    if not np.isfinite(lo):
-        lo_idx = 0
-    else:
-        lo_idx = int(np.searchsorted(axis, lo, side="left"))
-    if not np.isfinite(hi):
-        hi_idx = len(axis)
-    else:
-        hi_idx = int(np.searchsorted(axis, hi, side="right"))
-    lo_idx = max(0, min(lo_idx, len(axis)))
-    hi_idx = max(lo_idx, min(hi_idx, len(axis)))
-    return slice(lo_idx, hi_idx)

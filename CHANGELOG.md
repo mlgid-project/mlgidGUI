@@ -4,10 +4,68 @@ All notable changes to mlgidGUI (called mlgidLAB until 1.0.0) are recorded
 here. Versions follow [PEP 440](https://peps.python.org/pep-0440/); `aN`
 suffixes are alpha pre-releases.
 
-## Unreleased
+## 1.1.0 (2026-11-16)
+
+### Added
+
+- **User, technique and beamtime information on conversion.** The
+  Conversion panel's Metadata card has three new dropdowns, *User
+  information*, *Technique information* and *Beamtime information*, with
+  pygid's own field names. Nothing is mandatory. You can add several
+  users (each saved under `users/<field_name>`), add techniques (they are
+  listed after the x-ray diffraction / GIWAXS entries pygid records
+  itself), and fill the beamtime's description, proposal_id, beamtime_id,
+  principal_investigator, title and DOI. pygid cannot take these during
+  conversion, so mlgidGUI writes them into every converted entry right
+  after it. As in pygid, once any beamtime field is filled the empty
+  ones are saved as `nan`; only beamtime_id is left out when empty. The
+  existing sample and experimental metadata blocks are now dropdowns too,
+  so the card opens compact.
+- **Draw and edit boxes in the Cartesian view.** Ctrl+Alt-drag now also
+  works in the Cartesian view: the two drag points are opposite corners
+  of an arc box. A selected manual or detected box gets handles there
+  too (inner and outer radius, both angular edges, drag inside to move),
+  with undo, just like the rectangle handles in the polar view. Adding
+  the box to detected or fitted, the profiles and the fits work exactly
+  as before.
+- **Peak ids in the tracking views.** The Show views window has a *Show
+  peak ids* checkbox that labels every tracked point in the Trajectories
+  and q-map tabs with its fitted peak id (the id in the Peaks dock). Off
+  by default; at most 2000 labels per plot, narrow the frame range for
+  more.
+
+### Changed
+
+- **Smooth profiles, built from every pixel.** The radial and angular
+  profiles are now made the way silx makes them: every pixel inside the
+  box's angle range (radial profile) or |q| range (angular profile) is
+  placed at its own exact |q| or angle, and each point is the mean of
+  the pixels in a one-pixel-wide bin. Before, the profiles averaged a
+  coarser polar copy of the image whose sampling skipped many pixels,
+  which made them rough. Expect smoother curves with finer detail; live
+  1D fits and the curves drawn for saved peaks use the new profiles.
+- **Conversion saves into one entry by default.** "Save as" now starts on
+  *Single entry in single file*: all selected scans become the frames of
+  one entry in `converted.h5`. The other modes are still in the list.
+  Appending to an existing entry needs one of them, since a single entry
+  is always new.
 
 ### Fixed
 
+- **The score of a peak added with "Add to detected" can be changed
+  later.** The manual box stays on top of the new detected peak, and a
+  click used to pick the box, whose High/Medium/Low only applies to the
+  next add. A click there now selects the detected peak, whose score
+  editor writes to the file; click again to reach the box.
+- **The Profiles / Peaks panel can be dragged taller.** The border
+  between the image and the bottom panels hardly moved, because the
+  hidden Structure editor and welcome page kept the image area at their
+  own minimum height. Only the page you are looking at counts now, so
+  the profiles and the peak list can take most of the window.
+- **The Peaks dock shows edited values at once.** Changing a peak's score
+  in the Display dock, or dragging a box, now updates its row in the
+  Peaks dock straight away (before, the old value stayed until you
+  changed frame). The row stays selected.
 - **Windows taskbar icon.** The running window now shows the mlgidGUI icon
   in the taskbar instead of Windows' default symbol. The application ID is
   set before the window system starts, and the installer's start menu and

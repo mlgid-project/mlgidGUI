@@ -371,6 +371,50 @@ class PeaksTablePanel(QWidget):
         self._fill_fitted(fitted)
         self._fill_matched(self._matched_src)
 
+    # Source-model column of each editable field, per tab (see
+    # ``_fill_detected`` / ``_fill_fitted``), with its display format.
+    _EDITABLE_COLUMNS = {
+        "detected": {
+            "radius": (1, "{:.3f}"), "radius_width": (2, "{:.3f}"),
+            "angle": (3, "{:.2f}"), "angle_width": (4, "{:.2f}"),
+            "score": (5, "{:.3f}"),
+        },
+        "fitted": {
+            "radius": (1, "{:.3f}"), "radius_width": (2, "{:.3f}"),
+            "angle": (3, "{:.2f}"), "angle_width": (4, "{:.2f}"),
+            "score": (6, "{:.3f}"),
+        },
+    }
+
+    def update_row(self, kind: str, peak_id: int, fields: dict) -> None:
+        """Rewrite one row's cells in place after a peak-row edit.
+
+        A score edit or a box drag changes one row; repopulating the tab
+        would drop the user's table selection and scroll position, so
+        only the touched cells change (``setText`` + the numeric sort
+        key; the proxy re-sorts if the edited column is the sort key).
+        Unknown kinds (matched, extra lists) and fields this tab does not
+        show are ignored, as is an id the tab does not hold.
+        """
+        columns = self._EDITABLE_COLUMNS.get(kind)
+        if not columns:
+            return
+        model = (
+            self._detected_model if kind == "detected" else self._fitted_model
+        )
+        row = _find_row_for_id_in_model(model, int(peak_id))
+        if row is None:
+            return
+        for name, value in fields.items():
+            if name not in columns or value is None:
+                continue
+            col, fmt = columns[name]
+            item = model.item(row, col)
+            if item is None:
+                continue
+            item.setText(fmt.format(float(value)))
+            item.setData(float(value), _ROLE_NUMERIC)
+
     def set_external_selection(self, sel: SelectedPeak | None) -> None:
         """Mirror an image-driven selection onto the tables.
 

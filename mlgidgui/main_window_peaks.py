@@ -189,6 +189,10 @@ class PeaksMixin:
                 )
                 box(self, "Add to detected", str(exc))
                 return None
+        # The box stays on screen; mark it so a later click on this spot
+        # selects the stored detected peak (score editable) instead of
+        # the box (``_demote_committed_manual``).
+        manual_peak.committed_detected_id = new_id
         self.session.mark_dirty()
         self._update_title()
         self._load_entry_into_viewer(entry, preserve_view=True)

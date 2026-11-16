@@ -1,7 +1,7 @@
 # Build the Windows installer: freeze the app with PyInstaller, wrap it with
 # Inno Setup, and prove the result starts.
 #
-# Runs on pushes to the 1.0.0 branch, on version tags, and on demand
+# Runs on pushes to a release branch (dev/vX), on version tags, and on demand
 # (Actions -> Windows installer -> Run workflow; tick "lite" for the build
 # without the pipeline backends). It is a separate workflow from ci.yml so a
 # push to any other branch does not start a multi-gigabyte build.
@@ -18,7 +18,7 @@ name: Windows installer
 
 on:
   push:
-    branches: [dev/v1.0.0]
+    branches: ["dev/v*"]
     tags: ["v*"]
   workflow_dispatch:
     inputs:

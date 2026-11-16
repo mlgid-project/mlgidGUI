@@ -2853,3 +2853,80 @@ def test_a_track_run_writes_the_gui_ring_tracks_as_rows_once(
     tracks, _ = _saved_tracks(main_window.session.temp_path)
     assert len(tracks) == payload.n_tracks == 2
     assert len(main_window._scan_ring_tracks) == 1
+
+
+def _peak_id_window(qtbot, tmp_path):
+    """Two tracks over frames 0..2 with distinct fitted peak ids."""
+    from mlgidgui.phase_views_window import PhaseViewsWindow
+
+    w = PhaseViewsWindow()
+    qtbot.addWidget(w)
+    w.set_context(str(tmp_path / "x.h5"), "e", 3)
+    payload = TrackingPayload(
+        entry="e", threshold=0.5, length=1,
+        q_xy=np.array([1.0, 1.01, 1.02, 2.0, 2.01, 2.02]),
+        q_z=np.array([0.5, 0.5, 0.5, 1.0, 1.0, 1.0]),
+        frame_num=np.array([0, 1, 2, 0, 1, 2]),
+        amplitude=np.ones(6),
+        components=[[0, 1, 2], [3, 4, 5]],
+        peak_id=np.array([4, 7, 5, 11, 12, 13]),
+    )
+    w.set_payload(payload)
+    return w
+
+
+def _label_texts(w, plot):
+    return sorted(
+        lbl.textItem.toPlainText()
+        for lbl in w._peak_id_labels.get(id(plot), [])
+    )
+
+
+def test_show_peak_ids_toggle_labels_points(qtbot, tmp_path):
+    """"Show peak ids" labels every tracked point in Trajectories and
+    q-map with its fitted peak id; off (the default) removes them, and a
+    refresh never stacks a second set."""
+    import pyqtgraph as pg
+
+    w = _peak_id_window(qtbot, tmp_path)
+    ids = sorted(["4", "7", "5", "11", "12", "13"])
+    assert not w.show_peak_ids.isChecked()
+    assert _label_texts(w, w.traj_plot) == []
+
+    w.show_peak_ids.setChecked(True)
+    assert _label_texts(w, w.traj_plot) == ids
+    assert _label_texts(w, w.qmap_plot) == ids
+    # Placed on the point: frame on x in Trajectories.
+    lbl = next(
+        l for l in w._peak_id_labels[id(w.traj_plot)]
+        if l.textItem.toPlainText() == "7"
+    )
+    assert lbl.pos().x() == pytest.approx(1.0)
+    # Really in the scene, and replaced (not stacked) on refresh.
+    w._refresh_trajectories()
+    in_plot = [
+        it for it in w.traj_plot.getPlotItem().items
+        if isinstance(it, pg.TextItem)
+    ]
+    assert len(in_plot) == 6
+
+    # The frame interval narrows the Trajectories labels too.
+    w.frame_lo.setValue(1)
+    assert _label_texts(w, w.traj_plot) == sorted(["7", "5", "12", "13"])
+
+    w.show_peak_ids.setChecked(False)
+    assert _label_texts(w, w.traj_plot) == []
+    assert not [
+        it for it in w.qmap_plot.getPlotItem().items
+        if isinstance(it, pg.TextItem)
+    ]
+
+
+def test_show_peak_ids_caps_label_count(qtbot, tmp_path, monkeypatch):
+    from mlgidgui.phase_views_window import PhaseViewsWindow
+
+    monkeypatch.setattr(PhaseViewsWindow, "_PEAK_ID_LABEL_LIMIT", 4)
+    w = _peak_id_window(qtbot, tmp_path)
+    w.show_peak_ids.setChecked(True)
+    assert len(_label_texts(w, w.traj_plot)) == 4
+    assert "Peak ids" in w.statusBar().currentMessage()

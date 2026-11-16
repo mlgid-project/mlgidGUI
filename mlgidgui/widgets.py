@@ -369,6 +369,42 @@ class CollapsibleSection(Card):
                          parent=parent)
 
 
+def size_by_current_page(stack) -> None:
+    """Let a ``QTabWidget`` / ``QStackedWidget`` take only its CURRENT
+    page's minimum size.
+
+    Qt sizes a stack by the largest minimum of ALL its pages, hidden
+    ones included. In the main window two stacks did that: the tabs
+    (the Structure editor, minimum ~430 px tall, held the Image tab at
+    that height) and the welcome/tabs stack around them (the welcome
+    page, ~450 px). Together they pinned the image area, so the
+    separator to the bottom docks (Profiles / Peaks) could not be
+    dragged up. Pages that are not current get the ``Ignored`` size
+    policy, which takes them out of the stack's minimum; the current
+    page keeps its own policy. Re-applied on every page change and for
+    pages added later.
+    """
+    originals: dict[int, QSizePolicy] = {}
+
+    def apply(_index: int = -1) -> None:
+        current = stack.currentWidget()
+        for i in range(stack.count()):
+            page = stack.widget(i)
+            key = id(page)
+            if key not in originals:
+                originals[key] = QSizePolicy(page.sizePolicy())
+            if page is current:
+                page.setSizePolicy(originals[key])
+            else:
+                page.setSizePolicy(
+                    QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored,
+                )
+        stack.updateGeometry()
+
+    stack.currentChanged.connect(apply)
+    apply()
+
+
 def make_debounced_timer(parent: QWidget, ms: int, slot: Callable[[], None]) -> QTimer:
     """A single-shot timer wired to ``slot`` — the debounce idiom.
 

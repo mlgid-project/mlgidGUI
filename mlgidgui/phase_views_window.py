@@ -144,6 +144,9 @@ class PhaseViewsWindow(QMainWindow):
         # trigger for the selection (see set_payload).
         self._amp_payload_fp: tuple | None = None
         self._amp_labels: list = []
+        # Peak-id TextItems per plot (Trajectories, q-map), removed on
+        # every refresh: ``_clear_overlays`` only drops data items.
+        self._peak_id_labels: dict = {}
         # Cached ROI-intensity traces of the "integrated intensity
         # (ROI)" metric: {"frames", "traces", "params", "fp",
         # "target"} — valid only while payload fingerprint, ROI
@@ -209,6 +212,21 @@ class PhaseViewsWindow(QMainWindow):
         frame_row.addWidget(self.frame_lo)
         frame_row.addWidget(QLabel("to", central))
         frame_row.addWidget(self.frame_hi)
+        frame_row.addSpacing(12)
+        # Window-wide, like the frame interval: labels every tracked
+        # point in the Trajectories and q-map tabs with its fitted peak
+        # id (the id the Peaks dock lists). Off by default -- on a long
+        # scan it is a lot of text.
+        self.show_peak_ids = QCheckBox("Show peak ids", frame_row_widget)
+        self.show_peak_ids.setToolTip(
+            "Label every tracked point in the Trajectories and q-map "
+            "tabs with its fitted peak id on that frame (the id listed "
+            "in the Peaks dock). At most "
+            f"{self._PEAK_ID_LABEL_LIMIT:,} labels per plot; narrow the "
+            "frame interval or hide structures to see the rest."
+        )
+        self.show_peak_ids.toggled.connect(self._on_show_peak_ids_toggled)
+        frame_row.addWidget(self.show_peak_ids)
         frame_row.addStretch(1)
         central_layout.addWidget(frame_row_widget)
         self._tabs = QTabWidget(central)
@@ -909,8 +927,58 @@ class PhaseViewsWindow(QMainWindow):
     def _clear_overlays(self, plot: pg.PlotWidget, keep=()) -> None:
         for item in list(plot.getPlotItem().listDataItems()):
             plot.removeItem(item)
+        for label in self._peak_id_labels.pop(id(plot), []):
+            plot.removeItem(label)
         # ImageItems are not data items; they persist across refreshes.
         del keep
+
+    # Labels per plot. One TextItem per point; a 600-frame scan with a
+    # few dozen tracks is tens of thousands, which pyqtgraph does not
+    # render interactively.
+    _PEAK_ID_LABEL_LIMIT = 2000
+
+    def _on_show_peak_ids_toggled(self, _checked: bool) -> None:
+        self._refresh_trajectories()
+        self._refresh_qmap()
+
+    def _add_peak_id_labels(
+        self, plot: pg.PlotWidget, xs, ys, members, color,
+    ) -> None:
+        """Label the points ``(xs[i], ys[i])`` with their members' ids.
+
+        A no-op while the toggle is off or for a payload without ids
+        (only hand-built test payloads lack them). Stops at
+        ``_PEAK_ID_LABEL_LIMIT`` labels per plot and says so in the
+        status bar.
+        """
+        payload = self._payload
+        if (
+            not self.show_peak_ids.isChecked()
+            or payload is None or payload.peak_id is None
+        ):
+            return
+        labels = self._peak_id_labels.setdefault(id(plot), [])
+        for x, y, m in zip(
+            np.asarray(xs), np.asarray(ys), np.asarray(members)
+        ):
+            if len(labels) >= self._PEAK_ID_LABEL_LIMIT:
+                self.statusBar().showMessage(
+                    f"Peak ids: showing the first "
+                    f"{self._PEAK_ID_LABEL_LIMIT:,} labels in this plot. "
+                    "Narrow the frame interval or hide structures to "
+                    "see the rest.",
+                    8000,
+                )
+                return
+            if not (np.isfinite(x) and np.isfinite(y)):
+                continue
+            label = pg.TextItem(
+                str(int(payload.peak_id[int(m)])), color=color,
+                anchor=(0.0, 1.0),
+            )
+            label.setPos(float(x), float(y))
+            plot.addItem(label)
+            labels.append(label)
 
     def _on_frame_interval_changed(self, _value: int) -> None:
         self._refresh_trajectories()
@@ -962,6 +1030,10 @@ class PhaseViewsWindow(QMainWindow):
                     curve.sigPointsClicked.connect(
                         self._on_traj_points_clicked
                     )
+                    self._add_peak_id_labels(
+                        self.traj_plot, payload.frame_num[mem],
+                        values[mem], mem, color,
+                    )
                 continue
             if not self._structure_visible(k):
                 continue
@@ -976,6 +1048,9 @@ class PhaseViewsWindow(QMainWindow):
                 **self._symbol_kwargs(4, color),
             )
             curve.sigPointsClicked.connect(self._on_traj_points_clicked)
+            self._add_peak_id_labels(
+                self.traj_plot, frames, values[members], members, color,
+            )
 
     def _on_traj_points_clicked(self, _item, points) -> None:
         if len(points):
@@ -1040,6 +1115,10 @@ class PhaseViewsWindow(QMainWindow):
                         payload.q_xy[mem], payload.q_z[mem],
                         pen=self._curve_pen(self._structure_color(key)),
                     )
+                    self._add_peak_id_labels(
+                        self.qmap_plot, payload.q_xy[mem],
+                        payload.q_z[mem], mem, self._structure_color(key),
+                    )
                 if not self._structure_visible(k):
                     continue
                 color = self._qmap_track_color(k, payload.n_tracks, True)
@@ -1053,6 +1132,10 @@ class PhaseViewsWindow(QMainWindow):
                 self.qmap_plot.plot(
                     payload.q_xy[members], payload.q_z[members],
                     pen=self._curve_pen(color),
+                )
+                self._add_peak_id_labels(
+                    self.qmap_plot, payload.q_xy[members],
+                    payload.q_z[members], members, color,
                 )
             self.qmap_plot.plot(
                 [payload.track_mean("q_xy", k)],

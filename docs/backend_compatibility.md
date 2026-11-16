@@ -173,6 +173,34 @@ these. Verbatim call sites are in the code; this is the contract.
   dang=..., q_xy_range=..., q_z_range=..., ...)`
 - `pygid.Conversion(matrix=..., path=..., dataset=..., frame_num=...)`
   then `det2q_gid` / `det2q` / `det2pol_gid` / `det2pol`
+- **User / technique / beamtime metadata (1.1.0).** pygid cannot take
+  these during conversion, so after the last scan
+  `conversion.write_post_metadata` writes them into every converted
+  entry with pygid's own per-entry writers from `pygid.nexus_reader`:
+  `_set_user_information_single_entry(entry_grp, dict)`,
+  `_set_techniques_info_single_entry(techniques_grp, list)` and
+  `_set_beamtime_information_single_entry(source_grp, dict)`. These are
+  the helpers behind `NexusFile.set_user_info` / `set_techniques_info` /
+  `set_beamtime_info`; the public methods are not used because
+  `NexusFile.__init__` parses every top-level group and refuses a file
+  with any non-pygid group, which an append target may have. The names
+  are underscored, so **re-check all three on any pygid bump** (pygid
+  itself imports `_set_techniques_info_single_entry` from `datasaver`,
+  which makes it the most stable of the three). Behaviour relied on: the
+  user helper pops `field_name` and writes the rest under
+  `users/<field_name>`; the techniques helper numbers from `technique_0`
+  on every call (so the GUI rebuilds the group to append); the beamtime
+  helper deletes and recreates `instrument/source/notes` and writes
+  `'nan'` for any missing one of `description, proposal_id,
+  principal_investigator, title, DOI` (the docstring lists only `name`;
+  the code is what counts). A failure is logged as a warning and does
+  not fail the conversion. No other backend is involved: the new
+  controls of 1.1.0 (metadata fields, Save-as default, peak-id toggle,
+  Cartesian drawing and handles, profile binning) do not reach
+  mlgiddetect, mlgidbase, pygidfit or mlgidmatch, so there is no
+  per-model branching to gate. Regression:
+  `tests/test_conversion_nexus_info.py` (including a real pygid
+  conversion).
   `(frame_num=..., return_result=False, save_result=True,
   path_to_save=..., h5_group=..., overwrite_file=..., overwrite_group=...)`
 - `pygid.SampleMetadata(data=...)`, `pygid.ExpMetadata(**fields)`, and

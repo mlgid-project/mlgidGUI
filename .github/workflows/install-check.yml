@@ -16,7 +16,7 @@
 # A Python version that one of the backends does not support yet shows up as
 # a red cell in the pipeline matrix and does not stop the others.
 #
-# Runs on the 1.0.0 branch, on version tags and on demand; it is separate from
+# Runs on release branches (dev/vX), on version tags and on demand; it is separate from
 # ci.yml so the pipeline cells (several gigabytes each) do not run on every
 # push to every branch.
 
@@ -24,7 +24,7 @@ name: Install check
 
 on:
   push:
-    branches: [dev/v1.0.0]
+    branches: ["dev/v*"]
     tags: ["v*"]
   workflow_dispatch:
 

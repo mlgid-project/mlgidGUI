@@ -5,7 +5,7 @@ geometry. Moved out of ``image_viewer`` in the 2026 source split.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import numpy as np
@@ -167,6 +167,13 @@ class ManualPeak:
     angle_width: float
     is_ring: bool = False
     temp_id: int = 0
+    # Id of the detected_peaks row "Add to detected" wrote from this box,
+    # None until then. The box stays on screen after the commit (so it
+    # can also go to fitted), exactly on top of that new row; the hit
+    # test uses this to rank the box BELOW detected so a click selects
+    # the stored peak, whose score is editable. Not part of equality:
+    # it is bookkeeping, not geometry.
+    committed_detected_id: int | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -741,6 +748,28 @@ def _cart_to_polar(q_xy: float, q_z: float) -> tuple[float, float]:
     r = float(np.hypot(q_xy, q_z))
     a = float(np.degrees(np.arctan2(q_z, q_xy)))
     return r, a
+
+
+def _arc_box_from_corners(
+    q_xy0: float, q_z0: float, q_xy1: float, q_z1: float,
+) -> tuple[float, float, float, float]:
+    """``(radius, radius_width, angle, angle_width)`` of the arc box whose
+    opposite corners are the two Cartesian points.
+
+    The Cartesian twin of dragging a rectangle in the polar view: each
+    point is mapped to ``(|q|, angle)`` with ``_cart_to_polar``, and the
+    box spans the radial and angular ranges between them, whichever
+    point is the inner or the earlier one. Used by the Ctrl+Alt-drag
+    draw and its live preview.
+    """
+    r0, a0 = _cart_to_polar(q_xy0, q_z0)
+    r1, a1 = _cart_to_polar(q_xy1, q_z1)
+    r_lo, r_hi = min(r0, r1), max(r0, r1)
+    a_lo, a_hi = min(a0, a1), max(a0, a1)
+    return (
+        (r_lo + r_hi) / 2.0, r_hi - r_lo,
+        (a_lo + a_hi) / 2.0, a_hi - a_lo,
+    )
 
 
 def _cart_box_contains(

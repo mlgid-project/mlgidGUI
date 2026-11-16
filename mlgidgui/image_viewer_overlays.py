@@ -881,7 +881,11 @@ class ViewerOverlaysMixin:
             self._radio_polar.setChecked(True)
         else:
             self._radio_cart.setChecked(True)
-        self._sync_roi()  # ROI exists only in polar mode
+        # A draw in progress belongs to the view we just left.
+        self._hide_draw_preview()
+        # Rebuild the handles for the new view: a rectangle ROI in
+        # polar, an ArcBoxROI in Cartesian.
+        self._sync_roi()
         # The remembered cursor point is in the space we just left
         # (polar is (r, angle), Cartesian is (q_xy, q_z)), so re-running
         # the hover on it would outline nonsense. The next mouse move

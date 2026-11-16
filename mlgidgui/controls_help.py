@@ -120,7 +120,8 @@ CONTROL_SECTIONS: tuple[Section, ...] = (
     )),
     ("Manual peak workflow", (
         (("Ctrl+Alt-drag",), "mouse",
-         "Draw a manual peak rectangle (polar mode only)."),
+         "Draw a manual peak box: a rectangle in the polar view, an "
+         "arc box between the two drag corners in the Cartesian view."),
         (("Ctrl+Return",), "key",
          "Add to fitted for the selected manual or detected peak (one "
          "peak only; the status bar says why when it cannot run)."),

@@ -76,6 +76,7 @@ from mlgidgui.widgets import (
     make_pen_swatch as _make_pen_swatch,
     section_label,
     set_variant,
+    size_by_current_page,
     skin_progress,
 )
 from silx.gui.data.DataViewerFrame import DataViewerFrame
@@ -165,6 +166,10 @@ class BuildMixin:
         # opens on, and inserting a tab before Data would move a tab the
         # user's muscle memory already knows.
         self.tabs.addTab(self.structure_panel, "Structure")
+        # Only the visible page may set the tabs' minimum height; else
+        # the Structure editor's ~430 px minimum pinned the Image tab and
+        # the Profiles / Peaks docks could not be dragged taller.
+        size_by_current_page(self.tabs)
         # Render a deferred (clicked-while-hidden) tree node when the user
         # switches to the Data or Structure tab — see
         # ``_set_or_defer_data_node`` / ``_set_or_defer_structure_node``.
@@ -211,6 +216,8 @@ class BuildMixin:
         self._central_stack = QStackedWidget(central)
         self._central_stack.addWidget(self.welcome_view)   # index 0
         self._central_stack.addWidget(self.tabs)           # index 1
+        # Same for the welcome page (~450 px minimum) while the tabs show.
+        size_by_current_page(self._central_stack)
         col.addWidget(self._central_stack)
         self.setCentralWidget(central)
 

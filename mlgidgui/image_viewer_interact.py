@@ -17,6 +17,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from mlgidgui import peak_picking
+from mlgidgui.arc_roi import ArcBoxROI
 from mlgidgui.file_model import PeakTable, _LazyPolarStack
 from mlgidgui.peak_picking import (
     HIT_TOL_PX,
@@ -42,6 +43,7 @@ from mlgidgui.viewer_items import (
     ManualReplaceAction,
     SelectedPeak,
     _box_of,
+    _arc_box_from_corners,
     _box_of_row,
     _cart_to_polar,
     _peaks_from_manual,
@@ -758,6 +760,24 @@ class ViewerInteractMixin:
                 amplitude=fitted.amplitude[idx],
             )
 
+    def cartesian_data(self):
+        """Return ``(image_stack, q_xy, q_z)`` for the active entry.
+
+        ``image_stack[i]`` is frame ``i`` as stored (``(n_qz, n_qxy)``,
+        no display flips or log), read through the FrameSource's LRU.
+        The Profile dock bins its curves from these pixels. None while
+        no stack is loaded or the FrameSource is released.
+        """
+        if self._stack is None or self._frame_source is None:
+            return None
+        if not self._frame_source.is_open:
+            return None
+        return (
+            self._stack.image_stack,
+            self._frame_source.q_xy,
+            self._frame_source.q_z,
+        )
+
     def polar_data(
         self,
     ) -> "tuple[_LazyPolarStack, np.ndarray, np.ndarray] | None":
@@ -784,33 +804,81 @@ class ViewerInteractMixin:
             )
         return self._polar_cache
 
-    # -- Labelling event handlers (polar mode only for now) --
+    # -- Labelling event handlers (Ctrl+Alt-drag draws a box) --
+    #
+    # Polar view: x = radius (1/A), y = angle (deg), so the drag is a
+    # plain rectangle. Cartesian view: x = q_xy, y = q_z; the two drag
+    # points are opposite corners of an arc box (``_arc_box_from_corners``).
+    # Either way the result is the same polar ``ManualPeak``.
+
+    def _is_drawing(self) -> bool:
+        return (
+            self._preview_item.isVisible()
+            or self._arc_preview_item.isVisible()
+        )
+
+    def _drawn_box(
+        self, origin: QPointF, end: QPointF,
+    ) -> tuple[float, float, float, float] | None:
+        """``(radius, radius_width, angle, angle_width)`` of a drag, or
+        None outside the polar / Cartesian views."""
+        if self._mode == MODE_POLAR:
+            rect = QRectF(origin, end).normalized()
+            return (
+                float(rect.center().x()), float(rect.width()),
+                float(rect.center().y()), float(rect.height()),
+            )
+        if self._mode == MODE_CARTESIAN:
+            return _arc_box_from_corners(
+                float(origin.x()), float(origin.y()),
+                float(end.x()), float(end.y()),
+            )
+        return None
+
+    def _show_draw_preview(self, origin: QPointF, current: QPointF) -> None:
+        if self._mode == MODE_POLAR:
+            self._preview_item.setRect(QRectF(origin, current).normalized())
+            self._preview_item.setVisible(True)
+            return
+        r, dr, a, da = self._drawn_box(origin, current)
+        self._arc_preview_item.set_cartesian(_peaks_from_manual([ManualPeak(
+            radius=r, angle=a, radius_width=dr, angle_width=da,
+        )]))
+        self._arc_preview_item.setVisible(True)
+
+    def _hide_draw_preview(self) -> None:
+        self._preview_item.setVisible(False)
+        self._arc_preview_item.setVisible(False)
+        self._arc_preview_item.clear_path()
 
     def _on_draw_started(self, origin: QPointF) -> None:
-        if self._mode != MODE_POLAR:
+        if self._mode not in (MODE_POLAR, MODE_CARTESIAN):
             return
-        rect = QRectF(origin, origin)
-        self._preview_item.setRect(rect.normalized())
-        self._preview_item.setVisible(True)
+        self._show_draw_preview(origin, origin)
 
     def _on_draw_updated(self, origin: QPointF, current: QPointF) -> None:
-        if self._mode != MODE_POLAR or not self._preview_item.isVisible():
+        if (
+            self._mode not in (MODE_POLAR, MODE_CARTESIAN)
+            or not self._is_drawing()
+        ):
             return
-        self._preview_item.setRect(QRectF(origin, current).normalized())
+        self._show_draw_preview(origin, current)
 
     def _on_draw_finished(self, origin: QPointF, end: QPointF) -> None:
-        self._preview_item.setVisible(False)
-        if self._mode != MODE_POLAR or self._busy:
+        self._hide_draw_preview()
+        if self._busy:
             return
-        # In polar mode: x = radius (Å⁻¹), y = angle (deg).
-        rect = QRectF(origin, end).normalized()
-        if rect.width() <= 0.0 or rect.height() <= 0.0:
+        box = self._drawn_box(origin, end)
+        if box is None:
+            return
+        radius, radius_width, angle, angle_width = box
+        if radius_width <= 0.0 or angle_width <= 0.0:
             return
         peak = ManualPeak(
-            radius=float(rect.center().x()),
-            angle=float(rect.center().y()),
-            radius_width=float(rect.width()),
-            angle_width=float(rect.height()),
+            radius=float(radius),
+            angle=float(angle),
+            radius_width=float(radius_width),
+            angle_width=float(angle_width),
             is_ring=False,
             temp_id=self._next_manual_id,
         )
@@ -1040,7 +1108,32 @@ class ViewerInteractMixin:
                         hits.append((sel, box))
 
             out.extend(peak_picking.rank_hits(hits))
-        return out
+        return self._demote_committed_manual(out)
+
+    @staticmethod
+    def _demote_committed_manual(
+        candidates: list[SelectedPeak],
+    ) -> list[SelectedPeak]:
+        """Move manual boxes already sent to detected behind the rest.
+
+        "Add to detected" leaves its manual box in place, exactly over
+        the new detected row, and manual boxes come first in the click
+        order -- so without this a click on that spot always picked the
+        manual box, whose Score dropdown only chooses the score for a
+        FUTURE commit. The stored peak's score could not be reached.
+        Demoted rather than dropped: a second click on the same spot
+        still cycles to the manual box. Order is otherwise unchanged.
+        """
+        def committed(c: SelectedPeak) -> bool:
+            ref = c.manual_ref if c.kind == "manual" else None
+            return getattr(ref, "committed_detected_id", None) is not None
+
+        if not any(committed(c) for c in candidates):
+            return candidates
+        return (
+            [c for c in candidates if not committed(c)]
+            + [c for c in candidates if committed(c)]
+        )
 
     def _cycle_pick(self, candidates: list[SelectedPeak]) -> SelectedPeak:
         """Pick from ``candidates``: the box *after* the current
@@ -1104,7 +1197,7 @@ class ViewerInteractMixin:
             self._mode not in (MODE_POLAR, MODE_CARTESIAN)
             or self._busy
             or self.is_dragging
-            or self._preview_item.isVisible()      # mid draw-drag
+            or self._is_drawing()                  # mid draw-drag
         ):
             self._clear_hover()
             return 0
@@ -1705,7 +1798,12 @@ class ViewerInteractMixin:
     def _sync_roi(self) -> None:
         """Create / update / destroy the resize ROI to match the selection.
 
-        Polar mode only, and only for editable kinds (manual / detected).
+        Polar and Cartesian views, only for editable kinds (manual /
+        detected). Polar gets a rectangle ``pg.ROI`` with edge handles;
+        Cartesian an ``arc_roi.ArcBoxROI`` (arc box, handles on the
+        inner / outer radius and the two angular edges, body drag
+        moves). Both feed ``_on_roi_changed`` / ``_on_roi_drag_finished``,
+        so undo and the file write are shared.
         Fitted and matched selections show the box but no ROI — fitted
         boxes encode the ``2σ`` convention so dragging their bounds
         would misrepresent the underlying Gaussian; matched is a
@@ -1722,7 +1820,7 @@ class ViewerInteractMixin:
 
         if (
             self._selected is None
-            or self._mode != MODE_POLAR
+            or self._mode not in (MODE_POLAR, MODE_CARTESIAN)
             or self._busy
             or self._selected.kind in ("fitted", "matched")
         ):
@@ -1777,6 +1875,23 @@ class ViewerInteractMixin:
         )
         hover_pen.setCosmetic(True)
 
+        if self._mode == MODE_CARTESIAN:
+            # The same box as an arc box with arc handles. It keeps the
+            # true geometry (no clamping: an arc box past the image edge
+            # still has its handles on screen); a ring spans the image's
+            # angular extent, as it is drawn.
+            roi = ArcBoxROI(
+                sel.radius, sel.radius_width, sel.angle, sel.angle_width,
+                is_ring=is_ring_box, angle_extent=(a_min, a_max), pen=pen,
+            )
+            roi.setZValue(60)
+            roi.sigRegionChangeStarted.connect(self._on_roi_drag_started)
+            roi.sigRegionChanged.connect(self._on_roi_changed)
+            roi.sigRegionChangeFinished.connect(self._on_roi_drag_finished)
+            self._plot.getViewBox().addItem(roi, ignoreBounds=True)
+            self._roi_item = roi
+            return
+
         roi = pg.ROI(pos=pos, size=size, pen=pen, hoverPen=hover_pen, movable=True)
         # Edge-only handles (no corners): each handle drags one edge while the
         # opposite edge stays anchored. Rings have only radial handles — the
@@ -1819,6 +1934,12 @@ class ViewerInteractMixin:
         if self._roi_item is None or self._selected is None:
             return
         roi = self._roi_item
+        if isinstance(roi, ArcBoxROI):
+            sel = self._selected
+            roi.set_box(
+                sel.radius, sel.radius_width, sel.angle, sel.angle_width,
+            )
+            return
         roi.blockSignals(True)
         try:
             roi.setPos(
@@ -1841,6 +1962,12 @@ class ViewerInteractMixin:
         if self._selected is None or self._roi_item is None:
             return
         roi = self._roi_item
+        if isinstance(roi, ArcBoxROI):
+            # Cartesian arc handles: the item already holds the polar
+            # geometry, normalised.
+            new_r, w, new_a, h = roi.box()
+            self._apply_roi_box(new_r, w, new_a, h, roi.is_ring)
+            return
         pos = roi.pos()
         size = roi.size()
         w = abs(float(size[0]))
@@ -1851,13 +1978,28 @@ class ViewerInteractMixin:
         y0 = float(pos[1]) + min(float(size[1]), 0.0)
         new_r = x0 + w / 2.0
         new_a = y0 + h / 2.0
+        self._apply_roi_box(
+            new_r, w, new_a, h, bool(getattr(roi, "_mlgid_ring_box", False)),
+        )
 
+    def _apply_roi_box(
+        self, new_r: float, w: float, new_a: float, h: float,
+        is_ring_box: bool,
+    ) -> None:
+        """Apply a handle drag's box to the selected peak (both views).
+
+        Updates the SelectedPeak, the manual box or the cached PeakTable
+        row (with its q_xy / q_z), re-renders and emits
+        ``peakGeometryChanged``. Undo and the file write happen on
+        drag-end (``_on_roi_drag_finished``).
+        """
         sel = self._selected
+        if sel is None:
+            return
         # Ring peaks have only radial handles — the angular extent is fixed
         # at the whole visible quadrant (and the underlying angle_width is
         # often inf). Don't propagate the ROI's angular pos/size into the
         # peak's geometry, or we'd corrupt the ring on every drag.
-        is_ring_box = bool(getattr(roi, "_mlgid_ring_box", False))
 
         sel.radius = new_r
         sel.radius_width = w

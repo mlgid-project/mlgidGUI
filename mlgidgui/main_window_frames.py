@@ -1477,16 +1477,21 @@ class FramesMixin:
             self.viewer.current_frame,
             self.viewer.matched_structures(self.viewer.current_frame),
         )
-        # Hand the polar transform to the profile viewer. After the
-        # lazy-loading milestone ``viewer.polar_data()`` returns a
-        # ``(_LazyPolarStack, radius, angle)`` tuple — frames are
-        # resampled on demand inside the FrameSource so this no longer
-        # forces an eager precompute of the full polar stack. The
-        # profile viewer indexes the wrapper by frame; the cursor
-        # readout uses tuple indexing for single-pixel lookups.
-        polar = self.viewer.polar_data()
-        if polar is not None:
-            self.profile_viewer.set_polar_stack(*polar)
+        # Hand the Cartesian frames + q axes to the profile viewer: it
+        # bins its curves from the image pixels (``profile_binning``),
+        # not from the resampled polar grid, which skipped pixels. The
+        # stack is lazy (``_LazyImageStack``), so nothing is read here
+        # beyond the frame the profiles draw.
+        cart = self.viewer.cartesian_data()
+        if cart is not None:
+            self.profile_viewer.set_cartesian_stack(*cart)
+        # Prime the viewer's polar cache whatever the view: the polar
+        # axes behind ``angular_extent`` (ring outlines and ring sizing),
+        # zoom-to-peak and the box handles are read from it, and it is
+        # otherwise filled only once the polar view has been rendered.
+        # This call used to happen as a side effect of handing the polar
+        # stack to the profile viewer.
+        self.viewer.polar_data()
         # Configure the prefetch worker for the new entry. Single-
         # frame stacks short-circuit inside the helper; multi-frame
         # stacks spawn the worker (if not already) and reset its

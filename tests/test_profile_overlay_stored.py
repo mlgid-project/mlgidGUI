@@ -14,16 +14,27 @@ from mlgidgui.viewer_items import SelectedPeak
 pytestmark = pytest.mark.gui
 
 
+# The profiles are binned from a Cartesian (q_z, q_xy) image, so the
+# synthetic peaks are drawn on one: each pixel takes the value of the
+# polar Gaussian at its own |q| and angle.
+Q_XY = np.linspace(0.0, 4.0, 401)
+Q_Z = np.linspace(0.0, 4.0, 401)
+_QXY, _QZ = np.meshgrid(Q_XY, Q_Z)
+PIX_R = np.hypot(_QXY, _QZ)
+PIX_A = np.degrees(np.arctan2(_QZ, _QXY))
+
+
+def _gauss(r0, a0):
+    return 100.0 * np.exp(-((PIX_R - r0) ** 2) / (2 * 0.1**2)
+                          - ((PIX_A - a0) ** 2) / (2 * 3.0**2))
+
+
 def _viewer(qtbot):
-    radius = np.linspace(0.0, 4.0, 400)
-    angle = np.linspace(0.0, 90.0, 180)
-    R, A = np.meshgrid(radius, angle, indexing="ij")
     # True peak at r=2.0 (sigma 0.1), a=40 (sigma 3).
-    img = 100.0 * np.exp(-((R - 2.0) ** 2) / (2 * 0.1**2)
-                         - ((A - 40.0) ** 2) / (2 * 3.0**2)) + 5.0
+    img = _gauss(2.0, 40.0) + 5.0
     viewer = ProfileViewer()
     qtbot.addWidget(viewer)
-    viewer.set_polar_stack(img[None], radius, angle)
+    viewer.set_cartesian_stack(img[None], Q_XY, Q_Z)
     return viewer
 
 
@@ -124,16 +135,10 @@ def test_saved_peak_profile_averages_over_two_sigma_not_one(qtbot):
 
 
 def _two_peak_viewer(qtbot):
-    radius = np.linspace(0.0, 4.0, 400)
-    angle = np.linspace(0.0, 90.0, 180)
-    R, A = np.meshgrid(radius, angle, indexing="ij")
-    g = lambda r0, a0: 100.0 * np.exp(
-        -((R - r0) ** 2) / (2 * 0.1**2) - ((A - a0) ** 2) / (2 * 3.0**2)
-    )
-    img = g(2.0, 40.0) + g(2.0, 60.0) + 5.0   # same radius, 20 deg apart
+    img = _gauss(2.0, 40.0) + _gauss(2.0, 60.0) + 5.0   # 20 deg apart
     viewer = ProfileViewer()
     qtbot.addWidget(viewer)
-    viewer.set_polar_stack(img[None], radius, angle)
+    viewer.set_cartesian_stack(img[None], Q_XY, Q_Z)
     return viewer
 
 
@@ -166,7 +171,7 @@ def test_masking_blanks_the_neighbour_in_the_angular_profile(qtbot):
     assert np.nanmax(ang[(angle > 35.0) & (angle < 45.0)]) > 20.0   # target kept
     assert "neighbours masked" in viewer._angular_plot.getPlotItem().titleLabel.text
     # The cached frame itself was not edited.
-    assert np.isfinite(viewer._polar_stack[0]).all()
+    assert np.isfinite(viewer._stack[0]).all()
 
 
 def test_neighbour_mask_leaves_clustered_neighbours_in():
@@ -179,22 +184,23 @@ def test_neighbour_mask_leaves_clustered_neighbours_in():
 
     radius = np.linspace(0.0, 4.0, 400)
     angle = np.linspace(0.0, 90.0, 180)
+    R, A = np.meshgrid(radius, angle, indexing="ij")
     target = PeakBox(2.0, 0.1, 40.0, 0.4)       # drawn extent +-0.2 deg
     near = PeakBox(2.0, 0.1, 41.0, 1.2)         # 1 deg = ~5.7 px away
     far = PeakBox(2.0, 0.1, 50.0, 4.0)          # 10 deg = ~57 px: masked
     # With the old distance of 10 px `near` clusters and stays in...
     assert neighbour_mask(
-        (400, 180), radius, angle, target, [near], cluster_distance=10.0,
+        R, A, target, [near], cluster_distance=10.0,
     ) is None
     mask = neighbour_mask(
-        (400, 180), radius, angle, target, [near, far], cluster_distance=10.0,
+        R, A, target, [near, far], cluster_distance=10.0,
     )
     assert mask is not None
     ir = int(np.searchsorted(radius, 2.0))
     assert mask[ir, int(np.searchsorted(angle, 50.0))]
     assert not mask[ir, int(np.searchsorted(angle, 41.0))]
     # ...with the default 2 px it is a separate cluster, so it is masked.
-    default = neighbour_mask((400, 180), radius, angle, target, [near])
+    default = neighbour_mask(R, A, target, [near])
     assert default is not None
     assert default[ir, int(np.searchsorted(angle, 41.0))]
 
@@ -233,11 +239,12 @@ def test_neighbour_mask_skips_duplicates_of_the_target_and_bad_boxes():
 
     radius = np.linspace(0.0, 4.0, 400)
     angle = np.linspace(0.0, 90.0, 180)
+    R, A = np.meshgrid(radius, angle, indexing="ij")
     target = PeakBox(2.0, 0.2, 40.0, 10.0)
     same_peak = PeakBox(2.01, 0.3, 40.5, 14.0)    # the detected twin
     ring = PeakBox(1.0, 0.1, 45.0, float("inf"))
     zero = PeakBox(3.0, 0.0, 20.0, 5.0)
-    assert neighbour_mask((400, 180), radius, angle, target,
+    assert neighbour_mask(R, A, target,
                           [same_peak, ring, zero]) is None
 
 
@@ -250,15 +257,16 @@ def test_neighbour_mask_masks_spots_for_a_target_without_angular_extent():
 
     radius = np.linspace(0.0, 4.0, 400)
     angle = np.linspace(0.0, 90.0, 180)
+    R, A = np.meshgrid(radius, angle, indexing="ij")
     target = PeakBox(0.45, 0.06, 45.0, float("inf"))
     spot = PeakBox(0.447, 0.02, 88.0, 4.0)
-    mask = neighbour_mask((400, 180), radius, angle, target, [spot])
+    mask = neighbour_mask(R, A, target, [spot])
     assert mask is not None
     assert mask[int(np.searchsorted(radius, 0.447)),
                 int(np.searchsorted(angle, 88.0))]
     # The ring's own duplicate (infinite box) is never a neighbour.
     twin = PeakBox(0.45, 0.06, 45.0, float("inf"))
-    assert neighbour_mask((400, 180), radius, angle, target, [twin]) is None
+    assert neighbour_mask(R, A, target, [twin]) is None
 
 
 def test_saved_peak_shows_its_linear_background(qtbot):

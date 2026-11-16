@@ -510,6 +510,14 @@ class GIWAXSImageViewer(
         self._preview_item.setZValue(50)
         self._preview_item.setVisible(False)
         vb.addItem(self._preview_item, ignoreBounds=True)
+        # The Cartesian draw preview: the arc box between the two drag
+        # corners, in the same dashed yellow as the polar rectangle.
+        self._arc_preview_item = _PeakShapeItem(
+            color="#ffeb3b", style=Qt.PenStyle.DashLine, width=1.0,
+        )
+        self._arc_preview_item.setZValue(50)
+        self._arc_preview_item.setVisible(False)
+        vb.addItem(self._arc_preview_item, ignoreBounds=True)
 
         # Mouse handling lives in a Qt event filter on the graphics-view's
         # viewport — see _LabelEventFilter for why a ViewBox subclass doesn't work.

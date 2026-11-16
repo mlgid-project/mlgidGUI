@@ -2,17 +2,17 @@
 
 pygidfit fits one cluster at a time and sets every box outside the
 cluster to NaN inside the cluster's ROI (``pygidfit.fitting_models.
-fit_peak_cluster``). The profile viewer can do the same to the polar
-image before it averages, so the radial and angular profiles of peak
-``x`` show peak ``x`` and not the peaks next to it. The profile code
-already averages with ``nanmean``, so masked pixels simply drop out.
+fit_peak_cluster``). The profile viewer does the same to the image
+pixels before it bins them (``profile_binning``), so the radial and
+angular profiles of peak ``x`` show peak ``x`` and not the peaks next to
+it. Masked pixels simply leave their bins.
 
 Which rectangle a neighbour masks follows pygidfit's own box
 (``pygidfit.box_utils.boxes_preprocessing``, mirrored by
 ``manual_fit._px_box``): ``radius +- radius_width`` radially (the full
 width each side, not half) and ``angle +- angle_width / 2`` angularly.
 The ``+-1`` pixel pad pygidfit adds is not reproduced; it is a pixel of
-pygidfit's grid, and the viewer's polar grid has a different pitch.
+pygidfit's polar grid, which the image pixels do not share.
 
 pygidfit does not mask every other box. Peaks whose centres lie within
 its clustering distance of the target (the Pipeline panel's "Cluster
@@ -43,17 +43,6 @@ from mlgidgui.manual_fit import (
     PeakBox,
     _overlaps_drawn,
 )
-
-
-def _span(axis: np.ndarray, lo: float, hi: float) -> slice:
-    """Index slice of a monotonic ``axis`` covering ``[lo, hi]``; a
-    non-finite bound means the axis end."""
-    n = len(axis)
-    lo_i = 0 if not math.isfinite(lo) else int(np.searchsorted(axis, lo, side="left"))
-    hi_i = n if not math.isfinite(hi) else int(np.searchsorted(axis, hi, side="right"))
-    lo_i = max(0, min(lo_i, n))
-    hi_i = max(lo_i, min(hi_i, n))
-    return slice(lo_i, hi_i)
 
 
 def _is_twin(target: PeakBox, cand: PeakBox) -> bool:
@@ -90,33 +79,45 @@ def _clustered(
 
 
 def neighbour_mask(
-    shape: tuple[int, int],
-    radius_axis: np.ndarray,
-    angle_axis: np.ndarray,
+    pixel_radius: np.ndarray,
+    pixel_angle: np.ndarray,
     target: PeakBox,
     neighbours: Iterable[PeakBox],
     cluster_distance: float | None = None,
+    q_abs_max: float | None = None,
 ) -> np.ndarray | None:
     """Boolean mask, ``True`` where a neighbour's box covers the pixel.
+
+    ``pixel_radius`` / ``pixel_angle`` hold the |q| (1/A) and angle
+    (degrees) of each pixel, in any shape -- the profile viewer passes
+    just the pixels of the band it is about to average
+    (``profile_binning``), so the cost scales with the band, not the
+    image. The mask has the same shape.
 
     ``cluster_distance`` is pygidfit's clustering distance for peaks, in
     pixels of its polar grid: neighbours closer than that to the target
     are fitted with it, so they stay in the profile. None = the
-    mlgidbase default.
+    mlgidbase default. ``q_abs_max`` stands in for pygidfit's
+    ``q_abs_max`` (the image's largest |q|); None = the largest
+    ``pixel_radius`` given.
 
-    ``shape`` is the polar image's ``(n_radius, n_angle)``; the largest
-    radius on ``radius_axis`` stands in for pygidfit's ``q_abs_max``.
     Returns ``None`` when nothing is masked, so callers can skip the
     copy.
     """
+    pixel_radius = np.asarray(pixel_radius)
+    pixel_angle = np.asarray(pixel_angle)
     distance = (
         DEFAULT_CLUSTERING_DISTANCE_PEAKS if cluster_distance is None
         else float(cluster_distance)
     )
-    q_abs_max = float(radius_axis[-1]) if len(radius_axis) else 0.0
+    if q_abs_max is None:
+        q_abs_max = (
+            float(np.nanmax(pixel_radius)) if pixel_radius.size else 0.0
+        )
+    q_abs_max = float(q_abs_max)
     if not (math.isfinite(q_abs_max) and q_abs_max > 0):
         return None
-    mask = np.zeros(shape, dtype=bool)
+    mask = np.zeros(pixel_radius.shape, dtype=bool)
     for cand in neighbours:
         values = (cand.radius, cand.radius_width, cand.angle, cand.angle_width)
         if not all(math.isfinite(float(v)) for v in values):
@@ -129,8 +130,10 @@ def neighbour_mask(
             continue
         dr = abs(float(cand.radius_width))
         da = abs(float(cand.angle_width)) / 2.0
-        rs = _span(radius_axis, cand.radius - dr, cand.radius + dr)
-        as_ = _span(angle_axis, cand.angle - da, cand.angle + da)
-        if rs.stop > rs.start and as_.stop > as_.start:
-            mask[rs, as_] = True
+        mask |= (
+            (pixel_radius >= cand.radius - dr)
+            & (pixel_radius <= cand.radius + dr)
+            & (pixel_angle >= cand.angle - da)
+            & (pixel_angle <= cand.angle + da)
+        )
     return mask if mask.any() else None

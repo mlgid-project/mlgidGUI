@@ -929,3 +929,18 @@ def test_hdf5_metadata_picker_reads_only_the_first_element(
         f"7.0 (first of {32 * 256 * 256}; full array not stored)",
         "raw.h5:/entry/instrument/detector/data",
     )
+
+
+def test_save_as_defaults_to_single_entry(qtbot):
+    """The panel opens on "Single entry in single file", with the mode's
+    side effects applied as on a user pick: shared-file placeholder and
+    the append controls locked out."""
+    from mlgidgui.conversion_panel import OUTPUT_SINGLE_ENTRY, ConversionPanel
+
+    panel = ConversionPanel()
+    qtbot.addWidget(panel)
+    assert panel.output_mode_combo.currentText() == OUTPUT_SINGLE_ENTRY
+    assert "converted.h5" in panel.output_filename.placeholderText()
+    assert "raw_stem" not in panel.output_filename.placeholderText()
+    assert not panel.append_frames_chk.isEnabled()
+    assert panel._collect_config().output_mode == OUTPUT_SINGLE_ENTRY
