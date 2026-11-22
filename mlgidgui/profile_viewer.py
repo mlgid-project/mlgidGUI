@@ -32,6 +32,7 @@ from mlgidgui.image_viewer import (
     OVERLAY_STYLE,
     ManualPeak,
     SelectedPeak,
+    _disable_si_prefix,
     _disable_viewport_scroll,
 )
 
@@ -171,6 +172,7 @@ class ProfileViewer(QWidget):
         )
         self._radial_plot.setFrameStyle(QFrame.Shape.NoFrame)
         _disable_viewport_scroll(self._radial_plot)
+        _disable_si_prefix(self._radial_plot)
         self._radial_curve = self._radial_plot.plot([], [], pen=pen)
         self._radial_fit_curve = self._radial_plot.plot([], [], pen=fit_pen)
         self._radial_bg_curve = self._radial_plot.plot([], [], pen=bg_pen)
@@ -200,6 +202,7 @@ class ProfileViewer(QWidget):
         )
         self._angular_plot.setFrameStyle(QFrame.Shape.NoFrame)
         _disable_viewport_scroll(self._angular_plot)
+        _disable_si_prefix(self._angular_plot)
         self._angular_curve = self._angular_plot.plot([], [], pen=pen)
         self._angular_fit_curve = self._angular_plot.plot([], [], pen=fit_pen)
         self._angular_bg_curve = self._angular_plot.plot([], [], pen=bg_pen)

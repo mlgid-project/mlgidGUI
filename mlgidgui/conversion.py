@@ -28,6 +28,7 @@ from mlgidgui.conversion_config import (
     CONV_DET2POL_GID,
     CONV_DET2Q,
     CONV_DET2Q_GID,
+    EXP_FIXED_FIELDS,
     OUTPUT_SEPARATE_FILES,
     OUTPUT_SINGLE_ENTRY,
     ConversionConfig,
@@ -907,7 +908,13 @@ def _build_exp_metadata(pygid_mod: Any, kv: dict[str, str]) -> Any:
     a metadata entry needs to round-trip as a number rather than a
     label.
     """
-    cleaned = {k: v for k, v in (kv or {}).items() if k}
+    # The fixed fields (EXP_FIXED_FIELDS) are written after conversion by
+    # ``write_post_metadata``; a custom row using one of those names was
+    # merged into it by ``clean_post_metadata``.
+    cleaned = {
+        k: v for k, v in (kv or {}).items()
+        if k and k not in EXP_FIXED_FIELDS
+    }
     if not cleaned:
         return None
     obj = pygid_mod.ExpMetadata(**cleaned)
@@ -929,19 +936,23 @@ def _build_exp_metadata(pygid_mod: Any, kv: dict[str, str]) -> Any:
 
 @dataclass
 class PostMetadata:
-    """Cleaned user, technique and beamtime metadata, ready to write.
+    """Cleaned experiment, user, technique and beamtime metadata.
 
     Every value is a non-empty string. ``users`` keeps
     ``USER_FIELD_NAME_KEY`` in each dict (the subgroup name);
-    ``techniques`` and ``beamtime`` hold only pygid's field names.
+    ``techniques`` and ``beamtime`` hold only pygid's field names;
+    ``experiment`` holds the filled ``EXP_FIXED_FIELDS``.
     """
 
     users: list[dict[str, str]] = field(default_factory=list)
     techniques: list[dict[str, str]] = field(default_factory=list)
     beamtime: dict[str, str] = field(default_factory=dict)
+    experiment: dict[str, str] = field(default_factory=dict)
 
     def is_empty(self) -> bool:
-        return not (self.users or self.techniques or self.beamtime)
+        return not (
+            self.users or self.techniques or self.beamtime or self.experiment
+        )
 
 
 def _filled(values: dict[str, str] | None, keys) -> dict[str, str]:
@@ -993,7 +1004,32 @@ def clean_post_metadata(cfg: ConversionConfig) -> PostMetadata:
         if t
     ]
     beamtime = _filled(cfg.beamtime_info, BEAMTIME_FIELDS)
-    return PostMetadata(users=users, techniques=techniques, beamtime=beamtime)
+    experiment = _merge_fixed_exp_fields(cfg)
+    return PostMetadata(
+        users=users, techniques=techniques, beamtime=beamtime,
+        experiment=experiment,
+    )
+
+
+def _merge_fixed_exp_fields(cfg: ConversionConfig) -> dict[str, str]:
+    """The filled fixed experimental fields.
+
+    A custom row of the metadata table that uses a fixed field's name
+    (for instance a ``temperature`` row added by hand or from HDF5)
+    fills that field when the field itself is empty, so the value lands
+    in the one dataset pygid uses. Both filled with different values
+    raises ``ValueError``: one of them would silently win.
+    """
+    fixed = _filled(cfg.expmeta_fixed, EXP_FIXED_FIELDS)
+    custom = _filled(cfg.expmeta_kv, EXP_FIXED_FIELDS)
+    for key, value in custom.items():
+        if key in fixed and fixed[key] != value:
+            raise ValueError(
+                f"Experimental metadata {key!r} is set twice (field "
+                f"{fixed[key]!r}, custom row {value!r}); keep one"
+            )
+        fixed.setdefault(key, value)
+    return fixed
 
 
 def _read_text(dataset) -> str:
@@ -1025,6 +1061,44 @@ def _existing_techniques(techniques_grp) -> list[dict[str, str]]:
     return out
 
 
+# Where each fixed experimental field lives, relative to the entry:
+# (group, dataset name, NeXus type), the same places pygid's
+# ``save_exp_metadata`` uses.
+_EXP_TARGETS = {
+    "start_time": ("", "start_time", "NX_DATE_TIME"),
+    "end_time": ("", "end_time", "NX_DATE_TIME"),
+    "instrument_name": ("instrument", "name", "NX_CHAR"),
+    "source_type": ("instrument/source", "type", "NX_CHAR"),
+    "source_name": ("instrument/source", "name", "NX_CHAR"),
+    "temperature": ("instrument", "temperature", "NX_FLOAT"),
+}
+
+
+def _exp_value(key: str, text: str):
+    """A temperature that reads as a number is stored as one."""
+    if key == "temperature":
+        try:
+            return float(text)
+        except ValueError:
+            return text
+    return text
+
+
+def _write_exp_fields(entry_grp, experiment: dict[str, str]) -> None:
+    """Write the filled fixed fields with pygid's own single-field writer.
+
+    Only filled fields are written, so an empty one keeps what pygid
+    wrote during the conversion ('nan' for the required ones).
+    """
+    from pygid.datasaver import ExpMetadata, save_single_metadata
+
+    for key, text in experiment.items():
+        sub, dataset, nx_type = _EXP_TARGETS[key]
+        grp = entry_grp.require_group(sub) if sub else entry_grp
+        holder = ExpMetadata(**{key: _exp_value(key, text)})
+        save_single_metadata(grp, holder, dataset, key, nx_type)
+
+
 def _write_entry_metadata(entry_grp, meta: PostMetadata, nexus_reader) -> None:
     """Write ``meta`` into one NXentry with pygid's own writers.
 
@@ -1041,6 +1115,8 @@ def _write_entry_metadata(entry_grp, meta: PostMetadata, nexus_reader) -> None:
     group is rebuilt the way ``set_techniques_info`` does it, because
     pygid's helper numbers from ``technique_0`` on every call.
     """
+    _write_exp_fields(entry_grp, meta.experiment)
+
     for user in meta.users:
         # pygid's helper pops ``field_name`` from the dict it is given.
         nexus_reader._set_user_information_single_entry(entry_grp, dict(user))
@@ -1072,7 +1148,7 @@ def _write_entry_metadata(entry_grp, meta: PostMetadata, nexus_reader) -> None:
 def write_post_metadata(
     entries: list[tuple[Path, str]], meta: PostMetadata,
 ) -> None:
-    """Write user / technique / beamtime metadata into converted entries.
+    """Write experiment / user / technique / beamtime metadata into entries.
 
     pygid cannot take these during conversion, so ``execute`` calls this
     once after the last scan with every ``(output file, entry)`` it
@@ -1101,11 +1177,11 @@ def write_post_metadata(
                     _write_entry_metadata(f[group], meta, nexus_reader)
         except Exception as exc:  # noqa: BLE001 - reported, run continues
             logger.warning(
-                "User/technique/beamtime metadata could not be written "
+                "Experiment/user/technique/beamtime metadata could not be written "
                 "to %s: %s", path, exc,
             )
             continue
         logger.info(
-            "Wrote user/technique/beamtime metadata to %s (%s)",
+            "Wrote experiment/user/technique/beamtime metadata to %s (%s)",
             path.name, ", ".join(groups),
         )

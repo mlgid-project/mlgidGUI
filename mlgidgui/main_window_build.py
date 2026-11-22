@@ -49,7 +49,6 @@ from mlgidgui.conversion_panel import ConversionPanel
 from mlgidgui.image_viewer import (
     GIWAXSImageViewer,
     OVERLAY_STYLE,
-    SIM_MISSED_COLOR,
 )
 from mlgidgui.main_window_constants import (
     APP_NAME,
@@ -113,6 +112,7 @@ class BuildMixin:
         self.data_viewer = DataViewerFrame(self)
         self.structure_panel = StructurePanel(self)
         self.structure_panel.recheckRequested.connect(self._on_structure_recheck)
+        self.structure_panel.refreshRequested.connect(self._on_structure_refresh)
         self.structure_panel.attributeEdited.connect(
             self._on_structure_attribute_edited)
         self.structure_panel.attributeRenamed.connect(
@@ -679,13 +679,6 @@ class BuildMixin:
         sim_master_row = QHBoxLayout()
         sim_master_row.setContentsMargins(0, 0, 0, 0)
         sim_master_row.setSpacing(6)
-        sim_swatch = QLabel()
-        sim_swatch.setPixmap(_make_pen_swatch({
-            "color": SIM_MISSED_COLOR,
-            "style": Qt.PenStyle.DashLine,
-            "width": 1.5,
-        }))
-        sim_master_row.addWidget(sim_swatch)
         self._sim_master_check = QCheckBox("Show expected pattern")
         self._sim_master_check.setChecked(False)
         self._sim_master_check.setToolTip(
@@ -700,6 +693,45 @@ class BuildMixin:
         sim_master_widget = QWidget()
         sim_master_widget.setLayout(sim_master_row)
         sim_box.addWidget(sim_master_widget)
+
+        # The state swatches double as the legend (orange / green /
+        # white were never explained anywhere) and as the way in to the
+        # pen editor, like the Detected / Fitted swatches: colour, line
+        # style and width of each kind of reflection box.
+        sim_pen_row = QHBoxLayout()
+        sim_pen_row.setContentsMargins(20, 0, 0, 0)
+        sim_pen_row.setSpacing(6)
+        self._sim_pen_swatches: dict[str, QToolButton] = {}
+        for state, label, tip in (
+            ("missed", "missed",
+             "reflections no matched peak explains yet"),
+            ("explained", "explained",
+             "reflections explained by a matched box of this structure"),
+            ("selected", "selected",
+             "reflections selected for adding"),
+        ):
+            swatch = QToolButton()
+            swatch.setAutoRaise(True)
+            swatch.setCursor(Qt.CursorShape.PointingHandCursor)
+            swatch.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+            )
+            swatch.setText(label)
+            swatch.setToolTip(
+                f"Expected-pattern boxes: {tip}. Click to set their "
+                f"colour, line style and width."
+            )
+            swatch.clicked.connect(
+                lambda _=False, s=state: self._open_sim_pen_popup(s)
+            )
+            self._sim_pen_swatches[state] = swatch
+            self._refresh_sim_swatch(state)
+            sim_pen_row.addWidget(swatch)
+        sim_pen_row.addStretch(1)
+        sim_pen_widget = QWidget()
+        sim_pen_widget.setLayout(sim_pen_row)
+        sim_box.addWidget(sim_pen_widget)
+        self.viewer.simPenChanged.connect(self._refresh_sim_swatch)
 
         sim_cif_row = QHBoxLayout()
         sim_cif_row.setContentsMargins(20, 0, 0, 0)
@@ -1458,6 +1490,36 @@ class BuildMixin:
         )
         popup.resetPicked.connect(
             lambda k=kind: self.viewer.set_overlay_pen(k, None)
+        )
+        popup.show_under(swatch)
+
+    def _refresh_sim_swatch(self, state: str) -> None:
+        """Redraw one Expected-pattern state swatch from the pen in
+        effect (driven by the viewer's ``simPenChanged``, so it also
+        follows "Automatic")."""
+        swatch = self._sim_pen_swatches.get(state)
+        if swatch is None:
+            return
+        pix = _make_pen_swatch(self.viewer.sim_pen(state))
+        swatch.setIcon(QIcon(pix))
+        swatch.setIconSize(pix.size())
+
+    def _open_sim_pen_popup(self, state: str) -> None:
+        """Pen editor under an Expected-pattern state swatch."""
+        swatch = self._sim_pen_swatches.get(state)
+        if swatch is None:
+            return
+        popup = PenPopup(
+            self,
+            current=self.viewer.sim_pen(state),
+            override=self.viewer.sim_pen_override(state),
+            title=f"Expected pattern, {state} reflections",
+        )
+        popup.penChanged.connect(
+            lambda pen, s=state: self.viewer.set_sim_pen(s, pen)
+        )
+        popup.resetPicked.connect(
+            lambda s=state: self.viewer.set_sim_pen(s, None)
         )
         popup.show_under(swatch)
 

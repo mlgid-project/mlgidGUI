@@ -307,15 +307,15 @@ def _cleanup_session_temp_dirs():
 def clean_matched_colors():
     """Drop the persisted custom pens around a test.
 
-    ``GIWAXSImageViewer`` loads the ``matchedPens`` and ``overlayPens``
-    QSettings keys at construction, so a test that picks a colour, line
+    ``GIWAXSImageViewer`` loads the ``matchedPens``, ``overlayPens`` and
+    ``simPens`` QSettings keys at construction, so a test that picks a colour, line
     style or width would otherwise leak it into every later
     viewer/MainWindow built in the same run. ``matchedColors`` is the
     pre-pen key, still read as a fallback, so it has to go too.
     """
     from PySide6.QtCore import QSettings
 
-    keys = ("matchedPens", "matchedColors", "overlayPens")
+    keys = ("matchedPens", "matchedColors", "overlayPens", "simPens")
 
     def drop() -> None:
         settings = QSettings()

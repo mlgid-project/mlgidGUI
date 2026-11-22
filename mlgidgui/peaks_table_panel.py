@@ -794,7 +794,14 @@ class PeaksTablePanel(QWidget):
         """
         sels = self._selected_rows(kind)
         if sels:
-            self._emit_own(self.deletePeaksRequested, sels)
+            # A plain emit, not ``_emit_own``. A delete is the one action
+            # whose reply this table must apply: the host selects the
+            # peak that follows the deleted one, and under ``_emit_own``
+            # the table ignored that as "its own echo", so it kept no
+            # selection and no current row. The next key press or focus
+            # change then started again from the first row, and the
+            # viewer selected that peak.
+            self.deletePeaksRequested.emit(sels)
 
     def _build_selection(
         self,

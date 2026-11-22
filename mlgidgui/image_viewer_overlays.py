@@ -28,6 +28,9 @@ from mlgidgui.viewer_styles import (
     UNMATCHED_KEY,
     UNMATCHED_UID,
     _SIM_STATE_COLORS,
+    SIM_STATES,
+    save_sim_pen_overrides,
+    sim_pen as _sim_pen_for,
     sim_state_colors,
     OVERLAY_KINDS,
     OVERLAY_STYLE,
@@ -352,6 +355,39 @@ class ViewerOverlaysMixin:
     def clear_simulation_pattern(self) -> None:
         self.set_simulation_pattern(None)
 
+    # --- Expected-pattern pens ---
+
+    def sim_pen(self, state: str) -> dict:
+        """The effective ``{color, style, width}`` of a reflection state
+        ("missed" / "explained" / "selected"): built-in look, the user's
+        pen on top."""
+        return _sim_pen_for(state, self._sim_pen_overrides)
+
+    def sim_pen_override(self, state: str) -> dict:
+        """The user's partial pen for a state ({} when untouched)."""
+        return dict(self._sim_pen_overrides.get(state) or {})
+
+    def set_sim_pen(self, state: str, pen: dict | None) -> None:
+        """Set or clear the user's pen for one Expected-pattern state.
+
+        ``pen`` is a partial ``{color, style, width}``; ``None`` puts the
+        state back on its built-in look. Persisted app-wide and applied
+        at once: the overlay is rebuilt for the current frame.
+        """
+        if state not in SIM_STATES:
+            raise ValueError(f"Unknown expected-pattern state: {state!r}")
+        if pen:
+            self._sim_pen_overrides[state] = dict(pen)
+        else:
+            self._sim_pen_overrides.pop(state, None)
+        save_sim_pen_overrides(self._sim_pen_overrides)
+        self._render_simulation_overlays(self.current_frame)
+        self.simPenChanged.emit(state)
+
+    def _sim_override(self, state: str, key: str):
+        """One property of the user's pen for ``state``, or None."""
+        return (self._sim_pen_overrides.get(state) or {}).get(key)
+
     def set_simulation_visible(self, visible: bool) -> None:
         self._sim_visible = bool(visible)
         self._render_simulation_overlays(self.current_frame)
@@ -507,7 +543,8 @@ class ViewerOverlaysMixin:
         the spots, one dashed curve per ring (state-coloured)."""
         items: list = []
         polar = self._mode == MODE_POLAR
-        for state, color in sim_state_colors().items():
+        for state in sim_state_colors():
+            color = self.sim_pen(state)["color"]
             spots = [
                 r for r, s in zip(reflections, states)
                 if s == state and not r.is_ring
@@ -515,6 +552,17 @@ class ViewerOverlaysMixin:
             if not spots:
                 continue
             selected = state == "selected"
+            # Diamond outline: the built-in width and a solid line unless
+            # the user set them; the diamond SIZE stays intensity-coded.
+            spot_width = self._sim_override(state, "width")
+            if spot_width is None:
+                spot_width = 2.2 if selected else 1.5
+            spot_style = self._sim_override(state, "style")
+            spot_pen = (
+                pg.mkPen(QColor(color), width=spot_width)
+                if spot_style is None else
+                pg.mkPen(QColor(color), width=spot_width, style=spot_style)
+            )
             if polar:
                 xs = np.array([r.radius for r in spots])
                 ys = np.array([r.angle for r in spots])
@@ -527,7 +575,7 @@ class ViewerOverlaysMixin:
                     _sim_marker_size(r.rel_intensity) + (2 if selected else 0)
                     for r in spots
                 ],
-                pen=pg.mkPen(QColor(color), width=2.2 if selected else 1.5),
+                pen=spot_pen,
                 brush=None,
                 data=[r.index for r in spots],
             ))
@@ -537,11 +585,16 @@ class ViewerOverlaysMixin:
             if not r.is_ring:
                 continue
             selected = state == "selected"
-            width = 1.0 + 1.5 * _sim_intensity_scale(r.rel_intensity)
+            # Ring width encodes intensity; a width the user set replaces
+            # that coding (one width for every ring of the state).
+            width = self._sim_override(state, "width")
+            if width is None:
+                width = 1.0 + 1.5 * _sim_intensity_scale(r.rel_intensity)
+                width += 1.0 if selected else 0.0
+            ring_pen = self.sim_pen(state)
             pen = pg.mkPen(
-                QColor(sim_state_colors()[state]),
-                width=width + (1.0 if selected else 0.0),
-                style=Qt.PenStyle.DashLine,
+                QColor(ring_pen["color"]), width=width,
+                style=ring_pen["style"],
             )
             pen.setCosmetic(True)
             if polar:
@@ -568,13 +621,12 @@ class ViewerOverlaysMixin:
         rw, aw = simulation_pattern.default_box_size(tables.get("fitted"))
         extent = self.angular_extent()
         items: list = []
-        for state, color in sim_state_colors().items():
+        for state in sim_state_colors():
             rows = [
                 r for r, s in zip(reflections, states) if s == state
             ]
             if not rows:
                 continue
-            selected = state == "selected"
             table = PeakTable(
                 q_xy=np.array([r.q_xy for r in rows]),
                 q_z=np.array([r.q_z for r in rows]),
@@ -591,11 +643,7 @@ class ViewerOverlaysMixin:
                 score=np.zeros(len(rows)),
                 amplitude=np.zeros(len(rows)),
             )
-            box = _PeakShapeItem(
-                color=color,
-                style=Qt.PenStyle.DashLine,
-                width=2.2 if selected else 1.4,
-            )
+            box = _PeakShapeItem(**self.sim_pen(state))
             if self._mode == MODE_POLAR:
                 box.set_polar(table, extent=extent)
             else:

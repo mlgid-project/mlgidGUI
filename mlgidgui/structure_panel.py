@@ -386,6 +386,8 @@ class StructurePanel(QWidget):
 
     #: The user asked for the file to be re-checked.
     recheckRequested = Signal()
+    #: Re-read the open files into the tree and the node on show.
+    refreshRequested = Signal()
     #: ``(attribute_name, typed_text)`` — set this attribute's value.
     attributeEdited = Signal(str, str)
     #: ``(old_name, new_name)``
@@ -596,6 +598,24 @@ class StructurePanel(QWidget):
         # wraps onto a second line instead — the same reason the image
         # viewer's control strip uses one.
         row = FlowLayout(hspacing=GAP, vspacing=4)
+        # First, and plain: it is the answer to "the tree does not show
+        # what I know is in the file". Anything that changes the file
+        # outside this tab (a detection or fitting run, a conversion)
+        # does not tell the tree, so the user can.
+        self._refresh_btn = QToolButton(card)
+        self._refresh_btn.setText("Refresh")
+        self._refresh_btn.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        icons.bind(self._refresh_btn, "refresh")
+        self._refresh_btn.setAutoRaise(True)
+        self._refresh_btn.setToolTip(
+            "Re-read the open files from disk into this tree and the "
+            "selected node. Use it after something outside this tab "
+            "changed a file, such as a detection or fitting run or a "
+            "conversion. Open groups and the selection stay as they are."
+        )
+        self._refresh_btn.clicked.connect(self.refreshRequested)
+        row.addWidget(self._refresh_btn)
         self._new_btn = QToolButton(card)
         self._new_btn.setText("New")
         self._new_btn.setToolButtonStyle(

@@ -260,6 +260,38 @@ def sim_state_colors(theme: str | None = None) -> dict:
     return {**_SIM_STATE_COLORS,
             "selected": theme_tokens.color("sim_selected", theme)}
 SIM_OVERLAY_OPACITY = 0.55
+#: The render states of a simulated reflection, in paint order.
+SIM_STATES = ("missed", "explained", "selected")
+#: Default outline width of a simulated box (the "Boxes" display style).
+SIM_BOX_WIDTH = 1.4
+SIM_BOX_WIDTH_SELECTED = 2.2
+
+
+def sim_pen(state: str, overrides: dict[str, dict] | None = None,
+            theme: str | None = None) -> dict:
+    """The effective ``{color, style, width}`` of a simulated-reflection
+    state: the built-in look, the user's partial pen on top.
+
+    The built-in look is the one the overlay always had: the state's
+    colour (theme-aware for "selected"), dashed, 1.4 wide (2.2 for the
+    selected reflections).
+    """
+    pen = {
+        "color": sim_state_colors(theme)[state],
+        "style": Qt.PenStyle.DashLine,
+        "width": SIM_BOX_WIDTH_SELECTED if state == "selected"
+        else SIM_BOX_WIDTH,
+    }
+    if overrides:
+        pen.update(overrides.get(state) or {})
+    return pen
+
+
+# Hand-set pens for the Expected-pattern overlay, one per state. Same
+# partial-override semantics and JSON-in-QSettings idiom as the
+# detected / fitted pens below: whatever the user did not touch keeps
+# the built-in look.
+_SIM_PENS_KEY = "simPens"
 # Marker diameter encodes relative simulated intensity, log-scaled
 # across three decades (rel=1 -> MAX, rel<=1e-3 -> MIN).
 SIM_MARKER_MIN_PX = 5.0
@@ -366,6 +398,30 @@ def load_overlay_pen_overrides() -> dict[str, dict]:
 def save_overlay_pen_overrides(overrides: dict[str, dict]) -> None:
     QSettings().setValue(_OVERLAY_PENS_KEY, json.dumps(
         {kind: pen_to_json(pen) for kind, pen in overrides.items() if pen}
+    ))
+
+
+def load_sim_pen_overrides() -> dict[str, dict]:
+    raw = QSettings().value(_SIM_PENS_KEY, "")
+    if not raw:
+        return {}
+    try:
+        stored = json.loads(str(raw))
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(stored, dict):
+        return {}
+    out: dict[str, dict] = {}
+    for state in SIM_STATES:
+        pen = pen_from_json(stored.get(state))
+        if pen:
+            out[state] = pen
+    return out
+
+
+def save_sim_pen_overrides(overrides: dict[str, dict]) -> None:
+    QSettings().setValue(_SIM_PENS_KEY, json.dumps(
+        {state: pen_to_json(pen) for state, pen in overrides.items() if pen}
     ))
 
 

@@ -2514,11 +2514,18 @@ class PeaksMixin:
             self.viewer.prune_file_geom_history(frame, partner, ids)
         self.viewer.clear_selection()
         self._load_entry_into_viewer(entry, preserve_view=True)
-        self._push_delete_undo(
+        undo_state = self._push_delete_undo(
             entry=entry, frame=frame, kind=kind, snapshot=snapshot,
             cascade_matched=fitted_involved,
             partner_kind=partner, partner_snapshot=partner_snapshot,
             keep_ids=link,
+        )
+        # Carry on with the peak that follows the deleted one, so a run
+        # through a frame is Delete, Delete, Delete rather than a click
+        # on the next box in between. Remembered in the undo state so an
+        # undo can tell this automatic selection from one the user made.
+        undo_state["auto"] = self.viewer.select_neighbour_of_deleted(
+            kind, ids,
         )
         msg = (
             f"Deleted {removed} {kind_human} peak(s) on "
@@ -2583,7 +2590,7 @@ class PeaksMixin:
         partner_kind: str | None = None,
         partner_snapshot: list[dict] | None = None,
         keep_ids: bool = False,
-    ) -> None:
+    ) -> dict:
         """Undo / redo for a (single or bulk) detected/fitted delete.
 
         The delete already happened, so ``undo`` re-adds the rows and
@@ -2601,10 +2608,17 @@ class PeaksMixin:
         link requires: a pair that came back under fresh ids would not
         be a pair, and the undo would not have undone. Without the link
         both are absent and the fresh-id behaviour is unchanged.
+
+        Returns the shared ``state`` dict. Besides the rotating
+        ``ids`` it holds ``auto``: the id of the neighbour the delete
+        selected on its own (None when it selected nothing). Undo
+        replaces that automatic selection with the restored peaks
+        instead of adding to it; a selection the user made since is
+        kept and extended, as before. Redo selects the neighbour again.
         """
         snap = [dict(d) for d in snapshot]
         partner_snap = [dict(d) for d in (partner_snapshot or [])]
-        state: dict[str, list[int]] = {"ids": []}
+        state: dict = {"ids": [], "auto": None}
 
         def _undo() -> None:
             def write():
@@ -2625,6 +2639,16 @@ class PeaksMixin:
 
             def after(new_ids) -> None:
                 state["ids"] = new_ids
+                auto, state["auto"] = state["auto"], None
+                if auto is not None:
+                    current = [
+                        (s.kind, int(s.frame), int(s.peak_id))
+                        for s in self.viewer.selected_peaks()
+                    ]
+                    if current == [(kind, int(frame), int(auto))]:
+                        # Only the neighbour the delete picked itself is
+                        # selected: the restored peak takes its place.
+                        self.viewer.clear_selection()
                 self._add_detected_to_selection(
                     entry, int(frame), new_ids, kind=kind,
                 )
@@ -2669,6 +2693,10 @@ class PeaksMixin:
                 self._drop_detected_from_selection(
                     int(frame), state["ids"], kind=kind,
                 )
+                if not self.viewer.selected_peaks():
+                    state["auto"] = self.viewer.select_neighbour_of_deleted(
+                        kind, state["ids"],
+                    )
                 self.pipeline_panel.append_log(
                     f"Redo delete: removed {len(state['ids'])} {kind} "
                     f"peak(s) on {entry}/frame{int(frame):05d}"
@@ -2680,6 +2708,7 @@ class PeaksMixin:
             )
 
         self.viewer._push_undo(_CallbackAction(_undo, _redo))
+        return state
 
     # -- UI state --
 

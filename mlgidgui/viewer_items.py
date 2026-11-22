@@ -25,6 +25,22 @@ from mlgidgui.viewer_styles import (
 )
 
 
+def _disable_si_prefix(plot) -> None:
+    """Keep every axis of a ``PlotItem`` / ``PlotWidget`` in its own unit.
+
+    pyqtgraph rescales an axis that has ``units`` and prepends an SI
+    prefix, so the numbers stay between 1 and 1000: a radius range
+    below 1 reads "mÅ⁻¹" with the values times 1000, a range above 1000
+    "kÅ⁻¹", an angle range below 1 "mdeg". Those prefixes are wrong
+    here: the q axes are in Å⁻¹ and the angle in degrees, whatever the
+    zoom, and the numbers a user reads off the axis must be the real
+    ones. Call once after the plot is built; it persists.
+    """
+    item = plot.getPlotItem() if hasattr(plot, "getPlotItem") else plot
+    for name in ("bottom", "left", "top", "right"):
+        item.getAxis(name).enableAutoSIPrefix(False)
+
+
 def _disable_viewport_scroll(widget) -> None:
     """Disable QAbstractScrollArea-level scrolling on a pyqtgraph widget.
 

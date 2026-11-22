@@ -58,6 +58,7 @@ from mlgidgui.conversion_config import (
     CONV_DET2POL_GID,
     CONV_DET2Q,
     CONV_DET2Q_GID,
+    EXP_FIXED_FIELDS,
     FRAME_ALL,
     FRAME_LIST,
     FRAME_SINGLE,
@@ -1154,6 +1155,33 @@ class ConversionPanel(QWidget):
         section.body_layout.addWidget(self.exp_meta_section)
         exp_body = self.exp_meta_section.body_layout
 
+        exp_hint = QLabel(
+            "<i>Fixed fields, written after the conversion. Left empty, "
+            "pygid's own handling stays: start_time, end_time, "
+            "instrument_name and source_type become 'nan', source_name "
+            "and temperature are not written. Times as ISO 8601 "
+            "(2026-11-22T14:30:00).</i>"
+        )
+        exp_hint.setWordWrap(True)
+        exp_body.addWidget(exp_hint)
+        exp_form = _make_form()
+        exp_form.setContentsMargins(0, 0, 0, 0)
+        exp_form.setSpacing(4)
+        self.exp_fixed_fields: dict[str, QLineEdit] = {}
+        for key in EXP_FIXED_FIELDS:
+            edit = QLineEdit()
+            if key.endswith("_time"):
+                edit.setPlaceholderText("2026-11-22T14:30:00")
+            elif key == "temperature":
+                edit.setPlaceholderText("number, e.g. 300 (kelvin)")
+            self.exp_fixed_fields[key] = edit
+            exp_form.addRow(f"{key}:", edit)
+        exp_form_host = QWidget()
+        exp_form_host.setLayout(exp_form)
+        exp_body.addWidget(exp_form_host)
+        custom_label = QLabel("<b>Custom fields</b>")
+        exp_body.addWidget(custom_label)
+
         self.exp_meta_table = _skin_item_view(QTableWidget(0, 3))
         self.exp_meta_table.setHorizontalHeaderLabels(["Key", "Value", "Source"])
         self.exp_meta_table.horizontalHeader().setSectionResizeMode(
@@ -2015,6 +2043,10 @@ class ConversionPanel(QWidget):
             if key:
                 kv[key] = value
         cfg.expmeta_kv = kv
+        cfg.expmeta_fixed = {
+            key: edit.text().strip()
+            for key, edit in self.exp_fixed_fields.items()
+        }
         self._collect_nexus_info(cfg)
 
         # Output.

@@ -85,6 +85,22 @@ BEAMTIME_FIELDS = (
     "DOI",
 )
 
+# Experimental metadata fields the panel always shows (pygid's
+# ``ExpMetadata`` names). Left empty they are not touched, so pygid's
+# own handling stays: start_time, end_time, instrument_name and
+# source_type become 'nan', source_name and temperature are not written.
+# Written after conversion (``conversion.write_post_metadata``), because
+# pygid hands its metadata object to the first batch only and later
+# batches would overwrite these with 'nan'.
+EXP_FIXED_FIELDS = (
+    "start_time",
+    "end_time",
+    "source_type",
+    "source_name",
+    "instrument_name",
+    "temperature",
+)
+
 
 @dataclass
 class RawScan:
@@ -182,6 +198,8 @@ class ConversionConfig:
     smplmeta_yaml: str = ""
     # Experimental metadata key/value pairs from the metadata table.
     expmeta_kv: dict[str, str] = field(default_factory=dict)
+    # The fixed experimental fields (EXP_FIXED_FIELDS); empty = untouched.
+    expmeta_fixed: dict[str, str] = field(default_factory=dict)
     # Post-conversion NeXus metadata, all optional (see USER_FIELDS etc.).
     # One dict per user (keys: USER_FIELD_NAME_KEY + USER_FIELDS), one per
     # technique (TECHNIQUE_FIELDS), and one beamtime dict

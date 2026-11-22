@@ -1793,6 +1793,47 @@ class ViewerInteractMixin:
         self._set_selected(self._row_selection(cur.kind, table, row, frame))
         return True
 
+    def select_neighbour_of_deleted(
+        self, kind: str, deleted_ids,
+    ) -> int | None:
+        """After a delete, select the peak that follows the deleted one.
+
+        Walks the peaks of ``kind`` on the current frame in id order, the
+        way ``step_selection`` does, and selects the one with the
+        smallest id above the highest deleted id: gaps left by earlier
+        deletes are skipped, and a fitted row hidden by the "show only
+        tracked peaks" filter is never picked since it cannot be
+        selected on screen. When nothing comes after (the last peak was
+        deleted) the highest remaining id is selected instead, so
+        working through a frame does not leave a blank Parameter panel;
+        with no peak left the selection stays empty. Selected through
+        ``_set_selected``, so the view follows it exactly as after a
+        click. Returns the id selected, or None.
+        """
+        frame = self.current_frame
+        table = (self._frame_peaks.get(frame) or {}).get(kind)
+        if table is None or len(table) == 0:
+            return None
+        gone = {int(i) for i in deleted_ids}
+        if not gone:
+            return None
+        ids = np.asarray(table.ids)
+        rows = [
+            i for i in range(len(ids))
+            if int(ids[i]) not in gone
+            and not (kind == "fitted"
+                     and self._fitted_row_hidden(frame, int(ids[i])))
+        ]
+        if not rows:
+            return None
+        after = [i for i in rows if int(ids[i]) > max(gone)]
+        if after:
+            row = min(after, key=lambda i: int(ids[i]))
+        else:
+            row = max(rows, key=lambda i: int(ids[i]))
+        self._set_selected(self._row_selection(kind, table, row, frame))
+        return int(ids[row])
+
     # -- Resizable ROI on the selected peak --
 
     def _sync_roi(self) -> None:

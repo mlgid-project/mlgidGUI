@@ -201,6 +201,24 @@ these. Verbatim call sites are in the code; this is the contract.
   per-model branching to gate. Regression:
   `tests/test_conversion_nexus_info.py` (including a real pygid
   conversion).
+- **Fixed experimental fields (1.2.0).** `start_time`, `end_time`,
+  `source_type`, `source_name`, `instrument_name` and `temperature` are
+  written after the last scan by `conversion.write_post_metadata`, with
+  pygid's own `datasaver.save_single_metadata` on a one-field
+  `ExpMetadata`, into the places `datasaver.save_exp_metadata` uses
+  (`<entry>/start_time`, `<entry>/end_time`, `instrument/name`,
+  `instrument/source/type`, `instrument/source/name`,
+  `instrument/temperature`). They are not given to pygid during
+  conversion because pygid passes its `ExpMetadata` to the first batch
+  only and every later batch saves a fresh one whose required fields
+  (`start_time`, `end_time`, `instrument_name`, `source_type`) are
+  rewritten as `'nan'`. Behaviour relied on: an empty field is left
+  alone, so pygid's `'nan'` (required fields) or absence (`source_name`,
+  `temperature`) stays. **Re-check `save_single_metadata` and the target
+  paths on any pygid bump.** The other 1.2.0 controls (expected-pattern
+  pens, Structure refresh, delete-selects-next, axis units) are GUI-only
+  and reach no backend, so there is no per-model branching to gate.
+  Regression: `tests/test_conversion_exp_fixed.py`.
   `(frame_num=..., return_result=False, save_result=True,
   path_to_save=..., h5_group=..., overwrite_file=..., overwrite_group=...)`
 - `pygid.SampleMetadata(data=...)`, `pygid.ExpMetadata(**fields)`, and

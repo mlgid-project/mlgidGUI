@@ -513,6 +513,40 @@ class StructureMixin:
         if node is not None:
             self._render_structure_node(node)
 
+    def _on_structure_refresh(self) -> None:
+        """Refresh button: re-read the open files into the tab.
+
+        A detection, fitting or matching run, or a conversion, writes
+        into the file without telling this tab, so a group it created
+        (``mlgidDETECT``, say) is missing from the tree until something
+        re-lists it. This re-lists every open group, re-reads the node on
+        show (attributes, value, layout check) and, via the roots
+        refresh, picks up files opened or closed elsewhere.
+
+        Refused while a run owns the file: a read then fails, and a tree
+        re-listed from a failed read would come up empty.
+        """
+        if self._pipe_thread is not None:
+            self.statusBar().showMessage(
+                "A run is writing to the file. Refresh when it has "
+                "finished.", 5000)
+            return
+        panel = self.structure_panel
+        self._structure_checked_file = None
+        self._refresh_structure_tree_roots()
+        panel.node_tree.refresh_all()
+        # The tree's own current row first: it is what the user is on,
+        # and a _PathNode cannot go stale the way a File-browser (silx)
+        # node does once that tree has been rebuilt.
+        target = panel.node_tree.current_target()
+        if target is not None:
+            node = _PathNode(target[0], h5_edit.normalize_path(target[1]))
+        else:
+            node = self._structure_current_node()
+        if node is not None:
+            self._render_structure_node(node)
+        self.statusBar().showMessage("Structure refreshed from disk.", 3000)
+
     def _clear_structure_panel(self) -> None:
         """Empty the panel — called when the session it described goes away.
 

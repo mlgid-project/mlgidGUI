@@ -4,6 +4,49 @@ All notable changes to mlgidGUI (called mlgidLAB until 1.0.0) are recorded
 here. Versions follow [PEP 440](https://peps.python.org/pep-0440/); `aN`
 suffixes are alpha pre-releases.
 
+## 1.2.0 (2026-11-22)
+
+### Added
+
+- **Fixed fields in the conversion's Experimental metadata.** The
+  dropdown now starts with `start_time`, `end_time`, `source_type`,
+  `source_name`, `instrument_name` and `temperature`; the custom
+  key/value table below it works as before. A field left empty is not
+  touched, so pygid's own handling stays (`nan` for the first four,
+  nothing for `source_name` and `temperature`). The values are written
+  after the conversion, so they also survive scans converted in several
+  batches. A custom row named like a fixed field fills it.
+
+- **Deleting a peak selects the next one.** After a detected or fitted
+  peak is deleted (Delete key, the Peaks table, or the Delete button), the
+  peak with the next id after it is selected, so working through a frame
+  no longer needs a click between deletes. If it was the last one, the
+  last remaining peak is selected. Undo selects the restored peak, redo
+  goes back to the neighbour.
+
+- **Refresh button in the Structure tab.** A detection, fitting or
+  matching run, or a conversion, changes the file without telling the
+  Structure tab, so a new group (such as the `mlgidDETECT` metadata)
+  stayed missing from the tree. The new *Refresh* button, first in the
+  row above the tree, re-reads the open files into the tree and the
+  selected node. Open groups and the selection stay where they were. It
+  waits while a run is writing to the file.
+
+- **Colour, line style and width of the Expected-pattern boxes.** Under
+  "Show expected pattern" there are now three swatches, *missed*,
+  *explained* and *selected*. A click opens the same pen editor as the
+  Detected and Fitted swatches, and the boxes on the image follow as you
+  change it. The choice is remembered, and *Automatic* puts the original
+  look back. The swatches also show what each colour means.
+
+### Fixed
+
+- **Axis units no longer get an SI prefix.** The radius axes could read
+  "mÅ⁻¹" (with the numbers multiplied by 1000) when the range was below
+  1 Å⁻¹, "kÅ⁻¹" above 1000, and the angle axis "mdeg". The image and
+  profile axes now always show Å⁻¹, degrees and pixels with the real
+  numbers.
+
 ## 1.1.0 (2026-11-16)
 
 ### Added

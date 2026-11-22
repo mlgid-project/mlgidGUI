@@ -392,6 +392,37 @@ class StructureTree(QTreeWidget):
         if target is not None:
             self.select_path(target[0], target[1], quiet=True)
 
+    def refresh_all(self) -> None:
+        """Re-read every file into the tree, keeping the view.
+
+        ``refresh_path`` re-lists one group after an edit made HERE; this
+        is for changes made behind the tree's back (a detection run, a
+        conversion appended to the file), where nobody knows which group
+        changed. Every root goes back to "never read", then the rows
+        that were open are opened again, shallow first, which re-lists
+        exactly those groups and nothing else. Selection and scroll
+        position are put back, silently: the caller decides what to
+        re-render.
+
+        A root is collapsed before it is reset. An already-open root
+        would keep its open state through the reset, and setting it open
+        again then emits nothing, so it would never be re-listed.
+        """
+        state = self.capture_state()
+        scroll = self.verticalScrollBar().value()
+        self._quiet = True
+        try:
+            for i in range(self.topLevelItemCount()):
+                root = self.topLevelItem(i)
+                root.setExpanded(False)
+                root.takeChildren()
+                root.setData(0, LOADED_ROLE, False)
+                self._add_placeholder(root)
+        finally:
+            self._quiet = False
+        self.restore_state(state)
+        self.verticalScrollBar().setValue(scroll)
+
     def select_path(
         self, file_path: str, h5_path: str, *, quiet: bool = False
     ) -> bool:

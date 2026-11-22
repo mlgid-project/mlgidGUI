@@ -99,6 +99,7 @@ from mlgidgui.viewer_styles import (
     _load_matched_pen_overrides,
     _save_matched_pen_overrides,
     load_overlay_pen_overrides,
+    load_sim_pen_overrides,
     overlay_pen as _overlay_pen,
     save_overlay_pen_overrides,
     _sim_intensity_scale,
@@ -123,6 +124,7 @@ from mlgidgui.viewer_items import (
     _cart_table_row_contains,
     _cart_to_polar,
     _clip_angle,
+    _disable_si_prefix,
     _disable_viewport_scroll,
     _has_label_modifiers,
     _peaks_from_manual,
@@ -242,6 +244,10 @@ class GIWAXSImageViewer(
     # or fitted overlay. Carries the kind; the Display dock's swatch
     # button listens so the legend follows the image.
     overlayPenChanged = Signal(str)
+    # Emitted with the state name ("missed" / "explained" / "selected")
+    # when the user's pen for the Expected-pattern overlay changes, so
+    # the dock swatches follow (including back to the built-in look).
+    simPenChanged = Signal(str)
     # Emitted when the set of simulated reflections selected for
     # injection changes (click toggle, Select missed, pattern swap,
     # intensity-cutoff pruning). Carries the sorted reflection indices;
@@ -395,6 +401,8 @@ class GIWAXSImageViewer(
         outer.addWidget(bar_widget)
 
         self._plot = pg.PlotItem()
+        # Å⁻¹ / deg / px stay as they are: no "mÅ⁻¹" below 1, no "kpx".
+        _disable_si_prefix(self._plot)
         self._view = pg.ImageView(self, view=self._plot)
         self._view.ui.roiBtn.hide()
         self._view.ui.menuBtn.hide()
@@ -598,6 +606,9 @@ class GIWAXSImageViewer(
         # deliberately survive ``clear()`` (display preferences, not
         # file state).
         self._sim_pattern = None
+        # The user's partial pen per reflection state, layered over the
+        # built-in look (``viewer_styles.sim_pen``); persisted app-wide.
+        self._sim_pen_overrides: dict[str, dict] = load_sim_pen_overrides()
         self._sim_selected: set[int] = set()
         self._sim_min_intensity: float = 0.01
         self._sim_visible: bool = True
