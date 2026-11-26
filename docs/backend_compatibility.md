@@ -173,6 +173,8 @@ these. Verbatim call sites are in the code; this is the contract.
   dang=..., q_xy_range=..., q_z_range=..., ...)`
 - `pygid.Conversion(matrix=..., path=..., dataset=..., frame_num=...)`
   then `det2q_gid` / `det2q` / `det2pol_gid` / `det2pol`
+  `(frame_num=..., return_result=False, save_result=True,
+  path_to_save=..., h5_group=..., overwrite_file=..., overwrite_group=...)`
 - **User / technique / beamtime metadata (1.1.0).** pygid cannot take
   these during conversion, so after the last scan
   `conversion.write_post_metadata` writes them into every converted
@@ -219,8 +221,19 @@ these. Verbatim call sites are in the code; this is the contract.
   pens, Structure refresh, delete-selects-next, axis units) are GUI-only
   and reach no backend, so there is no per-model branching to gate.
   Regression: `tests/test_conversion_exp_fixed.py`.
-  `(frame_num=..., return_result=False, save_result=True,
-  path_to_save=..., h5_group=..., overwrite_file=..., overwrite_group=...)`
+- **Technique picker (1.2.1).** The Conversion panel's technique `name`
+  and `pid` now come only from the bundled PaNET list
+  (`mlgidgui/assets/panet/techniques.json`, rebuilt with
+  `tools/update_panet.py`). The write path is unchanged. pygid 0.2.20
+  records `x-ray diffraction` (PaNET01216), plus `grazing incidence wide
+  angle x-ray scattering` (PaNET01316) when the output dataset name
+  contains `gid`; the GUI appends afterwards and skips an identical
+  `name`/`pid` pair. Both pairs are in the bundled list verbatim, so
+  picking one adds no second copy. **Re-check pygid's two literals in
+  `datasaver.py` on any pygid bump, and after refreshing the list.** The
+  write happens after conversion for every conversion type, so there is
+  no per-branch case in which the control does nothing. Regression:
+  `tests/test_technique_picker.py`.
 - `pygid.SampleMetadata(data=...)`, `pygid.ExpMetadata(**fields)`, and
   the writable `ExpMetadata.extend_fields` attribute (set inside a
   `try/except` — older pygid lacking it is tolerated).

@@ -1,0 +1,1963 @@
+{
+ "title": "The Photon and Neutron Experimental Techniques Ontology",
+ "version": "1.3.0-101-g6e41c75",
+ "released": "2025-10-21",
+ "license": "https://creativecommons.org/licenses/by/4.0/",
+ "source": "https://pan-ontologies.github.io/PaNET/ontology.owl",
+ "techniques": [
+  {
+   "name": "absorption and phase contrast nanotomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01155"
+  },
+  {
+   "name": "absorption contrast imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01088",
+   "definition": "Absorption Contrast Imaging"
+  },
+  {
+   "name": "absorption microtomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01209",
+   "synonyms": [
+    "Absorption-based tomographic microscopy"
+   ]
+  },
+  {
+   "name": "absorption spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01135"
+  },
+  {
+   "name": "absorption tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01151"
+  },
+  {
+   "name": "absorption-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00202"
+  },
+  {
+   "name": "ambient pressure x-ray photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01218"
+  },
+  {
+   "name": "angle resolved photoemission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01089",
+   "synonyms": [
+    "ARPES"
+   ],
+   "definition": "Angle resolved photoemission spectroscopy"
+  },
+  {
+   "name": "anomalous small angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01274",
+   "synonyms": [
+    "ASAXS"
+   ]
+  },
+  {
+   "name": "anomalous solution x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01275",
+   "synonyms": [
+    "ASAX"
+   ]
+  },
+  {
+   "name": "atomic core excitation-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01054"
+  },
+  {
+   "name": "atomic force microscope infrared spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01319",
+   "synonyms": [
+    "AFM-IR"
+   ]
+  },
+  {
+   "name": "atomic force microscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01318",
+   "synonyms": [
+    "AFM"
+   ]
+  },
+  {
+   "name": "atomic scale diffraction 2D surface or film-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01031"
+  },
+  {
+   "name": "atomic scale diffraction 3D volume 3D periodic-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01028"
+  },
+  {
+   "name": "atomic scale diffraction 3D volume-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01027"
+  },
+  {
+   "name": "atomic scale diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01026",
+   "definition": "essential diffracting structure(s)"
+  },
+  {
+   "name": "birefringence",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01326"
+  },
+  {
+   "name": "borrmann effect",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01325"
+  },
+  {
+   "name": "characterize electronic excitations-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01085"
+  },
+  {
+   "name": "characterize excitations-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00407"
+  },
+  {
+   "name": "characterize lattice excitations-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01087"
+  },
+  {
+   "name": "characterize magnetic excitations-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01086"
+  },
+  {
+   "name": "chiral determination-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00411"
+  },
+  {
+   "name": "circular dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01192",
+   "synonyms": [
+    "CD"
+   ]
+  },
+  {
+   "name": "coherent diffraction imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01174",
+   "synonyms": [
+    "CDI",
+    "coherent diffractive imaging"
+   ]
+  },
+  {
+   "name": "coherent diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01024",
+   "definition": "Probe is highly coherent over illuminated sample"
+  },
+  {
+   "name": "coherent emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01041"
+  },
+  {
+   "name": "cold neutron imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01249"
+  },
+  {
+   "name": "cold neutron probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01017"
+  },
+  {
+   "name": "cold neutron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01246"
+  },
+  {
+   "name": "correlative light x-ray microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01314",
+   "synonyms": [
+    "CLXM"
+   ]
+  },
+  {
+   "name": "cryo x-ray microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01315"
+  },
+  {
+   "name": "crystallography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01082",
+   "synonyms": [
+    "obtain crystal structure"
+   ]
+  },
+  {
+   "name": "dichroism spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01091"
+  },
+  {
+   "name": "dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01090",
+   "definition": "Any technique that depends essentially on probe polarization"
+  },
+  {
+   "name": "diffraction imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01136",
+   "synonyms": [
+    "topography"
+   ]
+  },
+  {
+   "name": "diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01022"
+  },
+  {
+   "name": "diffuse multiple scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01330"
+  },
+  {
+   "name": "diffuse scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01021"
+  },
+  {
+   "name": "diffuse small angle scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01279"
+  },
+  {
+   "name": "diffuse small angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01280"
+  },
+  {
+   "name": "dispersive-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00208"
+  },
+  {
+   "name": "divergent beam diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01328"
+  },
+  {
+   "name": "drug fragment binding-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00405"
+  },
+  {
+   "name": "dynamical diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01023"
+  },
+  {
+   "name": "elastic neutron scattering spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01298",
+   "synonyms": [
+    "RENS",
+    "resolution elastic neutron scattering"
+   ]
+  },
+  {
+   "name": "elastic scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01020"
+  },
+  {
+   "name": "electron emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01047"
+  },
+  {
+   "name": "electron microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01145",
+   "synonyms": [
+    "EM"
+   ]
+  },
+  {
+   "name": "electron spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01201"
+  },
+  {
+   "name": "electronic excitation-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01053"
+  },
+  {
+   "name": "ellipsometry",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01255"
+  },
+  {
+   "name": "emission spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01092"
+  },
+  {
+   "name": "emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00201",
+   "definition": "Independent of probe; classed also as scattering if the probe and emitted particles are of the same type; disjoint with elastic scattering"
+  },
+  {
+   "name": "energy dispersive diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01159",
+   "synonyms": [
+    "EDD"
+   ]
+  },
+  {
+   "name": "energy dispersive extended x-ray absorption fine structure",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01321",
+   "synonyms": [
+    "ED-EXAFS",
+    "EDE"
+   ]
+  },
+  {
+   "name": "energy dispersive x-ray diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01160",
+   "synonyms": [
+    "EDXRD"
+   ]
+  },
+  {
+   "name": "energy dispersive x-ray spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01193",
+   "synonyms": [
+    "EDX"
+   ]
+  },
+  {
+   "name": "EUV lithography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01225",
+   "synonyms": [
+    "extreme ultra violet lithography"
+   ]
+  },
+  {
+   "name": "EUV photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01011",
+   "synonyms": [
+    "extreme ultra violet photon probe technique",
+    "XUV technique"
+   ],
+   "definition": "a technique using photons in the extreme ultraviolet range: 10 nm - 121 nm (120 eV - 10 eV; 3e4 THz - 2500 THz)"
+  },
+  {
+   "name": "extended x-ray absorption fine structure",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01198",
+   "synonyms": [
+    "EXAFS"
+   ]
+  },
+  {
+   "name": "fixed target serial synchrotron crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01310",
+   "synonyms": [
+    "FT-SSX"
+   ]
+  },
+  {
+   "name": "fluorescence imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01112"
+  },
+  {
+   "name": "fluorescence luminescence-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01094"
+  },
+  {
+   "name": "fluorescence microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01113",
+   "synonyms": [
+    "Micro XRF",
+    "microfluorescence"
+   ]
+  },
+  {
+   "name": "fluorescence tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01096"
+  },
+  {
+   "name": "force measurement-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00210"
+  },
+  {
+   "name": "fourier transform infrared spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01320",
+   "synonyms": [
+    "FTIR"
+   ]
+  },
+  {
+   "name": "fragment screening-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01304",
+   "synonyms": [
+    "crystallographic fragment screening"
+   ]
+  },
+  {
+   "name": "gamma spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01097"
+  },
+  {
+   "name": "gamma-ray emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01046"
+  },
+  {
+   "name": "grating interferometry-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01150"
+  },
+  {
+   "name": "grayscale lithography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01232"
+  },
+  {
+   "name": "grazing incidence diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01098"
+  },
+  {
+   "name": "grazing incidence small angle neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01276",
+   "synonyms": [
+    "GISANS"
+   ]
+  },
+  {
+   "name": "grazing incidence small angle scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01099",
+   "synonyms": [
+    "GISAS",
+    "grazing incidence SAS"
+   ]
+  },
+  {
+   "name": "grazing incidence small angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01162",
+   "synonyms": [
+    "GISAXS"
+   ]
+  },
+  {
+   "name": "grazing incidence wide angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01316",
+   "synonyms": [
+    "GIWAXS"
+   ]
+  },
+  {
+   "name": "grazing incidence x-ray diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01161",
+   "synonyms": [
+    "GIXD"
+   ]
+  },
+  {
+   "name": "hard x-ray photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01103",
+   "synonyms": [
+    "hard photoelectron spectroscopy",
+    "HAXPES"
+   ]
+  },
+  {
+   "name": "hard x-ray probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01013",
+   "definition": "a technique using x-ray photons in the high energetic region, e.g. above sulphur K edge (2472 eV), a crystal monochromator is required (approx. 2100 eV)"
+  },
+  {
+   "name": "high energy resolution emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01042"
+  },
+  {
+   "name": "high momentum transfer resolution scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01040"
+  },
+  {
+   "name": "high momentum transfer scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01036"
+  },
+  {
+   "name": "high pressure single crystal diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01163"
+  },
+  {
+   "name": "high resolution angle resolved photoemission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01317",
+   "synonyms": [
+    "HR-ARPES"
+   ]
+  },
+  {
+   "name": "high resolution core-level photoemission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01296"
+  },
+  {
+   "name": "high resolution inelastic neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01299"
+  },
+  {
+   "name": "high resolution neutron imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01250"
+  },
+  {
+   "name": "high resolution neutron powder diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01234"
+  },
+  {
+   "name": "high resolution photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01104"
+  },
+  {
+   "name": "high resolution thermal neutron powder diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01235"
+  },
+  {
+   "name": "high resolution x-ray photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01297",
+   "synonyms": [
+    "HR-XPS"
+   ]
+  },
+  {
+   "name": "holography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01105"
+  },
+  {
+   "name": "imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01106"
+  },
+  {
+   "name": "in-situ diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01157"
+  },
+  {
+   "name": "in-situ surface diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01158"
+  },
+  {
+   "name": "incoherent scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01033"
+  },
+  {
+   "name": "inelastic neutron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01245",
+   "synonyms": [
+    "inelastic neutron scattering",
+    "inelastic neutron scattering spectroscopy"
+   ]
+  },
+  {
+   "name": "inelastic scattering spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01108"
+  },
+  {
+   "name": "inelastic scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01034"
+  },
+  {
+   "name": "inelastic small angle scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01107",
+   "synonyms": [
+    "inelastic SAS"
+   ]
+  },
+  {
+   "name": "inelastic x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01182",
+   "synonyms": [
+    "IXS"
+   ]
+  },
+  {
+   "name": "inelastic x-ray small angle scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01281"
+  },
+  {
+   "name": "infrared microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01178",
+   "synonyms": [
+    "IR microscopy"
+   ]
+  },
+  {
+   "name": "infrared microspectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01110"
+  },
+  {
+   "name": "infrared nanospectroscopy imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01175",
+   "synonyms": [
+    "nano infrared spectroscopy"
+   ]
+  },
+  {
+   "name": "infrared spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01109",
+   "synonyms": [
+    "IR spectroscopy"
+   ]
+  },
+  {
+   "name": "instrumentation testing-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01214"
+  },
+  {
+   "name": "interferometry-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00209"
+  },
+  {
+   "name": "ion emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01048"
+  },
+  {
+   "name": "ion imaging",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01267"
+  },
+  {
+   "name": "IR photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01005",
+   "synonyms": [
+    "infrared photon probe technique"
+   ],
+   "definition": "a technique using photons in the infrared range: 750 nm - 3e6 nm (1.7 eV - 0.0004 eV; 400 THz - 0.1 THz)"
+  },
+  {
+   "name": "kossel lines-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01329"
+  },
+  {
+   "name": "light scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01185"
+  },
+  {
+   "name": "linear dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01138",
+   "synonyms": [
+    "LD"
+   ]
+  },
+  {
+   "name": "lipidic cubic phase serial synchrotron crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01311",
+   "synonyms": [
+    "LCP-SSX"
+   ]
+  },
+  {
+   "name": "lithography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01223"
+  },
+  {
+   "name": "long wavelength crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01305"
+  },
+  {
+   "name": "low momentum transfer scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01037"
+  },
+  {
+   "name": "low surface momentum transfer scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01039"
+  },
+  {
+   "name": "luminescence-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01111"
+  },
+  {
+   "name": "macromolecular crystallography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01164",
+   "synonyms": [
+    "MX",
+    "protein crystallography"
+   ]
+  },
+  {
+   "name": "magnetic circular dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01141",
+   "synonyms": [
+    "MCD"
+   ]
+  },
+  {
+   "name": "magnetic diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01253"
+  },
+  {
+   "name": "magnetic linear dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01142"
+  },
+  {
+   "name": "magnetic scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01252"
+  },
+  {
+   "name": "magnetic x-ray tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01313"
+  },
+  {
+   "name": "magnetism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00207"
+  },
+  {
+   "name": "magnetochiral dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01143",
+   "synonyms": [
+    "MChD"
+   ]
+  },
+  {
+   "name": "manufacturing-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00408"
+  },
+  {
+   "name": "mass spectrometry",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01268"
+  },
+  {
+   "name": "medical application-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00410"
+  },
+  {
+   "name": "MHz x-ray microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01331",
+   "definition": "X-ray microscopy that operates on time scales less than one microsecond with femtosecond illumination"
+  },
+  {
+   "name": "micro grazing incidence small angle x-ray scattering tomography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01287",
+   "synonyms": [
+    "micro GISAXS tomography"
+   ]
+  },
+  {
+   "name": "micro small angle x-ray scattering tomography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01286",
+   "synonyms": [
+    "micro SAXS tomography"
+   ]
+  },
+  {
+   "name": "microfocus diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01032",
+   "synonyms": [
+    "micro scale diffraction"
+   ],
+   "definition": "diffraction using a microfocused beam"
+  },
+  {
+   "name": "microfocus macromolecular crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01306",
+   "synonyms": [
+    "microfocus MX"
+   ]
+  },
+  {
+   "name": "microfocus spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01194"
+  },
+  {
+   "name": "microfocus x-ray absorption spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01322"
+  },
+  {
+   "name": "microfocus x-ray fluorescence",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01254"
+  },
+  {
+   "name": "microfocus x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01271"
+  },
+  {
+   "name": "microfocused probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00106",
+   "definition": "using a beam with dimensions in the micrometre range;may or may not result in a map (2D); see obtain high resolution map"
+  },
+  {
+   "name": "microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01069"
+  },
+  {
+   "name": "microtomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01206"
+  },
+  {
+   "name": "molecular replacement-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01308",
+   "synonyms": [
+    "MR"
+   ]
+  },
+  {
+   "name": "monochromatic neutron probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01018"
+  },
+  {
+   "name": "multi wavelength anomalous diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01165",
+   "synonyms": [
+    "MAD",
+    "multi wavelength anomalous dispersion"
+   ]
+  },
+  {
+   "name": "muon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00102"
+  },
+  {
+   "name": "muon spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01114"
+  },
+  {
+   "name": "muon spin resonance-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01051",
+   "synonyms": [
+    "MuSR"
+   ]
+  },
+  {
+   "name": "nano angle resolved photoemission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01292",
+   "synonyms": [
+    "nano ARPES"
+   ]
+  },
+  {
+   "name": "nanofocus macromolecular crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01307",
+   "synonyms": [
+    "nanofocus MX"
+   ]
+  },
+  {
+   "name": "nanofocus x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01272"
+  },
+  {
+   "name": "nanofocused probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01004",
+   "definition": "using a beam with dimensions in the nanometre range;may or may not result in a map (2D); see obtain ultra high resolution map"
+  },
+  {
+   "name": "nanoimprint lithography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01231"
+  },
+  {
+   "name": "nanotomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01154"
+  },
+  {
+   "name": "natural circular dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01144",
+   "synonyms": [
+    "NCD"
+   ]
+  },
+  {
+   "name": "natural linear dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01139"
+  },
+  {
+   "name": "neutron diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01217"
+  },
+  {
+   "name": "neutron powder diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01100",
+   "synonyms": [
+    "NPD"
+   ],
+   "definition": "A neutron powder diffraction technique"
+  },
+  {
+   "name": "neutron probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00101"
+  },
+  {
+   "name": "neutron reflectometry",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01239",
+   "synonyms": [
+    "neutron reflectivity"
+   ]
+  },
+  {
+   "name": "neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01242"
+  },
+  {
+   "name": "neutron single crystal diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01236"
+  },
+  {
+   "name": "neutron time of flight-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01001"
+  },
+  {
+   "name": "neutron transmission radiography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01248"
+  },
+  {
+   "name": "nonlinear interaction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00211"
+  },
+  {
+   "name": "nonlinear x-ray spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01229"
+  },
+  {
+   "name": "nonresonant diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01228"
+  },
+  {
+   "name": "nuclear resonance-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01050"
+  },
+  {
+   "name": "nuclear resonant scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01270"
+  },
+  {
+   "name": "obtain 3D spatial map-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01071"
+  },
+  {
+   "name": "obtain atomic magnetic structure-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01079"
+  },
+  {
+   "name": "obtain atomic structure-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00400"
+  },
+  {
+   "name": "obtain atomic tensor properties-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01076"
+  },
+  {
+   "name": "obtain charge density-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01080"
+  },
+  {
+   "name": "obtain charge quadrupole-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01078"
+  },
+  {
+   "name": "obtain dynamics-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00403"
+  },
+  {
+   "name": "obtain electronic band structure-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01075"
+  },
+  {
+   "name": "obtain electronic density of occupied states-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01073"
+  },
+  {
+   "name": "obtain electronic density of states-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01072"
+  },
+  {
+   "name": "obtain electronic density of unoccupied states-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01074"
+  },
+  {
+   "name": "obtain electronic ground state properties-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00402"
+  },
+  {
+   "name": "obtain high resolution spatial map-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01068",
+   "definition": "creating a map with micrometre resolution; may or may not originate from a microfocused beam"
+  },
+  {
+   "name": "obtain internal field-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00406"
+  },
+  {
+   "name": "obtain local coordination-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01083"
+  },
+  {
+   "name": "obtain magnetic density-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01081"
+  },
+  {
+   "name": "obtain magnetic vector-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01077"
+  },
+  {
+   "name": "obtain spatial map-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00401"
+  },
+  {
+   "name": "obtain ultrahigh resolution spatial map-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01070",
+   "definition": "creating a map with nanometre resolution; may or may not originate from a nanofocused beam"
+  },
+  {
+   "name": "optical microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01179"
+  },
+  {
+   "name": "optical spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01115"
+  },
+  {
+   "name": "optics characterization-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01215"
+  },
+  {
+   "name": "pair distribution function-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01181",
+   "synonyms": [
+    "PDF"
+   ]
+  },
+  {
+   "name": "phase contrast imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01116"
+  },
+  {
+   "name": "photo crystallography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01166"
+  },
+  {
+   "name": "photo excitation-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01055"
+  },
+  {
+   "name": "photoelectron diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01167",
+   "synonyms": [
+    "PhD"
+   ]
+  },
+  {
+   "name": "photoelectron emission",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01269"
+  },
+  {
+   "name": "photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01202",
+   "synonyms": [
+    "PES"
+   ]
+  },
+  {
+   "name": "photoemission electron microscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01146",
+   "synonyms": [
+    "PEEM",
+    "photoelectron emission microscopy"
+   ]
+  },
+  {
+   "name": "photoemission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01093"
+  },
+  {
+   "name": "photon correlation spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01117",
+   "synonyms": [
+    "PCS"
+   ]
+  },
+  {
+   "name": "photon emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01043"
+  },
+  {
+   "name": "photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00100",
+   "definition": "A technique using photons, which are elementary particles that are quanta of the electromagnetic field. Photons cover (list sorted by increasing wavelength): gamma radiation, x radiation, UV light, visible light, infrared light, microwaves, radiowaves and long radio waves. The different types are characterized by wavelength (nm), frequency (GHz), or energy (eV)."
+  },
+  {
+   "name": "polarimetry-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01256"
+  },
+  {
+   "name": "polarised reflectivity-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01118"
+  },
+  {
+   "name": "polarized neutron reflectometry",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01243",
+   "synonyms": [
+    "polarized neutron reflectivity"
+   ]
+  },
+  {
+   "name": "polymer micro- and nanografting-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01233",
+   "definition": "create micro- or nanostructures by radiation-induced bond breaking in a polymer substrates, which initiates grafting via thermal decomposition of formed (hydro)peroxides in a controlled, degassed monomer environment (radiation grafting)"
+  },
+  {
+   "name": "positron probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00107",
+   "definition": "A technique using positrons, which are the antiparticles of electrons."
+  },
+  {
+   "name": "powder diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01030"
+  },
+  {
+   "name": "propagation phase contrast microtomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01210"
+  },
+  {
+   "name": "propagation phase contrast tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01152"
+  },
+  {
+   "name": "propagation-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00203",
+   "synonyms": [
+    "forward scattering technique"
+   ]
+  },
+  {
+   "name": "ptychographic nanotomography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01213"
+  },
+  {
+   "name": "ptychography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01212"
+  },
+  {
+   "name": "pulse overlap diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01238"
+  },
+  {
+   "name": "pulsed neutron TOF probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01019",
+   "synonyms": [
+    "pulsed neutron time of flight probe"
+   ]
+  },
+  {
+   "name": "pulsed probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00105",
+   "definition": "A technique for which a pulsed probe is essential"
+  },
+  {
+   "name": "quasielastic neutron spin echo scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01120",
+   "synonyms": [
+    "quasi elastic spin echo",
+    "quasielastic spin echo"
+   ]
+  },
+  {
+   "name": "quasielastic scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01035"
+  },
+  {
+   "name": "radiotherapy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01323",
+   "synonyms": [
+    "radiation therapy"
+   ]
+  },
+  {
+   "name": "raman spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01195"
+  },
+  {
+   "name": "reference beam-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01025",
+   "definition": "e.g. holography"
+  },
+  {
+   "name": "reflection-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00205"
+  },
+  {
+   "name": "reflectometry-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01121",
+   "synonyms": [
+    "reflectivity"
+   ]
+  },
+  {
+   "name": "refraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00204"
+  },
+  {
+   "name": "resonance phenomenon-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00206"
+  },
+  {
+   "name": "resonant diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01122",
+   "synonyms": [
+    "anomalous diffraction"
+   ]
+  },
+  {
+   "name": "resonant elastic x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01260",
+   "synonyms": [
+    "REXS"
+   ]
+  },
+  {
+   "name": "resonant inelastic x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01183",
+   "synonyms": [
+    "RIXS"
+   ]
+  },
+  {
+   "name": "resonant scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01049",
+   "synonyms": [
+    "anomalous scattering"
+   ]
+  },
+  {
+   "name": "resonant soft x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01187",
+   "synonyms": [
+    "RSXS"
+   ]
+  },
+  {
+   "name": "resonant x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01186",
+   "synonyms": [
+    "RXS"
+   ]
+  },
+  {
+   "name": "scanning angle resolved photoemission spectromicroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01291"
+  },
+  {
+   "name": "scanning photoelectron microscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01293"
+  },
+  {
+   "name": "scanning probe imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01147"
+  },
+  {
+   "name": "scanning probe microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01148",
+   "synonyms": [
+    "scanning microscopy"
+   ]
+  },
+  {
+   "name": "scanning probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00104"
+  },
+  {
+   "name": "scanning transmission microscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01123",
+   "synonyms": [
+    "STM"
+   ]
+  },
+  {
+   "name": "scanning transmission x-ray microscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01219",
+   "synonyms": [
+    "STXM"
+   ]
+  },
+  {
+   "name": "scanning x-ray fluorescence",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01288"
+  },
+  {
+   "name": "scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00200",
+   "definition": "Any phenomenon where a particle of the same type as the probe is emitted"
+  },
+  {
+   "name": "serial femtosecond crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01168",
+   "synonyms": [
+    "SFX"
+   ]
+  },
+  {
+   "name": "serial synchrotron crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01169",
+   "synonyms": [
+    "SSX"
+   ]
+  },
+  {
+   "name": "single crystal diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01029"
+  },
+  {
+   "name": "single shot-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01003"
+  },
+  {
+   "name": "single wavelength anomalous diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01170",
+   "synonyms": [
+    "SAD",
+    "single wavelength anomalous dispersion"
+   ]
+  },
+  {
+   "name": "single-shot imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01230"
+  },
+  {
+   "name": "small angle inelastic scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01273"
+  },
+  {
+   "name": "small angle neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01189",
+   "synonyms": [
+    "SANS"
+   ]
+  },
+  {
+   "name": "small angle scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01124",
+   "synonyms": [
+    "SAS",
+    "small angle diffraction"
+   ]
+  },
+  {
+   "name": "small angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01188",
+   "synonyms": [
+    "SAXS"
+   ]
+  },
+  {
+   "name": "small molecule diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01171",
+   "synonyms": [
+    "chemical crystallography",
+    "small molecule crystallography"
+   ]
+  },
+  {
+   "name": "soft x-ray diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01283"
+  },
+  {
+   "name": "soft x-ray imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01289"
+  },
+  {
+   "name": "soft x-ray probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01015",
+   "definition": "a technique using x-ray photons in the low energetic region, e.g. below the sulphur K edge (2472 eV), a grating monochromator is required (approx. 2100 eV)"
+  },
+  {
+   "name": "soft x-ray small angle scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01282"
+  },
+  {
+   "name": "solid probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00103"
+  },
+  {
+   "name": "spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01125"
+  },
+  {
+   "name": "spin and angle resolved photoemission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01222"
+  },
+  {
+   "name": "spin echo resolved grazing incidence scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01126"
+  },
+  {
+   "name": "spin echo scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01119"
+  },
+  {
+   "name": "spin echo small angle scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01127",
+   "synonyms": [
+    "spin echo SANS"
+   ]
+  },
+  {
+   "name": "spin echo-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01052"
+  },
+  {
+   "name": "spin resolved photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01203"
+  },
+  {
+   "name": "surface crystallography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01324",
+   "synonyms": [
+    "obtain surface atomic structure"
+   ]
+  },
+  {
+   "name": "surface diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01128"
+  },
+  {
+   "name": "surface x-ray diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01172"
+  },
+  {
+   "name": "tender x-ray probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01014",
+   "definition": "a technique using x-ray photons between hard and soft x-rays, approx. at sulphur K edge (2472 eV), boundary between using a DCM and a grating mono"
+  },
+  {
+   "name": "testing-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00409"
+  },
+  {
+   "name": "therapy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00404"
+  },
+  {
+   "name": "thermal neutron probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01016"
+  },
+  {
+   "name": "thermal neutron single crystal diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01237"
+  },
+  {
+   "name": "thermal neutron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01247"
+  },
+  {
+   "name": "THz near field microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01251"
+  },
+  {
+   "name": "THz photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01006",
+   "synonyms": [
+    "terahertz photon probe technique"
+   ],
+   "definition": "a technique using photons in the THz range: 3e4 nm - 3e6 nm (0.04 eV - 0.0004 eV; 10 THz - 0.1 THz)"
+  },
+  {
+   "name": "time dependent absorption-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01265",
+   "synonyms": [
+    "time resolved absorption"
+   ]
+  },
+  {
+   "name": "time dependent diffraction-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01264",
+   "synonyms": [
+    "time resolved diffraction"
+   ]
+  },
+  {
+   "name": "time dependent scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01263",
+   "synonyms": [
+    "time resolved scattering"
+   ]
+  },
+  {
+   "name": "time dependent study-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01084",
+   "synonyms": [
+    "time resolved study"
+   ]
+  },
+  {
+   "name": "time of flight small angle neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01277"
+  },
+  {
+   "name": "time of flight spectrometry-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01244",
+   "synonyms": [
+    "TOF spectrometry",
+    "TOF spectroscopy"
+   ]
+  },
+  {
+   "name": "time of flight-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01000",
+   "synonyms": [
+    "TOF"
+   ]
+  },
+  {
+   "name": "time resolved serial femtosecond crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01309",
+   "synonyms": [
+    "TR-SFX"
+   ]
+  },
+  {
+   "name": "time resolved serial synchrotron crystallography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01312",
+   "synonyms": [
+    "TR-SSX"
+   ]
+  },
+  {
+   "name": "tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01129"
+  },
+  {
+   "name": "total electron yield-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01220",
+   "synonyms": [
+    "TEY"
+   ]
+  },
+  {
+   "name": "total scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01190"
+  },
+  {
+   "name": "ultra low momentum transfer scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01038"
+  },
+  {
+   "name": "ultra small angle neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01240"
+  },
+  {
+   "name": "ultra small angle scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01133",
+   "synonyms": [
+    "USAS"
+   ]
+  },
+  {
+   "name": "ultra small angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01241",
+   "synonyms": [
+    "USAXS"
+   ]
+  },
+  {
+   "name": "ultrafast microtomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01211",
+   "synonyms": [
+    "Ultra-fast tomographic microscopy"
+   ]
+  },
+  {
+   "name": "ultrafast probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01002",
+   "synonyms": [
+    "femtosecond probe"
+   ]
+  },
+  {
+   "name": "ultrafast tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01153"
+  },
+  {
+   "name": "UV and visible circular dichroism spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01131",
+   "synonyms": [
+    "ultra violet and visible circular dichroism spectroscopy"
+   ]
+  },
+  {
+   "name": "UV circular dichroism imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01176",
+   "synonyms": [
+    "ultra violet circular dichroism imaging"
+   ]
+  },
+  {
+   "name": "UV circular dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01132",
+   "synonyms": [
+    "ultra violet circular dichroism",
+    "UVCD"
+   ]
+  },
+  {
+   "name": "UV photoelectron emission",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01257",
+   "synonyms": [
+    "ultra violet photoelectron emission"
+   ]
+  },
+  {
+   "name": "UV photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01009",
+   "synonyms": [
+    "ultra violet photon probe technique"
+   ],
+   "definition": "a technique using photons in the ultraviolet range: wavelengths between 10 nm - 400 nm (120 eV - 3 eV; 3e4 THz - 750 THz); between visible light and x-rays"
+  },
+  {
+   "name": "UV visible photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01007",
+   "synonyms": [
+    "ultra violet and visible photon probe technique",
+    "UV vis photon probe technique"
+   ],
+   "definition": "a technique using photons in the ultraviolet and visible range: 10 nm - 750 nm (120 eV - 1.7 eV; 3e4 THz - 400 THz)"
+  },
+  {
+   "name": "UV VUV spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01130",
+   "synonyms": [
+    "ultra violet and vacuum ultra violet spectroscopy"
+   ]
+  },
+  {
+   "name": "versus emission mass-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00305"
+  },
+  {
+   "name": "versus emission momentum-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01058"
+  },
+  {
+   "name": "versus emitted energy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01057"
+  },
+  {
+   "name": "versus emitted polarization-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01060"
+  },
+  {
+   "name": "versus energy loss-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01059"
+  },
+  {
+   "name": "versus energy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00300"
+  },
+  {
+   "name": "versus incident energy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01056"
+  },
+  {
+   "name": "versus momentum transfer-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00301"
+  },
+  {
+   "name": "versus photon circular polarization-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01062"
+  },
+  {
+   "name": "versus photon linear polarization-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01061"
+  },
+  {
+   "name": "versus polarization-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00302"
+  },
+  {
+   "name": "versus position-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00303"
+  },
+  {
+   "name": "versus sample electric field-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01067"
+  },
+  {
+   "name": "versus sample magnetic field-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01066"
+  },
+  {
+   "name": "versus sample pressure-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01065"
+  },
+  {
+   "name": "versus sample state-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00306"
+  },
+  {
+   "name": "versus sample temperature-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01064"
+  },
+  {
+   "name": "versus time ultrafast-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01063"
+  },
+  {
+   "name": "versus time-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET00304"
+  },
+  {
+   "name": "very small angle neutron scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01278",
+   "synonyms": [
+    "VSANS"
+   ]
+  },
+  {
+   "name": "visible photon emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01044"
+  },
+  {
+   "name": "visible photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01008",
+   "definition": "a technique using photons in the visible range: 400 nm - 750 nm (3 eV eV - 1.7 eV; 750 THz - 400 THz)"
+  },
+  {
+   "name": "VUV photon probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01010",
+   "synonyms": [
+    "vacuum ultra violet photon probe technique"
+   ],
+   "definition": "a technique using photons in low ultraviolet range that is strongly absorbed by oxygen in air and therefore require vacuum; range: 10 nm - 200 nm (120 eV - 6 eV; 3e4 THz - 1500 THz)"
+  },
+  {
+   "name": "wide angle scattering-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01134"
+  },
+  {
+   "name": "wide angle x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01191",
+   "synonyms": [
+    "WAXS"
+   ]
+  },
+  {
+   "name": "x-ray absorption",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01227"
+  },
+  {
+   "name": "x-ray absorption fine structure",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01197",
+   "synonyms": [
+    "XAFS"
+   ]
+  },
+  {
+   "name": "x-ray absorption near edge structure",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01199",
+   "synonyms": [
+    "NEXAFS",
+    "XANES"
+   ]
+  },
+  {
+   "name": "x-ray absorption spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01196",
+   "synonyms": [
+    "XAS"
+   ]
+  },
+  {
+   "name": "x-ray birefringence imaging",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01327",
+   "synonyms": [
+    "XBI"
+   ]
+  },
+  {
+   "name": "x-ray diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01216",
+   "synonyms": [
+    "XRD"
+   ]
+  },
+  {
+   "name": "x-ray diffraction imaging",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01290"
+  },
+  {
+   "name": "x-ray emission spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01200",
+   "synonyms": [
+    "XES"
+   ]
+  },
+  {
+   "name": "x-ray emission-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01045"
+  },
+  {
+   "name": "x-ray excited optical luminescence",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01140",
+   "synonyms": [
+    "XEOL"
+   ]
+  },
+  {
+   "name": "x-ray fluorescence spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01095"
+  },
+  {
+   "name": "x-ray fluorescence-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01177",
+   "synonyms": [
+    "XRF"
+   ]
+  },
+  {
+   "name": "x-ray holography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01266"
+  },
+  {
+   "name": "x-ray imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01285"
+  },
+  {
+   "name": "x-ray interference lithography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01226"
+  },
+  {
+   "name": "x-ray linear dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01300"
+  },
+  {
+   "name": "x-ray lithography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01224"
+  },
+  {
+   "name": "x-ray magnetic circular dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01137",
+   "synonyms": [
+    "XMCD"
+   ]
+  },
+  {
+   "name": "x-ray magnetic linear dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01259",
+   "synonyms": [
+    "XMLD"
+   ]
+  },
+  {
+   "name": "x-ray magnetochiral dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01301",
+   "synonyms": [
+    "XMChiD"
+   ]
+  },
+  {
+   "name": "x-ray microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01180"
+  },
+  {
+   "name": "x-ray microtomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01208"
+  },
+  {
+   "name": "x-ray natural circular dichroism-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01302",
+   "synonyms": [
+    "XNCD"
+   ]
+  },
+  {
+   "name": "x-ray natural linear dichroism",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01303",
+   "synonyms": [
+    "XNLD"
+   ]
+  },
+  {
+   "name": "x-ray phase contrast imaging-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01334",
+   "synonyms": [
+    "XPCI"
+   ],
+   "definition": "Phase contrast imaging conducted with x-rays"
+  },
+  {
+   "name": "x-ray photoelectron diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01284"
+  },
+  {
+   "name": "x-ray photoelectron emission",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01258"
+  },
+  {
+   "name": "x-ray photoelectron spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01204",
+   "synonyms": [
+    "XPS"
+   ]
+  },
+  {
+   "name": "x-ray photoemission electron microscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01294"
+  },
+  {
+   "name": "x-ray photon correlation spectroscopy",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01205",
+   "synonyms": [
+    "XPCS"
+   ]
+  },
+  {
+   "name": "x-ray powder diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01101",
+   "synonyms": [
+    "XPD"
+   ]
+  },
+  {
+   "name": "x-ray probe-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01012",
+   "synonyms": [
+    "Röntgen technique"
+   ],
+   "definition": "a technique using photons in the x-ray range: 0.01 nm - 10 nm (1.2e5 eV - 120 eV; 3e7 THz - 3e4 THz)"
+  },
+  {
+   "name": "x-ray propagation phase contrast microtomography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01333",
+   "synonyms": [
+    "PPC-SrμCT"
+   ]
+  },
+  {
+   "name": "x-ray propagation phase contrast tomography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01332"
+  },
+  {
+   "name": "x-ray reflectivity",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01149",
+   "synonyms": [
+    "x-ray reflectometry",
+    "XRR"
+   ]
+  },
+  {
+   "name": "x-ray refraction imaging",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01261",
+   "synonyms": [
+    "x-ray refraction radiography"
+   ]
+  },
+  {
+   "name": "x-ray refraction tomography",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01262"
+  },
+  {
+   "name": "x-ray scanning microscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01295",
+   "synonyms": [
+    "scanning x-ray microscopy"
+   ]
+  },
+  {
+   "name": "x-ray scattering",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01184"
+  },
+  {
+   "name": "x-ray single crystal diffraction",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01102",
+   "synonyms": [
+    "single crystal x-ray diffraction",
+    "SXRD"
+   ]
+  },
+  {
+   "name": "x-ray spectroscopy-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01156"
+  },
+  {
+   "name": "x-ray standing wave",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01173",
+   "synonyms": [
+    "XSW"
+   ]
+  },
+  {
+   "name": "x-ray tomography-based techniques",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01207",
+   "synonyms": [
+    "CT scan"
+   ]
+  },
+  {
+   "name": "XMCD total electron yield",
+   "pid": "http://purl.org/pan-science/PaNET/PaNET01221",
+   "synonyms": [
+    "x-ray magnetic circular dichorism total electron yield",
+    "XMCD TEY"
+   ]
+  }
+ ]
+}

@@ -117,8 +117,9 @@ def test_panel_lists_pygid_fields_and_collects(qtbot):
         assert title in [w.text() for w in sec.findChildren(QAbstractButton)
                          if hasattr(w, "text")]
 
-    # One user block, one technique row and every beamtime field shown
-    # from the start, labelled with pygid's names.
+    # One user block and every beamtime field shown from the start,
+    # labelled with pygid's names; the technique table starts empty (the
+    # picker fills it).
     assert len(panel._user_blocks) == 1
     _frame, inputs = panel._user_blocks[0]
     assert list(inputs) == ["field_name", *USER_FIELDS]
@@ -126,7 +127,7 @@ def test_panel_lists_pygid_fields_and_collects(qtbot):
     roles = [inputs["role"].itemText(i) for i in range(inputs["role"].count())]
     assert roles == ["", "local_contact", "principal_investigator", "proposer"]
     assert inputs["role"].isEditable()
-    assert panel.technique_table.rowCount() == 1
+    assert panel.technique_table.rowCount() == 0
     assert list(panel.beamtime_fields) == list(BEAMTIME_FIELDS)
     assert list(BEAMTIME_FIELDS) == [
         "description", "proposal_id", "beamtime_id",
@@ -138,7 +139,7 @@ def test_panel_lists_pygid_fields_and_collects(qtbot):
     panel._add_user_block()
     assert panel._user_blocks[1][1]["field_name"].text() == "user_2"
     panel._user_blocks[1][1]["ORCID"].setText("0000-0002-1234-5678")
-    panel.technique_table.item(0, 0).setText("x-ray reflectivity")
+    panel.add_technique("x-ray reflectivity", "PID-XRR")
     panel.beamtime_fields["DOI"].setText("10.1/abc")
 
     cfg = ConversionConfig()
@@ -149,7 +150,7 @@ def test_panel_lists_pygid_fields_and_collects(qtbot):
          "role": "principal_investigator"},
         {"field_name": "user_2", "ORCID": "0000-0002-1234-5678"},
     ]
-    assert meta.techniques == [{"name": "x-ray reflectivity"}]
+    assert meta.techniques == [{"name": "x-ray reflectivity", "pid": "PID-XRR"}]
     assert meta.beamtime == {"DOI": "10.1/abc"}
 
     panel._remove_user_block(panel._user_blocks[0][0])

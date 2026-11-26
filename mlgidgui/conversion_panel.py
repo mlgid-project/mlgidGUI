@@ -16,6 +16,7 @@ from typing import Callable
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -76,7 +77,9 @@ from mlgidgui.conversion_config import (
     _expand_fabio_scans,
     parse_poni_overrides,
 )
+from mlgidgui.technique_picker import TechniquePickerDialog
 from mlgidgui.widgets import CollapsibleSection as _CollapsibleSection
+from mlgidgui.widgets import attach_empty_hint as _attach_empty_hint
 from mlgidgui.widgets import make_form as _make_form
 from mlgidgui.widgets import skin_item_view as _skin_item_view
 from mlgidgui.widgets import DANGER as _DANGER, PRIMARY as _PRIMARY, set_variant as _set_variant
@@ -1258,7 +1261,8 @@ class ConversionPanel(QWidget):
         tech_hint = QLabel(
             "<i>pygid always records x-ray diffraction (and grazing "
             "incidence wide angle x-ray scattering for GID); techniques "
-            "entered here are added after those.</i>"
+            "selected here are added after those. Names and PIDs come "
+            "from the PaNET ontology.</i>"
         )
         tech_hint.setWordWrap(True)
         body.addWidget(tech_hint)
@@ -1271,13 +1275,24 @@ class ConversionPanel(QWidget):
                 col, QHeaderView.ResizeMode.Stretch
             )
         self.technique_table.setMaximumHeight(110)
+        # Filled by the picker only: a typed name or PID could disagree
+        # with the ontology.
+        self.technique_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.technique_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        # PIDs differ only at the end, so keep both ends visible.
+        self.technique_table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.technique_table.setWordWrap(False)
+        _attach_empty_hint(self.technique_table, "No technique added.")
         body.addWidget(self.technique_table)
-        add_tech_btn = QPushButton("Add technique")
-        add_tech_btn.clicked.connect(self._add_technique_row)
+        self.select_technique_btn = QPushButton("Select technique…")
+        self.select_technique_btn.clicked.connect(self._select_technique)
         del_tech_btn = _set_variant(QPushButton("Remove"), _DANGER)
         del_tech_btn.clicked.connect(self._remove_technique_rows)
-        body.addWidget(_row(add_tech_btn, del_tech_btn))
-        self._add_technique_row()
+        body.addWidget(_row(self.select_technique_btn, del_tech_btn))
 
         self.beamtime_info_section = _CollapsibleSection(
             "Beamtime information", expanded=False
@@ -1353,11 +1368,38 @@ class ConversionPanel(QWidget):
         self._user_blocks_layout.removeWidget(frame)
         frame.deleteLater()
 
-    def _add_technique_row(self) -> None:
-        row = self.technique_table.rowCount()
-        self.technique_table.insertRow(row)
-        for col in range(len(TECHNIQUE_FIELDS)):
-            self.technique_table.setItem(row, col, QTableWidgetItem(""))
+    def _select_technique(self) -> None:
+        try:
+            dialog = TechniquePickerDialog(self)
+        except (OSError, ValueError, KeyError) as exc:
+            logger.warning("Could not load the PaNET list", exc_info=True)
+            self.append_log(f"Could not load the PaNET technique list: {exc}")
+            return
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            technique = dialog.selected()
+        finally:
+            dialog.deleteLater()
+        if technique is not None:
+            self.add_technique(technique.name, technique.pid)
+
+    def add_technique(self, name: str, pid: str) -> None:
+        """Append a technique row; one already listed is only selected."""
+        table = self.technique_table
+        pid_col = TECHNIQUE_FIELDS.index("pid")
+        for row in range(table.rowCount()):
+            if table.item(row, pid_col).text() == pid:
+                table.selectRow(row)
+                return
+        row = table.rowCount()
+        table.insertRow(row)
+        values = {"name": name, "pid": pid}
+        for col, key in enumerate(TECHNIQUE_FIELDS):
+            item = QTableWidgetItem(values[key])
+            item.setToolTip(values[key])
+            table.setItem(row, col, item)
+        table.selectRow(row)
 
     def _remove_technique_rows(self) -> None:
         rows = sorted(

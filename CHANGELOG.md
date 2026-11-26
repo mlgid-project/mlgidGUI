@@ -4,6 +4,20 @@ All notable changes to mlgidGUI (called mlgidLAB until 1.0.0) are recorded
 here. Versions follow [PEP 440](https://peps.python.org/pep-0440/); `aN`
 suffixes are alpha pre-releases.
 
+## 1.2.1 (2026-11-26)
+
+### Changed
+
+- **Techniques are picked from PaNET.** The names and persistent
+  identifiers of experimental techniques are fixed by the
+  [PaNET ontology](https://pan-ontologies.github.io/PaNET/index-en.html).
+  In the conversion's *Technique information*, *Select technique…* now
+  opens a search window (names and abbreviations such as `GIWAXS` or
+  `XRR`) and fills `name` and `pid` together; typing them by hand is no
+  longer possible. The list ships with the GUI, so it works offline
+  (PaNET 1.3.0-101-g6e41c75 of 2025-10-21,
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
+
 ## 1.2.0 (2026-11-22)
 
 ### Added
